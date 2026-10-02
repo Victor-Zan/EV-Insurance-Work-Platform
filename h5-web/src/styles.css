@@ -1,0 +1,40 @@
+:root {
+  color: #202124;
+  background: #f6f7f9;
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+.mobile-shell {
+  min-height: 100vh;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
+}
+
+.intro {
+  padding: 40px 24px 28px;
+}
+
+.intro h1 {
+  margin: 18px 0 12px;
+  font-size: 30px;
+  letter-spacing: -0.02em;
+}
+
+.intro p {
+  margin: 0;
+  color: #667085;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
