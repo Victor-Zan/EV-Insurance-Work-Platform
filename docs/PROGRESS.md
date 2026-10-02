@@ -187,3 +187,18 @@
 - 确认 RBAC 权限粒度，以及管理员和客服的数据范围差异。
 - 确认区域层级、网点与区域的关系及网点账号归属。
 - 宿主机开发建议安装 Java 21；在此之前可继续用已验证的 Java 21 容器执行正式构建。
+
+## 2026-10-02 GitHub 仓库发布
+
+### 已完成
+
+- 移除误建在项目根目录下的嵌套 Git 仓库 `EV-Insurance-Work-Platform/`；该目录仅包含 Git 元数据和 `.gitattributes`，不包含项目源码。
+- 将项目根目录作为唯一 Git 仓库，并连接远程仓库 `https://github.com/Victor-Zan/EV-Insurance-Work-Platform.git`。
+- 保留远程 `Initial commit` 历史，将当前阶段源码提交并推送至 `main` 分支。
+- 本次仅整理和发布仓库，未进入阶段 2，未修改业务实现。
+
+### 验证结果
+
+- `git check-ignore -v .env`：通过，`.env` 仍由 `.gitignore` 排除，未进入提交。
+- 暂存文件安全检查：通过，共 57 个项目文件，无疑似密钥文件，无超过 10 MB 的文件。
+- `git push -u origin main`：通过，提交 `3e533ae` 已推送至 `origin/main`。
