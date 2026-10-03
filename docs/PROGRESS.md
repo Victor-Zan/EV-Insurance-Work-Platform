@@ -3,7 +3,7 @@
 ## 当前状态
 
 - 当前阶段：阶段 2 — 身份认证、RBAC、组织基础数据与审计底座
-- 状态：已完成
+- 状态：阶段 2 实现与本地验证已完成；分支已推送，Draft PR 创建被 GitHub 插件权限阻塞
 - 完成日期：2026-10-03
 - 阶段边界：本阶段完成后停止；未进入价格库、工单或其他后续阶段。下一阶段必须另行明确授权。
 
@@ -252,4 +252,9 @@
 
 - 分支：feature/sherr-auth-rbac；目标：main；不直接在 main 开发、不 force push、不 reset --hard、不改共享迁移。
 - 实现提交标题：feat(auth): add role based authentication and organization foundation。
-- 本地验证已完成；提交、推送与 Draft PR 结果将在下方记录。禁止合并，阶段 2 完成后停止。
+- 实现提交：20eb5f2eb824a49548765943779f4cb397a28a45，标题为 feat(auth): add role based authentication and organization foundation。
+- git commit 与 git push -u origin feature/sherr-auth-rbac：成功；已设置跟踪 origin/feature/sherr-auth-rbac，工作区提交后干净。
+- GitHub 插件 github_create_pull_request（base=main、head=feature/sherr-auth-rbac、draft=true）：失败，HTTP 403，Resource not accessible by integration。当前连接的集成权限无法创建 PR；未创建 Draft PR，未尝试其他渠道绕过权限，未合并。
+- 可供人工创建 Draft PR 的分支：https://github.com/Victor-Zan/EV-Insurance-Work-Platform/tree/feature/sherr-auth-rbac 。需为 GitHub 集成配置 Pull requests 写权限，或由具有权限的协作者人工建立指向 main 的 Draft PR。
+- 本任务创建的独立 PostgreSQL 测试实例已通过 pg_ctl -D work/postgres-test-data -m fast -w stop 停止，测试库数据保留；未删除或修改共享数据库。
+- 本文件的收尾提交仅记录验证与 Git 交付结果；阶段 2 在此停止，不进入后续阶段。
