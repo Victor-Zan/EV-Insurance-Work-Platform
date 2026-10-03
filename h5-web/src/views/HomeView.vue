@@ -1,19 +1,14 @@
 <script setup lang="ts">
-import { Cell, CellGroup, NavBar, Tag } from 'vant'
+import { useRouter } from 'vue-router'
+import { authSession, currentUser } from '@/shared/http/client'
+import { Button, Cell, CellGroup, NavBar } from 'vant'
+const router = useRouter()
+function logout() { authSession.clear(); void router.replace('/login') }
 </script>
 
 <template>
-  <main class="mobile-shell">
-    <NavBar title="保险维修协同平台" safe-area-inset-top />
-    <section class="intro">
-      <Tag type="success" size="medium">工程骨架已就绪</Tag>
-      <h1>移动 H5</h1>
-      <p>供维修网点和车主使用。当前阶段仅建立可启动工程，不包含业务功能。</p>
-    </section>
-    <CellGroup inset title="技术基线">
-      <Cell title="框架" value="Vue 3 + TypeScript" />
-      <Cell title="移动组件" value="Vant" />
-    </CellGroup>
+  <main class="mobile-shell"><NavBar title="身份首页" /><section class="intro"><h1>{{ currentUser?.displayName }}</h1></section>
+    <CellGroup inset><Cell title="账号" :value="currentUser?.username" /><Cell title="角色" :value="currentUser?.roles.join('、')" /></CellGroup>
+    <div class="actions"><Button block @click="logout">退出登录</Button></div>
   </main>
 </template>
-

@@ -5,6 +5,7 @@ import tseslint from 'typescript-eslint'
 
 export default [
   { ignores: ['dist', 'node_modules'] },
+  { files: ['tests/**/*.mjs'], languageOptions: { globals: globals.node } },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   ...pluginVue.configs['flat/essential'],

@@ -38,3 +38,7 @@ body {
   line-height: 1.7;
 }
 
+
+.actions { display: flex; gap: 12px; padding: 24px 0; }
+.error-message { color: #b42318; padding: 16px 24px; }
+.actions { padding: 24px; }
