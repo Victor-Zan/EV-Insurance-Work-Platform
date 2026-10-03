@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.evinsurance.platform.identity.infrastructure.UserMapper">
+  <sql id="accessSelect">
+    SELECT u.id,u.username,u.display_name,u.password_hash,u.enabled,u.auth_version,
+      (SELECT string_agg(r.code,',' ORDER BY r.code) FROM user_role ur JOIN app_role r ON r.id=ur.role_id WHERE ur.user_id=u.id) AS role_codes,
+      (SELECT sa.shop_id FROM shop_account sa WHERE sa.user_id=u.id) AS shop_id
+    FROM app_user u
+  </sql>
+  <select id="accessById" resultType="com.evinsurance.platform.identity.infrastructure.AccessRow"><include refid="accessSelect"/> WHERE u.id=#{id}</select>
+  <select id="accessByUsername" resultType="com.evinsurance.platform.identity.infrastructure.AccessRow"><include refid="accessSelect"/> WHERE u.username=#{username}</select>
+  <select id="accessPage" resultType="com.evinsurance.platform.identity.infrastructure.AccessRow"><include refid="accessSelect"/> ORDER BY u.id LIMIT #{size} OFFSET #{offset}</select>
+  <select id="lockById" resultType="com.evinsurance.platform.identity.infrastructure.UserEntity">SELECT * FROM app_user WHERE id=#{id} FOR UPDATE</select>
+  <delete id="replaceRolesDelete">DELETE FROM user_role WHERE user_id=#{id}</delete>
+  <insert id="addRole">INSERT INTO user_role(user_id,role_id) SELECT #{id},id FROM app_role WHERE code=#{role}</insert>
+  <delete id="deleteShopAccount">DELETE FROM shop_account WHERE user_id=#{id}</delete>
+  <insert id="addShopAccount">INSERT INTO shop_account(user_id,shop_id,updated_by) VALUES (#{id},#{shopId},#{actorId})</insert>
+  <insert id="ensureOwner">INSERT INTO owner_profile(user_id,display_name) VALUES (#{id},#{displayName}) ON CONFLICT (user_id) DO NOTHING</insert>
+</mapper>

@@ -1,18 +1,15 @@
 <script setup lang="ts">
-import { ElCard, ElTag } from 'element-plus'
+import { useRouter } from 'vue-router'
+import { authSession, currentUser } from '@/shared/http/client'
+import { ElButton, ElCard, ElTag } from 'element-plus'
+const router = useRouter()
+function logout() { authSession.clear(); void router.replace('/login') }
 </script>
 
 <template>
-  <main class="page-shell">
-    <ElCard class="status-card" shadow="never">
-      <template #header>
-        <div class="card-header">
-          <span>电动车保险维修案件协同平台</span>
-          <ElTag type="success">工程骨架已就绪</ElTag>
-        </div>
-      </template>
-      <h1>管理端</h1>
-      <p>供管理员和客服使用。当前阶段仅建立可启动工程，不包含业务功能。</p>
-    </ElCard>
-  </main>
+  <main class="page-shell"><ElCard class="status-card" shadow="never">
+    <h1>管理端</h1><p>当前用户：{{ currentUser?.displayName }}（{{ currentUser?.username }}）</p>
+    <ElTag v-for="role in currentUser?.roles" :key="role">{{ role }}</ElTag>
+    <div class="actions"><ElButton v-if="currentUser?.roles.includes('ADMIN')" @click="router.push('/users')">用户管理验证</ElButton><ElButton @click="logout">退出登录</ElButton></div>
+  </ElCard></main>
 </template>

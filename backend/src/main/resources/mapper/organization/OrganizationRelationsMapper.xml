@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.evinsurance.platform.organization.infrastructure.OrganizationRelationsMapper">
+  <select id="serviceRegions" resultType="long">SELECT region_id FROM shop_service_region WHERE shop_id=#{shopId} ORDER BY region_id LIMIT #{size} OFFSET #{offset}</select>
+  <select id="serviceRegionCount" resultType="long">SELECT count(*) FROM shop_service_region WHERE shop_id=#{shopId}</select>
+  <delete id="deleteServiceRegions">DELETE FROM shop_service_region WHERE shop_id=#{shopId}</delete>
+  <insert id="addServiceRegion">INSERT INTO shop_service_region(shop_id,region_id,created_by) VALUES (#{shopId},#{regionId},#{actorId})</insert>
+  <select id="lockShop" resultType="com.evinsurance.platform.organization.infrastructure.ShopEntity">SELECT * FROM repair_shop WHERE id=#{id} FOR UPDATE</select>
+  <select id="lockRegion" resultType="com.evinsurance.platform.organization.infrastructure.RegionEntity">SELECT * FROM region WHERE id=#{id} FOR UPDATE</select>
+  <select id="childCount" resultType="long">SELECT count(*) FROM region WHERE parent_id=#{id}</select>
+</mapper>

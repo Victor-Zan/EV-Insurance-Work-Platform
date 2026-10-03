@@ -18,6 +18,10 @@ import org.springframework.test.web.servlet.MockMvc;
 @Import({SecurityConfiguration.class, RequestTraceFilter.class})
 class HealthControllerTest {
 
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    private com.evinsurance.platform.identity.infrastructure.JwtService jwtService;
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    private com.evinsurance.platform.identity.infrastructure.UserMapper userMapper;
     @Autowired
     private MockMvc mockMvc;
 

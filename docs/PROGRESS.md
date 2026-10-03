@@ -2,10 +2,10 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 1 — 工程骨架与本地基础设施
-- 状态：已完成
-- 完成日期：2026-10-01
-- 下一阶段：阶段 2 — 身份权限、组织基础数据与审计底座（需用户确认并先确认相关业务规则）
+- 当前阶段：阶段 2 — 身份认证、RBAC、组织基础数据与审计底座
+- 状态：阶段 2 实现与本地验证已完成；分支已推送，Draft PR 创建被 GitHub 插件权限阻塞
+- 完成日期：2026-10-03
+- 阶段边界：本阶段完成后停止；未进入价格库、工单或其他后续阶段。下一阶段必须另行明确授权。
 
 ## 阶段 1 完成内容
 
@@ -167,7 +167,7 @@
 - 明确云端部署、HTTPS、日志监控、保留策略和恢复目标。
 - 验收：所有阶段门禁通过，无真实秘密，MVP 验收口径逐项有证据。
 
-## 当前不阻塞初始化的待确认事项
+## 阶段 1 时的待确认事项（历史记录；阶段 2 已确认项见文末）
 
 完整清单及最晚确认阶段见 `docs/REQUIREMENTS.md` 第 10 节。当前优先级较高的包括：
 
@@ -180,7 +180,7 @@
 
 这些事项未阻塞阶段 1 工程骨架，但不得在对应业务阶段被实现者自行默认。阶段 2 开始前至少需要确认登录方式、账号开通/停用、权限粒度、区域层级与网点关系。
 
-## 进入阶段 2 前需处理或确认
+## 进入阶段 2 前的检查清单（历史记录；本次已确认业务规则）
 
 - 用户明确同意开始阶段 2。
 - 确认四类角色的登录标识、初始密码/重置方式、账号创建者、停用规则和 JWT 生命周期。
@@ -202,3 +202,59 @@
 - `git check-ignore -v .env`：通过，`.env` 仍由 `.gitignore` 排除，未进入提交。
 - 暂存文件安全检查：通过，共 57 个项目文件，无疑似密钥文件，无超过 10 MB 的文件。
 - `git push -u origin main`：通过，提交 `3e533ae` 已推送至 `origin/main`。
+
+## 2026-10-03 阶段 2 开始
+
+- 已获明确授权，已确认账号密码、管理员账号管理、四角色边界、JWT 生命周期、区域树与服务区域关系，见 REQUIREMENTS 第 11 节和 D-018～D-020；其他待确认项保留。
+- 当前聊天目录初始不是 Git 仓库；在 work/EV-Insurance-Work-Platform 克隆指定仓库。工作区干净，origin 指向 Victor-Zan/EV-Insurance-Work-Platform。
+- 已 fetch origin main，从最新 origin/main（470eb74）创建并切换 feature/sherr-auth-rbac；保留 V1 原样。
+- 实施计划：先固化规则，再新增迁移和领域服务，接入真实认证与角色首页，最后验证权限、审计、迁移及三个应用构建并提交 Draft PR。
+- 验收重点：停用立即拒绝旧 JWT、管理 API 仅 ADMIN、错误端登录被拒绝、敏感信息不进入审计，全部列表分页且稳定排序。
+
+## 2026-10-03 阶段 2 完成与验证
+
+### 完成内容
+
+- 新增 V2 业务迁移：账号、固定角色、用户角色、车主资料、区域树、维修网点、多对多服务区域、单网点账号关联、只追加审计日志；阶段 1 的 V1 与 origin/main 完全一致。
+- 新增显式 dev 配置和 V2.1 开发数据迁移，创建四类测试账号及模拟组织数据；密码由环境变量注入后转为 BCrypt 哈希，不在代码、迁移或文档提供明文。普通配置不创建开发账号，开发数据库不得用于生产。
+- JWT 登录、当前身份及对应端入口，Spring Security 和 RBAC；密钥与有效期均由环境变量提供，示例为 1800 秒，无刷新 Token。每次请求读取数据库状态；启停、密码重置、角色及网点归属变化递增认证版本，旧 Token 失效。
+- 仅 ADMIN 可管理用户、角色分配、区域、网点、服务区域和审计；客服仅管理端身份入口，网点/车主仅 H5 身份入口。跨端角色组合被拒绝，避免 H5 角色获得管理端入口。
+- 服务端本店/本人校验方法仅提供身份范围基础，不开放案件数据接口。Controller 不承载业务规则；按 identity、organization、audit 领域组织，MyBatis-Plus 单表 CRUD 和 XML 关联查询，事务与审计同边界。
+- 登录及失败、用户创建/启停/密码重置、角色/网点归属、区域/网点和服务区域变更均审计；摘要由受控 ID、角色和状态构造，不保存密码、哈希、JWT、完整联系方式或密钥；无审计修改/删除 API，数据库阻止更新/删除。
+- 管理端/H5 真实 API 登录、端类型提示、角色首页、路由守卫、认证失败清理、过期计时与退出。管理员最小用户管理验证页可创建、启停、重置账号。无空业务页面或静态假案件数据。
+- 统一参数/认证/权限/不存在/冲突响应、错误追踪与 OpenAPI Bearer/错误契约；更新需求、决策、架构和启动说明。
+
+### 实际执行的验证
+
+环境：Temurin JDK 21.0.12.1（下载到本任务 work，SHA256 校验通过）、Maven Wrapper 3.9.16、Node 24.18.0、npm 11.16.0、独立 PostgreSQL 17.6。数据库仅监听 127.0.0.1:55432，专用测试库，每次集成测试使用随机独立 schema；未连接共享或生产数据库。所有测试凭据在运行时随机生成，文件在仓库之外。
+
+| 检查 | 实际命令/方式 | 最终结果 |
+| --- | --- | --- |
+| Git 基线 | git clone 指定仓库；git status --short --branch；git remote -v；git branch --show-current；git fetch origin main；git switch -c feature/sherr-auth-rbac origin/main | 通过；基线 470eb742a0598982ad666896c978fae5b04ba395，提交前再次 fetch 无变化 |
+| 后端完整门禁 | 在 JDK 21 下 .\mvnw.cmd -B -ntp clean verify -Ppostgres-it，注入 TEST_DB_URL/USERNAME/PASSWORD | 通过；5 单元 + 11 PostgreSQL 集成测试，0 失败、0 错误、0 跳过；可执行 JAR 构建成功 |
+| Flyway 空库与重启 | 集成测试内 Flyway migrate/validate；分别使用空 dev/普通 schema；新 BCrypt 占位值重新 validate/migrate | 通过；dev 执行 V1/V2/V2.1，普通配置执行 V1/V2 且无用户；重启无校验漂移或重复迁移 |
+| 认证生命周期 | 四角色正确登录、错误/不存在账号同错误、停用拒绝登录与旧 JWT、重启用仍拒绝旧 JWT、重置密码/归属变更使旧 JWT 失效、无效/过期/缺少声明 Token | 全部通过 |
+| 权限与审计 | 非 ADMIN 对用户/角色/区域/网点/服务区域/审计 GET 和用户创建返回 403，错误端入口拒绝；本店/本人校验、账号重置、组织更新、关联失败回滚、审计防修改/秘密检查 | 全部通过 |
+| OpenAPI/错误 | 实际 MockMvc 调用 /v3/api-docs，检查登录/用户路径、Bearer 和 401 契约；参数 400、资源 404、唯一冲突 409 | 通过 |
+| 管理端 | npm ci；npm run lint；npm run typecheck；npm test；npm run build | 全部通过；6 测试，0 失败/跳过 |
+| H5 | npm ci；npm run lint；npm run typecheck；npm test；npm run build | 全部通过；6 测试，0 失败/跳过 |
+| 迁移/工作区复核 | git diff --exit-code origin/main -- backend/src/main/resources/db/migration/V1__baseline.sql；git diff --check；暂存文件与秘密扫描 | V1 未修改；变更限本阶段；无真实个人/案件/生产数据或凭据入库 |
+
+首轮健康测试因新增认证依赖缺少测试替身而失败，保留原断言并补齐依赖；管理端表格行类型已修正；Flyway 断言已明确排除自动 schema 记录并校验确切 SQL 版本。未删除测试、跳过测试、降低类型严格性或放宽角色权限。
+
+### 未验证项和边界
+
+- 本机器没有 Docker CLI/Desktop，Compose 配置/容器启动与健康检查本次未验证；Compose 文件未修改。数据库门禁已用真正 PostgreSQL 17.6 完成，不能把它记成 Docker 验证。补救：在有 Docker 的环境按 LOCAL_DEVELOPMENT 第 3 节运行配置校验和健康检查。
+- 未做真实浏览器/手机手工视觉验收；前端认证客户端、路由策略通过源码测试，两个应用生产构建通过。未验证生产部署与管理员生产初始化（属于后续上线加固阶段）。
+- 无案件、派单、价格库、报价、核损、维修、上传、OCR、地图、结算实现；本店/本人校验仅为后续服务端数据范围基础。
+
+### Git 交付
+
+- 分支：feature/sherr-auth-rbac；目标：main；不直接在 main 开发、不 force push、不 reset --hard、不改共享迁移。
+- 实现提交标题：feat(auth): add role based authentication and organization foundation。
+- 实现提交：20eb5f2eb824a49548765943779f4cb397a28a45，标题为 feat(auth): add role based authentication and organization foundation。
+- git commit 与 git push -u origin feature/sherr-auth-rbac：成功；已设置跟踪 origin/feature/sherr-auth-rbac，工作区提交后干净。
+- GitHub 插件 github_create_pull_request（base=main、head=feature/sherr-auth-rbac、draft=true）：失败，HTTP 403，Resource not accessible by integration。当前连接的集成权限无法创建 PR；未创建 Draft PR，未尝试其他渠道绕过权限，未合并。
+- 可供人工创建 Draft PR 的分支：https://github.com/Victor-Zan/EV-Insurance-Work-Platform/tree/feature/sherr-auth-rbac 。需为 GitHub 集成配置 Pull requests 写权限，或由具有权限的协作者人工建立指向 main 的 Draft PR。
+- 本任务创建的独立 PostgreSQL 测试实例已通过 pg_ctl -D work/postgres-test-data -m fast -w stop 停止，测试库数据保留；未删除或修改共享数据库。
+- 本文件的收尾提交仅记录验证与 Git 交付结果；阶段 2 在此停止，不进入后续阶段。
