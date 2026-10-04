@@ -29,7 +29,13 @@
 
 本次未执行 Docker/Compose（本机 CLI/Desktop 不可用，配置未改）、浏览器/手机手工验收或生产部署；需在可用环境补验。十万条验证仅证明测试环境下分页、筛选与索引方案可用，不作生产容量或固定时延承诺。未实现工单、案件、OCR、派单、自动核价、支付或结算，停止于阶段 3。
 
-阶段完整提交标题为 feat(pricing): complete price database imports and verification。推送与 Draft PR 的最终结果记录在本节交付记录中；不自行合并。
+### 交付记录
+
+- 基础资料提交 d10ad9fc36f32e05d92bcd98450c1007ce4fad2e；恢复保全提交 ab17835；完整实现与验证提交 cc5b7617710fa7e63509ced65a796104a65ade24，标题 feat(pricing): complete price database imports and verification。
+- git push -u origin feature/sherr-price-database 成功，远程分支已创建并设置跟踪。随后普通提交/推送本交付记录，不重写历史。
+- 使用 GitHub 集成尝试创建 base=main、head=feature/sherr-price-database、draft=true 的 PR，返回 HTTP 403：Resource not accessible by integration。没有创建 PR，没有尝试其他身份或绕过集成权限。
+- 手动创建链接：[main ← feature/sherr-price-database](https://github.com/Victor-Zan/EV-Insurance-Work-Platform/compare/main...feature/sherr-price-database?expand=1)。创建时选择 Draft；建议标题 feat(pricing): add versioned price database and atomic imports，变更和验证摘要见本节。不得合并。
+- 自动化实现与交付已停止于阶段 3；仅剩集成权限之外的 Draft PR 创建及已标注的手工验收。停止本任务独立 PostgreSQL 实例，测试数据保留，不操作共享库。
 
 ## 2026-10-04 中断恢复检查点（历史记录）
 
@@ -72,7 +78,7 @@ Docker CLI/Desktop 不可用，Compose 本次未验证且文件未改；未执�
 ## 当前状态
 
 - 当前阶段：阶段 3 — 价格数据库
-- 状态：实现与全部自动化门禁完成；推送和 Draft PR 结果见上方交付记录
+- 状态：实现、全部自动化门禁及分支推送完成；Draft PR 创建被 GitHub 集成 403 阻塞，手动链接见上方交付记录；阶段工作已停止
 - 状态日期：2026-10-04；阶段 2 已合并到 main（5f6f1e0）
 - 阶段边界：只建设价格参考库，禁止工单、案件、OCR、派单、自动核价、支付或结算流程；不进入阶段 4。
 
