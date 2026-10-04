@@ -1,5 +1,13 @@
 # 项目进度
 
+## 2026-10-04 中断恢复检查点
+
+- 保持 feature/sherr-price-database；原基础资料提交 d10ad9f 保留，未切换分支、reset、rebase 或覆盖已有工作。
+- 新规则已写入 REQUIREMENTS / D-021：正金额、中国自然日、首尾包含、新版本追加、无期限旧版本同事务补齐截止日并审计及关联。
+- 已新增 V4 价格维度/版本、预览暂存、批次和错误模型；已有 V1/V2/V2.1/V3 未改。价格候选查询、手工版本应用、CSV/XLSX 流式解析、批量解析映射与版本校验、预览和显式确认接口已加入，仍需专项测试验证。
+- 中断前后台命令 .\\mvnw.cmd -B -ntp clean verify -Ppostgres-it 已正常结束：5 单元 + 14 既有集成测试通过，V4 空 schema 迁移及 validate 通过，JAR 构建成功。这不能代替价格/导入专项测试。
+- 恢复后先提交现有阶段 3 工作，再补齐价格与导入专项测试、十万条夹具/查询计划、剩余管理页面和文档，完成全部门禁后推送和尝试 Draft PR；不进入阶段 4。
+
 ## 2026-10-04 阶段 3：基础资料检查点（尚未完成阶段）
 
 - 执行 git fetch origin、git switch main、git pull --ff-only origin main、git switch -c feature/sherr-price-database。基线为阶段 2 合并提交 5f6f1e0；操作前工作区干净，origin 为 Victor-Zan/EV-Insurance-Work-Platform。没有改动队友代码或既有 Flyway 文件。
@@ -33,7 +41,7 @@ Docker CLI/Desktop 不可用，Compose 本次未验证且文件未改；未执�
 ## 当前状态
 
 - 当前阶段：阶段 3 — 价格数据库
-- 状态：开发中；基础资料已实现，价格版本和导入等待数据正确性边界确认
+- 状态：开发中；价格边界已确认，后端版本与导入框架已加入，正在补齐专项验证与页面
 - 状态日期：2026-10-04；阶段 2 已合并到 main（5f6f1e0）
 - 阶段边界：只建设价格参考库，禁止工单、案件、OCR、派单、自动核价、支付或结算流程；不进入阶段 4。
 

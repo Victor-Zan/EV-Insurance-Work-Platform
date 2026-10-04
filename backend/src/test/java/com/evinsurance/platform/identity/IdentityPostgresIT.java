@@ -162,7 +162,7 @@ class IdentityPostgresIT {
     @Test void unifiedErrorsPaginationOpenApiAndFreshFlywayAreVerified() throws Exception {
         flyway.validate();
         assertThat(Arrays.stream(flyway.info().applied()).filter(info -> info.getVersion()!=null)
-            .map(info -> info.getVersion().toString()).toList()).containsExactly("1","2","2.1","3");
+            .map(info -> info.getVersion().toString()).toList()).containsExactly("1","2","2.1","3","4");
         mvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content("{}"))
             .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
         mvc.perform(get("/api/v1/admin/users?size=101").header("Authorization","Bearer "+admin)).andExpect(status().isBadRequest());

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.evinsurance.platform.pricing.infrastructure.ImportMapper">
+ <select id="lock" resultType="com.evinsurance.platform.pricing.infrastructure.ImportPreviewEntity">SELECT * FROM price_import_preview WHERE id=#{id} FOR UPDATE</select>
+ <insert id="rows">INSERT INTO price_import_preview_row(preview_id,row_number,raw_values,result) VALUES
+ <foreach collection="rows" item="r" separator=",">(#{id},#{r.rowNumber},CAST(#{r.raw} AS jsonb),CAST(#{r.result} AS jsonb))</foreach></insert>
+ <select id="stored" resultType="com.evinsurance.platform.pricing.infrastructure.StoredImportRow">SELECT row_number,raw_values::text AS raw_values,result::text AS result
+ FROM price_import_preview_row WHERE preview_id=#{id} ORDER BY row_number LIMIT #{size} OFFSET #{offset}</select>
+ <update id="consume">UPDATE price_import_preview SET consumed_at=CURRENT_TIMESTAMP WHERE id=#{id} AND consumed_at IS NULL</update>
+ <select id="byPreview" resultType="com.evinsurance.platform.pricing.infrastructure.ImportBatchEntity">SELECT * FROM price_import_batch WHERE preview_id=#{id}</select>
+ <insert id="errors">INSERT INTO price_import_error(batch_id,row_number,field,reason,original_value) VALUES
+ <foreach collection="errors" item="e" separator=",">(#{id},#{e.rowNumber},#{e.field},#{e.reason},#{e.originalValue})</foreach></insert>
+</mapper>

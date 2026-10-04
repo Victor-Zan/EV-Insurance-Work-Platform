@@ -23,7 +23,8 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(ApiResponse.failure("VALIDATION_ERROR","Invalid field: " + field));
     }
     @ExceptionHandler({ConstraintViolationException.class,MethodArgumentTypeMismatchException.class,HttpMessageNotReadableException.class,
-        org.springframework.web.bind.MissingServletRequestParameterException.class})
+        org.springframework.web.bind.MissingServletRequestParameterException.class,
+        org.springframework.web.multipart.support.MissingServletRequestPartException.class})
     public ResponseEntity<ApiResponse<Void>> malformed(Exception error) {
         return ResponseEntity.badRequest().body(ApiResponse.failure("VALIDATION_ERROR","Invalid request parameters"));
     }
@@ -43,6 +44,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(org.springframework.web.HttpMediaTypeNotSupportedException.class)
     public ResponseEntity<ApiResponse<Void>> media(Exception error) {
         return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE).body(ApiResponse.failure("VALIDATION_ERROR","Request content type is not supported"));
+    }
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> fileLimit(org.springframework.web.multipart.MaxUploadSizeExceededException error) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(ApiResponse.failure("IMPORT_LIMIT","Import file exceeds 10 MiB"));
     }
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiResponse<Void>> forbidden(AccessDeniedException error) {
