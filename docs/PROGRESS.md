@@ -1,6 +1,37 @@
 # 项目进度
 
-## 2026-10-04 中断恢复检查点
+## 2026-10-04 阶段 3 完成与交付验证
+
+- 当前分支 feature/sherr-price-database，基线为阶段 2 已合并的 5f6f1e0。中断恢复时保留 d10ad9f 基础资料提交，并先以 ab17835 提交已有价格版本/导入工作，再继续剩余实现；未切换分支、reset、rebase、force push 或覆盖队友工作。
+- 复用账号、RBAC、区域、维修网点、服务区域关系与审计。新增 V3 价格目录和 V4 逻辑价格、版本、预览、批次及错误表，既有共享迁移未改；恢复后的 V3/V4 亦未改。品牌、车型、配件、全局唯一内部编号、独立别名、多对多适配与来源管理完整。
+- 价格候选分页查询支持内部编号/别名、品牌、车型、四种价格类型、全国/区域/网点范围和适用日期；显示范围、金额、来源、有效期与版本，稳定排序且单页最多 100。组织投影使用既有服务区域关系，不返回联系方式。正式价格适用优先级尚待业务确认，只返回候选，不自动取价、回退或加价。
+- 所有价格为正数 CNY NUMERIC(18,2)，API 金额字符串，拒绝多余小数位。有效期使用中国自然日 DATE，首尾包含。新版本开始日严格晚于最新版本；无期限旧版本在同一事务补齐新开始日前一天，并写既有审计与 previous_version_id / closed_by_version_id 关联。历史金额、来源快照、创建信息及有限截止日受 API 和数据库保护，拒绝更新、删除和重叠。
+- 手工与导入复用 PriceRules 及批量版本应用 SQL。真实 UTF-8 CSV / XLSX 有界流式解析、字段/主数据/重复/版本校验、分页预览与显式确认；预览不写正式价格，确认重新校验，任意错误或数据库冲突整批价格/截止日/对应审计回滚，失败批次与逐行错误保留。重复确认返回同一批次。不保存文件或接入对象存储。
+- 管理端完成候选筛选列表、品牌/车型/配件/别名/来源维护、适配关系、新增与追加版本、历史、预览确认、批次列表/详情/分页错误报告。ADMIN 读写，客服只读基础资料与价格/历史，导入与批次仅 ADMIN；网点、车主无任何价格权限，H5 无入口。沿用阶段 2 登录守卫、401 清理、403/网络错误处理。
+- OpenAPI 描述与统一 410/413 响应已更新；导入模板、字段及重复规则见 PRICE_IMPORT.md，数据模型/版本/锁与索引见 ARCHITECTURE.md，确认规则见 D-021/D-022。
+
+### 实际运行与结果
+
+环境为 Temurin JDK 21.0.12.1、Maven Wrapper、Node 24/npm 11、独立 PostgreSQL 17.6（127.0.0.1:55432）；使用仓库外的测试启动脚本注入 TEST_DB_*，随机 schema 隔离，凭据不进入仓库或输出。
+
+| 实际命令/验证 | 最后结果 |
+| --- | --- |
+| backend: .\mvnw.cmd -B -ntp clean verify -Ppostgres-it（通过仓库外 run-backend.ps1 注入环境） | 2026-10-04 15:56 完成，BUILD SUCCESS；5 单元 + 26 集成（身份组织 11、目录 3、价格导入 12），0 失败/错误/跳过，JAR 构建成功 |
+| Flyway 空 schema migrate / validate，含普通配置与 dev 配置 | 通过；普通 V1/V2/V3/V4 不初始化账号，dev 另含 V2.1；旧 checksum 验证通过 |
+| 版本/数据正确性 | 自动截止及双向链接、历史字段不可变、直接 SQL 正金额/日期/排他约束、最大金额精度、首尾包含、有限重叠/倒序/非法日期、并发同日追加 200/409 均通过 |
+| 导入及权限 | CSV/BOM/真实 XLSX、文件内重复、既有有限区间冲突、过时预览重新校验、显式确认、预览所有者、批次幂等、失败错误报告、故障注入后的整批与截止审计回滚均通过；管理员/客服/网点/车主边界及阶段 2 回归通过 |
+| 十万条真实 PostgreSQL 数据 | PriceDataFixture.generate 在 src/test 中按 20 × 5,000 条批量生成；分页、编号/别名、品牌/车型、区域、网点、类型、日期筛选全部通过，不进入 Flyway 或默认初始化 |
+| EXPLAIN (ANALYZE, BUFFERS) | 通过；编号计划使用 price_part_internal_code_key、idx_price_record_part_type、idx_price_version_record；别名使用 idx_price_alias_name、idx_price_record_part_type。计划产物在 backend/target/price-query-plans.txt，不提交测试数据/构建产物 |
+| admin-web: npm run lint、npm run typecheck、npm test、npm run build | 全部通过；14 测试，0 失败/跳过；Vite 有单包超过 500 kB 的提示，构建成功 |
+| h5-web: npm run lint、npm run typecheck、npm test、npm run build | 全部通过；6 测试，0 失败/跳过；未改 H5 源码 |
+| git fetch origin；git rev-list --left-right --count origin/main...HEAD | 通过；推送前 origin/main 无新增未包含提交，保持功能分支，不重写历史 |
+| git diff --check；与 origin/main 比较 V1/V2/V2.1，与 ab17835 比较 db 迁移目录 | 通过；旧迁移及已保存检查点迁移原样 |
+
+本次未执行 Docker/Compose（本机 CLI/Desktop 不可用，配置未改）、浏览器/手机手工验收或生产部署；需在可用环境补验。十万条验证仅证明测试环境下分页、筛选与索引方案可用，不作生产容量或固定时延承诺。未实现工单、案件、OCR、派单、自动核价、支付或结算，停止于阶段 3。
+
+阶段完整提交标题为 feat(pricing): complete price database imports and verification。推送与 Draft PR 的最终结果记录在本节交付记录中；不自行合并。
+
+## 2026-10-04 中断恢复检查点（历史记录）
 
 - 保持 feature/sherr-price-database；原基础资料提交 d10ad9f 保留，未切换分支、reset、rebase 或覆盖已有工作。
 - 新规则已写入 REQUIREMENTS / D-021：正金额、中国自然日、首尾包含、新版本追加、无期限旧版本同事务补齐截止日并审计及关联。
@@ -8,7 +39,7 @@
 - 中断前后台命令 .\\mvnw.cmd -B -ntp clean verify -Ppostgres-it 已正常结束：5 单元 + 14 既有集成测试通过，V4 空 schema 迁移及 validate 通过，JAR 构建成功。这不能代替价格/导入专项测试。
 - 恢复后先提交现有阶段 3 工作，再补齐价格与导入专项测试、十万条夹具/查询计划、剩余管理页面和文档，完成全部门禁后推送和尝试 Draft PR；不进入阶段 4。
 
-## 2026-10-04 阶段 3：基础资料检查点（尚未完成阶段）
+## 2026-10-04 阶段 3：基础资料检查点（历史记录，已由上方完成记录取代）
 
 - 执行 git fetch origin、git switch main、git pull --ff-only origin main、git switch -c feature/sherr-price-database。基线为阶段 2 合并提交 5f6f1e0；操作前工作区干净，origin 为 Victor-Zan/EV-Insurance-Work-Platform。没有改动队友代码或既有 Flyway 文件。
 - 已固化本次价格类型、CNY 精度、三种范围、客服只读与候选返回要求。正式价格适用优先级尚待业务确认，不实现自动取价或回退。
@@ -41,7 +72,7 @@ Docker CLI/Desktop 不可用，Compose 本次未验证且文件未改；未执�
 ## 当前状态
 
 - 当前阶段：阶段 3 — 价格数据库
-- 状态：开发中；价格边界已确认，后端版本与导入框架已加入，正在补齐专项验证与页面
+- 状态：实现与全部自动化门禁完成；推送和 Draft PR 结果见上方交付记录
 - 状态日期：2026-10-04；阶段 2 已合并到 main（5f6f1e0）
 - 阶段边界：只建设价格参考库，禁止工单、案件、OCR、派单、自动核价、支付或结算流程；不进入阶段 4。
 

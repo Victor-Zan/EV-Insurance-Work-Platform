@@ -24,7 +24,7 @@ import java.util.*;
 @Component public class PriceFileParser {
  public static final int MAX_ROWS=20000,MAX_CELL=256;
  public static final long MAX_BYTES=10L*1024*1024;
- static {ZipSecureFile.setMaxEntrySize(16L*1024*1024);ZipSecureFile.setMaxTextSize(16L*1024*1024);}
+ static {ZipSecureFile.setMaxEntrySize(16L*1024*1024);ZipSecureFile.setMaxTextSize(MAX_BYTES);}
  public Parsed parse(MultipartFile file){
   if(file==null||file.isEmpty())throw ApiException.invalid("A nonempty XLSX or UTF-8 CSV file is required");
   if(file.getSize()>MAX_BYTES)throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE,"IMPORT_LIMIT","Import file exceeds 10 MiB");
