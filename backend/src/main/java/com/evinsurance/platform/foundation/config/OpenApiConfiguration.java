@@ -9,7 +9,7 @@ import org.springframework.context.annotation.*;
 public class OpenApiConfiguration {
     @Bean OpenAPI platformOpenApi() {
         return new OpenAPI().info(new Info().title("电动车保险维修案件协同平台 API").version("v1")
-            .description("阶段 3：复用账号/JWT/组织/审计；ADMIN 价格维护与原子导入、CUSTOMER_SERVICE 只读候选和历史。CNY 正金额、中国自然日首尾包含，新版本追加并自动截止无期限旧版本，无自动适用优先级。统一响应 code/message/data/traceId。"))
+            .description("阶段 3：复用账号/JWT/组织/审计；ADMIN 与 CUSTOMER_SERVICE 可维护日常价格资料、创建版本、预览和原子导入、查询批次及错误；来源字典与用户/角色/组织/审计管理仅 ADMIN。CNY 正金额、中国自然日首尾包含，新版本追加并自动截止无期限旧版本，历史金额/来源/创建信息不可修改，无自动适用优先级。统一响应 code/message/data/traceId。"))
             .components(new Components().addSecuritySchemes("bearerAuth",new SecurityScheme().type(SecurityScheme.Type.HTTP).scheme("bearer").bearerFormat("JWT")));
     }
     @Bean org.springdoc.core.customizers.OperationCustomizer unifiedErrorResponses() {

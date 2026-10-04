@@ -9,7 +9,7 @@ import type { CatalogueItem } from './catalogue'
 const route = useRoute(), router = useRouter()
 const kind = computed(() => catalogueKind(route.params.kind))
 const definition = computed(() => catalogueDefinitions[kind.value])
-const writable = computed(() => canMaintain(currentUser.value))
+const writable = computed(() => canMaintain(currentUser.value, kind.value))
 const rows = ref<CatalogueItem[]>([]), total = ref(0), page = ref(1), busy = ref(false), error = ref(''), notice = ref('')
 const form = reactive<Record<string, string>>({}), enabled = ref(true), editing = ref<number | null>(null)
 const filters = reactive({ name: '', internalCode: '', brandId: '', partId: '' })
@@ -84,7 +84,7 @@ watch(kind, () => { clearForm(); page.value = 1; rows.value = []; total.value = 
         <ElButton native-type="submit" :disabled="busy">保存</ElButton><ElButton :disabled="busy" @click="clearForm">取消编辑</ElButton>
       </form>
     </ElCard>
-    <p v-else>客服只读，可查询基础资料；维护操作由管理员执行。</p>
+    <p v-else>数据来源字典仅管理员维护，客服可查询并在新价格版本或导入中选用。</p>
   </main>
 </template>
 <style scoped>.catalogue { padding: 28px; } nav, form { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; } label { max-width: 240px; } .el-card { margin: 20px 0; } .el-alert { margin-top: 16px; }</style>

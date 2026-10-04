@@ -1,6 +1,6 @@
 import type { Role } from '../../shared/auth/session.ts'
 export const PRICE_READ_ROLES: Role[] = ['ADMIN', 'CUSTOMER_SERVICE']
-export const PRICE_WRITE_ROLES: Role[] = ['ADMIN']
+export const PRICE_WRITE_ROLES: Role[] = ['ADMIN', 'CUSTOMER_SERVICE']
 export const priceTypes = {
   REPAIR_SHOP_RAW_REFERENCE: '网点原始参考价',
   PLATFORM_EXTERNAL_REFERENCE: '平台对外参考价',

@@ -56,8 +56,8 @@ public class CatalogueService {
   var e=new AliasEntity();e.setPartId(r.partId());e.setName(r.name().trim());return save(aliases,e,id,"PRICE_ALIAS");}
  @Transactional public void deleteAlias(long id){delete(aliases,id,"PRICE_ALIAS");}
  public PageResponse<SourceEntity> sources(int page,int size){return page(sources,new QueryWrapper<>(),page,size);}
- @Transactional public SourceEntity saveSource(Long id,CatalogueRequests.Source r){var e=new SourceEntity();e.setCode(r.code().trim());e.setName(r.name().trim());e.setKind(r.kind());e.setEnabled(r.enabled());return save(sources,e,id,"PRICE_SOURCE");}
- @Transactional public void deleteSource(long id){delete(sources,id,"PRICE_SOURCE");}
+ @Transactional public SourceEntity saveSource(Long id,CatalogueRequests.Source r){PricingAccess.configure();var e=new SourceEntity();e.setCode(r.code().trim());e.setName(r.name().trim());e.setKind(r.kind());e.setEnabled(r.enabled());return save(sources,e,id,"PRICE_SOURCE");}
+ @Transactional public void deleteSource(long id){PricingAccess.configure();delete(sources,id,"PRICE_SOURCE");}
  public PageResponse<CatalogueRelationsMapper.Relation> relations(int page,int size,Long partId,Long modelId){
   PricingAccess.read();int offset=PageResponse.offset(page,size);return new PageResponse<>(page,size,relations.count(partId,modelId),relations.list(partId,modelId,offset,size));}
  @Transactional public void addRelation(CatalogueRequests.Relation r){

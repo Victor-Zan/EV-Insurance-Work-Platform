@@ -15,9 +15,9 @@ public class PriceController {
  public ApiResponse<PageResponse<PriceView>> list(@Valid @ModelAttribute PriceFilter f,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size){return ApiResponse.success(service.list(f,page,size));}
  @GetMapping("/prices/{id}") public ApiResponse<PriceView> detail(@PathVariable long id){return ApiResponse.success(service.detail(id));}
  @GetMapping("/records/{id}/versions") public ApiResponse<PageResponse<PriceView>> history(@PathVariable long id,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size){return ApiResponse.success(service.history(id,page,size));}
- @PostMapping("/prices") @PreAuthorize("hasRole('ADMIN')") public ApiResponse<PriceView> create(@Valid @RequestBody PriceRequests.Create r){return ApiResponse.success(service.create(r));}
- @PostMapping("/records/{id}/versions") @PreAuthorize("hasRole('ADMIN')") public ApiResponse<PriceView> version(@PathVariable long id,@Valid @RequestBody PriceRequests.Version r){return ApiResponse.success(service.version(id,r));}
- @RequestMapping(value="/prices/{id}",method={RequestMethod.PUT,RequestMethod.PATCH,RequestMethod.DELETE}) @PreAuthorize("hasRole('ADMIN')")
+ @PostMapping("/prices") @PreAuthorize("hasAnyRole('ADMIN','CUSTOMER_SERVICE')") public ApiResponse<PriceView> create(@Valid @RequestBody PriceRequests.Create r){return ApiResponse.success(service.create(r));}
+ @PostMapping("/records/{id}/versions") @PreAuthorize("hasAnyRole('ADMIN','CUSTOMER_SERVICE')") public ApiResponse<PriceView> version(@PathVariable long id,@Valid @RequestBody PriceRequests.Version r){return ApiResponse.success(service.version(id,r));}
+ @RequestMapping(value="/prices/{id}",method={RequestMethod.PUT,RequestMethod.PATCH,RequestMethod.DELETE}) @PreAuthorize("hasAnyRole('ADMIN','CUSTOMER_SERVICE')")
  @Operation(summary="Reject historical mutation; use new version endpoint")
  public ApiResponse<Void> immutable(@PathVariable long id){service.rejectMutation();return ApiResponse.success(null);}
 }

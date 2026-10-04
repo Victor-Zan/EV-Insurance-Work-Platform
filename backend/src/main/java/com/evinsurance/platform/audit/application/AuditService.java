@@ -16,14 +16,18 @@ public class AuditService {
     public enum Action { LOGIN, LOGIN_FAILURE, USER_CREATE, USER_ENABLE, USER_DISABLE, PASSWORD_RESET,
         ROLE_CHANGE, SHOP_ACCOUNT_CHANGE, REGION_CREATE, REGION_UPDATE, SHOP_CREATE, SHOP_UPDATE, SERVICE_REGION_CHANGE,
         PRICE_CATALOGUE_CREATE, PRICE_CATALOGUE_UPDATE, PRICE_CATALOGUE_DELETE, PRICE_APPLICABILITY_CHANGE,
-        PRICE_CREATE, PRICE_VERSION_CREATE, PRICE_VERSION_CLOSE, PRICE_IMPORT_SUCCESS, PRICE_IMPORT_FAILURE }
+        PRICE_CREATE, PRICE_VERSION_CREATE, PRICE_VERSION_CLOSE, PRICE_IMPORT_PREVIEW, PRICE_IMPORT_SUCCESS, PRICE_IMPORT_FAILURE }
     // Callers only supply constructed summaries of IDs, roles and state; never request DTOs or credentials.
     @Transactional
     public void record(CurrentUser actor, Action action, String type, Long id, String summary) {
+        recordIdentifier(actor,action,type,id == null ? null : id.toString(),summary);
+    }
+    @Transactional
+    public void recordIdentifier(CurrentUser actor, Action action, String type, String id, String summary) {
         var entry = new AuditEntity();
         entry.setActorId(actor == null ? null : actor.id());
         entry.setActorRoles(actor == null ? "ANONYMOUS" : actor.roles().stream().map(Enum::name).sorted().collect(java.util.stream.Collectors.joining(",")));
-        entry.setAction(action.name()); entry.setObjectType(type); entry.setObjectId(id == null ? null : id.toString());
+        entry.setAction(action.name()); entry.setObjectType(type); entry.setObjectId(id);
         entry.setSummary(summary);
         String trace = TraceContext.currentTraceId();
         entry.setTraceId(trace == null ? java.util.UUID.randomUUID().toString() : trace);

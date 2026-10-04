@@ -11,7 +11,7 @@ import org.springframework.http.*;
 import org.springframework.security.access.prepost.PreAuthorize;
 import io.swagger.v3.oas.annotations.tags.Tag;import io.swagger.v3.oas.annotations.Operation;
 @RestController @RequestMapping("/api/v1/pricing/imports") @Tag(name="Price imports")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('ADMIN','CUSTOMER_SERVICE')")
 public class PriceImportController {
  public record Confirmation(@NotNull @AssertTrue Boolean confirmed){}
  private final PriceImportService service;public PriceImportController(PriceImportService service){this.service=service;}
