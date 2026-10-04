@@ -127,7 +127,7 @@ npm run build
 
 只在独立本地数据库设置 SPRING_PROFILES_ACTIVE=dev，并通过本地环境变量或已忽略的 .env 注入 DEV_ADMIN_PASSWORD、DEV_CUSTOMER_SERVICE_PASSWORD、DEV_REPAIR_SHOP_PASSWORD、DEV_OWNER_PASSWORD。值不在此文档提供。非空密码须满足 BCrypt 的 72 字节 UTF-8 输入上限；本阶段不增加复杂度策略。
 
-dev 配置在 Flyway 执行前将注入值转换为 BCrypt 哈希，V2.1 开发迁移只接收哈希。账号为 dev_admin、dev_customer_service（管理端）及 dev_repair_shop、dev_owner（H5），显示名明确标识开发测试；同时创建无真实个人信息的模拟省、市、区和网点服务区域。dev 数据库不可作为生产数据库复用。初始化完成后，修改环境密码不会覆盖现有账号，应调用管理员重置 API；其他环境只执行 V1、V2，不创建测试账号。
+dev 配置在 Flyway 执行前将注入值转换为 BCrypt 哈希，V2.1 开发迁移只接收哈希。账号为 dev_admin、dev_customer_service（管理端）及 dev_repair_shop、dev_owner（H5），显示名明确标识开发测试；同时创建无真实个人信息的模拟省、市、区和网点服务区域。dev 数据库不可作为生产数据库复用。初始化完成后，修改环境密码不会覆盖现有账号，应调用管理员重置 API；其他环境执行普通迁移（当前 V1、V2、V3、V4），不创建测试账号。
 
 第一位生产管理员的安全初始化属于上线加固阶段，本阶段不提供公开注册或无认证初始化 API。
 
@@ -146,3 +146,11 @@ API 契约详见 Swagger：POST /api/v1/auth/login 输入 username、password、
 ~~~
 
 该命令包括所有单元测试、真实数据库集成测试、空 schema Flyway migrate/validate 和 JAR 构建；缺少 TEST_DB_URL 时明确失败。日常无数据库单元测试可用 .\mvnw.cmd test，但它不代表本阶段完整门禁。
+
+## 10. 阶段 3 价格库验证
+
+管理端登录后进入“价格数据库”。先配置品牌、车型、配件、别名、配件车型关系及来源，再新增价格或按 [导入说明](PRICE_IMPORT.md) 预览和确认导入。来源字典的 MANUAL / CSV / EXCEL / HISTORICAL_CASE 只是来源类别，不创建或导入案件业务。客服可查基础资料和历史，维护与导入入口仅管理员。
+
+上述 postgres-it 命令包含 CataloguePostgresIT 与 PricePostgresIT；后者在独立随机 schema 中调用仅位于 src/test 的 PriceDataFixture.generate，分 20 批各 5,000 条生成十万条模拟价格及配套编号/别名，使用批量 INSERT SELECT，不通过默认迁移或启动初始化产生数据。生成器带 DEV-PERF 前缀，日期和金额均为合成测试值，严禁对生产或共享业务库运行。
+
+测试验证内部编号、别名、品牌/车型、区域、网点、类型、适用日期、稳定分页，以及正金额、日期冲突、自动截止、历史保护、并发追加、XLSX/CSV 与导入整批回滚。执行 EXPLAIN (ANALYZE, BUFFERS) 后把两条选择性查询计划保存至 backend/target/price-query-plans.txt（不提交构建产物）。十万条测试是查询与索引合理性验证，不等同生产容量承诺或十万行单文件导入；单文件限制仍为 20,000 行。

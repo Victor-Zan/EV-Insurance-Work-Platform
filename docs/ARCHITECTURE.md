@@ -115,7 +115,25 @@
 - 导入批次：文件/来源、发起人、状态、总数、成功数、失败数、校验错误摘要和时间。
 - 业务快照：案件报价引用当时的价格或保存必要快照，后续价格版本变化不得改变历史案件金额。
 
-更新价格时新增版本并结束旧版本有效期，不做原地金额覆盖。十万级以上数据使用批量写入、必要的暂存/校验流程、组合索引和查询执行计划验证。唯一键、匹配优先级与冲突策略需要在价格库阶段确认后落库。
+阶段 3 已确认规则见 D-021：逻辑价格主键为标准配件、车型、价格类型、适用范围（NATIONAL / REGION + region_id / SHOP + shop_id）。price_record 使用 UNIQUE NULLS NOT DISTINCT，保证全国范围的空组织键也唯一。内部配件编号全局唯一，价格须关联已配置的配件/车型关系。四种价格类型分别保存，不自动生成案件金额。
+
+本次先新增 V3 目录迁移（既有 V1、V2、V2.1 原样保留）：price_brand、price_model（brand_id + code 唯一）、price_part（internal_code 全局唯一）、price_alias（part_id + name 唯一、别名可指向多个配件）、price_part_model（复合主键）、price_source（code 唯一，来源类型为 MANUAL / CSV / EXCEL / HISTORICAL_CASE）。全部维护写入既有审计；删除有引用的主数据通过外键拒绝，禁止级联删除。
+
+单表 CRUD 使用 MyBatis-Plus，适配和组织只读投影使用 XML。所有查询分页并以 ID / 复合 ID 稳定排序，单页最多 100；内部编号精确查询走唯一索引，别名和配件名称使用转义通配符的前缀查询及 pattern_ops 索引；车型品牌和适配关系具备双向索引。区域、网点、服务区域复用既有表，客服仅能读取 ID/编码/名称投影，不开放联系方式或组织维护。
+
+新增 V4 保存 price_record、price_version、预览暂存、导入批次与错误明细；未修改 V1/V2/V2.1/V3。价格为正数 CNY NUMERIC(18,2)，Java BigDecimal，响应金额为字符串；API 和导入拒绝额外小数位，不舍入。有效期是 DATE / LocalDate 中国自然日，首尾包含，空截止日表示持续有效。
+
+版本按同一逻辑主键递增，唯一键为 record_id + version_no，另约束 record_id + effective_from 唯一。新开始日必须晚于最新开始日；有限旧区间不缩短、不覆盖。新增版本与无期限前序的截止日补齐（新开始日前一天）在同一事务内完成，previous_version_id / closed_by_version_id 保留双向追溯，并写既有审计。来源代码、名称、类型保存快照，历史金额、来源及创建信息不能修改或删除。
+
+PriceRules 同时服务手工维护和 ImportValidator；手工与批量导入最终复用 PriceMapper.apply。逻辑主键排序后获取事务 advisory lock，数据库触发器再锁 price_record，校验连续版本及来源快照。原生 int8range + daterange GiST 排他约束拒绝同维度区间重叠，不要求 btree_gist 扩展；延迟约束校验截止日与关联后继的下一日关系。数据库触发器禁止价格维度修改、历史字段更新与删除，只允许受控补齐无期限截止日。
+
+候选查询按价格版本 ID 倒序稳定分页，最多 100 条。支持内部编号/别名精确查询、品牌、车型、价格类型、范围、区域、网点及适用日；不传日期可查历史。区域条件返回全国、该区域及服务该区域的网点候选；网点条件返回全国、该网点及其服务区域候选。两个条件同时提供时取条件交集，可用 scope 显式收窄；不推断父子区域，不排序选出“最终价”。正式价格适用优先级仍待业务确认。
+
+索引：V3 的内部编号唯一索引、别名名称索引、车型品牌索引及适配关系双向索引；V4 的 part/type/model 和 model/type/part 组合索引、区域/网点部分索引、类型与范围索引、record/version、日期 GiST、导入批次索引。十万条真实 PostgreSQL 测试验证分页及常用筛选；内部编号计划使用 price_part_internal_code_key → idx_price_record_part_type → idx_price_version_record，别名计划使用 idx_price_alias_name → idx_price_record_part_type。选择性低的筛选是否使用索引由优化器决定，不承诺固定耗时。
+
+导入采用有界流式文件解析（CSV 逐行、XLSX SAX），最多 10 MiB / 20,000 行 / 单元格 256 字符；XLSX 解压条目最多 16 MiB、文本上限 10 MiB，保留 POI 压缩比保护。文件仅临时存在并删除，保存 SHA-256、管理员专属的 30 分钟预览、原始字段及错误上下文，不接入对象存储。预览不写正式价格；确认后重新校验并按维度/日期排序，同批可追加多个版本。重复开始日、有限区间重叠或任意错误整批价格零写入；并发数据库冲突回滚价格与截止审计后，单独记录失败批次/错误。重复确认同一预览返回原批次。模板和操作说明见 [PRICE_IMPORT.md](PRICE_IMPORT.md)。
+
+所有价格管理写入与审计同事务；ADMIN 可维护和导入，CUSTOMER_SERVICE 可查询基础资料、候选及历史，导入预览/批次/错误仅 ADMIN。组织只读投影不泄露联系方式；复用阶段 2 每请求身份校验、401/403 及 traceId。管理端具备列表、维护、版本、历史、预览确认及批次错误页面，H5 无价格入口。
 
 ### 5.3 文件模型
 

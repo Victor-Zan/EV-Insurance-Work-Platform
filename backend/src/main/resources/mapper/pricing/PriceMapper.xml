@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.evinsurance.platform.pricing.infrastructure.PriceMapper">
+ <sql id="joins">FROM price_version v JOIN price_record r ON r.id=v.record_id JOIN price_part p ON p.id=r.part_id
+ JOIN price_model m ON m.id=r.model_id JOIN price_brand b ON b.id=m.brand_id
+ LEFT JOIN region rg ON rg.id=r.region_id LEFT JOIN repair_shop sh ON sh.id=r.shop_id</sql>
+ <sql id="columns">v.*,r.part_id,p.internal_code,p.name AS part_name,r.model_id,m.name AS model_name,
+ m.brand_id,b.name AS brand_name,r.price_type,r.scope,r.region_id,rg.name AS region_name,r.shop_id,sh.name AS shop_name</sql>
+ <sql id="filter"><where>
+ <if test="f.internalCode != null and f.internalCode != ''">p.internal_code=#{f.internalCode}</if>
+ <if test="f.alias != null and f.alias != ''">AND EXISTS(SELECT 1 FROM price_alias a WHERE a.part_id=p.id AND a.name=#{f.alias})</if>
+ <if test="f.brandId != null">AND m.brand_id=#{f.brandId}</if>
+ <if test="f.modelId != null">AND r.model_id=#{f.modelId}</if>
+ <if test="f.priceType != null">AND r.price_type=#{f.priceType}</if>
+ <if test="f.scope != null">AND r.scope=#{f.scope}</if>
+ <if test="f.regionId != null">AND (r.scope='NATIONAL' OR r.scope='REGION' AND r.region_id=#{f.regionId} OR r.scope='SHOP' AND EXISTS(SELECT 1 FROM shop_service_region s WHERE s.shop_id=r.shop_id AND s.region_id=#{f.regionId}))</if>
+ <if test="f.shopId != null">AND (r.scope='NATIONAL' OR r.scope='SHOP' AND r.shop_id=#{f.shopId} OR r.scope='REGION' AND EXISTS(SELECT 1 FROM shop_service_region s WHERE s.shop_id=#{f.shopId} AND s.region_id=r.region_id))</if>
+ <if test="f.queryDate != null">AND daterange(v.effective_from,v.effective_to,'[]') @&gt; CAST(#{f.queryDate} AS date)</if>
+ </where></sql>
+ <select id="count" resultType="long">SELECT count(*) <include refid="joins"/><include refid="filter"/></select>
+ <select id="list" resultType="com.evinsurance.platform.pricing.infrastructure.PriceView">SELECT <include refid="columns"/><include refid="joins"/><include refid="filter"/> ORDER BY v.id DESC LIMIT #{size} OFFSET #{offset}</select>
+ <select id="detail" resultType="com.evinsurance.platform.pricing.infrastructure.PriceView">SELECT <include refid="columns"/><include refid="joins"/> WHERE v.id=#{id}</select>
+ <select id="record" resultType="com.evinsurance.platform.pricing.infrastructure.PriceRecord">SELECT * FROM price_record WHERE id=#{id}</select>
+ <select id="historyCount" resultType="long">SELECT count(*) FROM price_version WHERE record_id=#{id}</select>
+ <select id="history" resultType="com.evinsurance.platform.pricing.infrastructure.PriceView">SELECT <include refid="columns"/><include refid="joins"/> WHERE r.id=#{id} ORDER BY v.version_no DESC,v.id DESC LIMIT #{size} OFFSET #{offset}</select>
+ <select id="lockKeys" resultType="string">SELECT pg_advisory_xact_lock(k) FROM
+ (SELECT DISTINCT hashtextextended(value,0) AS k FROM (VALUES <foreach collection="keys" item="key" separator=",">(#{key})</foreach>) q(value) ORDER BY k) locked</select>
+ <sql id="drafts">SELECT * FROM jsonb_to_recordset(CAST(#{rows} AS jsonb)) AS d("rowNumber" integer,"partId" bigint,"modelId" bigint,
+ "priceType" varchar,"scope" varchar,"regionId" bigint,"shopId" bigint,"amount" numeric,"sourceId" bigint,"effectiveFrom" date,"effectiveTo" date)</sql>
+ <sql id="keyJoin">r.part_id=d."partId" AND r.model_id=d."modelId" AND r.price_type=d."priceType" AND r.scope=d."scope"
+ AND r.region_id IS NOT DISTINCT FROM d."regionId" AND r.shop_id IS NOT DISTINCT FROM d."shopId"</sql>
+ <insert id="ensureRecords">INSERT INTO price_record(part_id,model_id,price_type,scope,region_id,shop_id,created_by)
+ SELECT DISTINCT d."partId",d."modelId",d."priceType",d."scope",d."regionId",d."shopId",#{actor} FROM (<include refid="drafts"/>) d
+ ON CONFLICT(part_id,model_id,price_type,scope,region_id,shop_id) DO NOTHING</insert>
+ <select id="latest" resultType="com.evinsurance.platform.pricing.infrastructure.LatestPrice">SELECT DISTINCT ON(v.record_id) v.*,r.part_id,r.model_id,r.price_type,r.scope,r.region_id,r.shop_id
+ FROM (<include refid="drafts"/>) d JOIN price_record r ON <include refid="keyJoin"/> JOIN price_version v ON v.record_id=r.id
+ ORDER BY v.record_id,v.version_no DESC</select>
+ <select id="apply" affectData="true" flushCache="true" resultType="com.evinsurance.platform.pricing.infrastructure.PriceVersion">
+ WITH drafts AS MATERIALIZED (<include refid="drafts"/>),
+ identities AS MATERIALIZED (SELECT d.*,r.id AS record_id FROM drafts d JOIN price_record r ON <include refid="keyJoin"/>),
+ latest AS MATERIALIZED (SELECT DISTINCT ON(v.record_id) v.* FROM price_version v WHERE v.record_id IN(SELECT record_id FROM identities) ORDER BY v.record_id,v.version_no DESC),
+ plan AS MATERIALIZED (SELECT d.*,nextval(pg_get_serial_sequence('price_version','id')) AS new_id,
+ (coalesce(l.version_no,0)+row_number() OVER(PARTITION BY d.record_id ORDER BY d."effectiveFrom",d."rowNumber"))::integer AS new_no,
+ l.id AS base_previous FROM identities d LEFT JOIN latest l ON l.record_id=d.record_id),
+ linked AS MATERIALIZED (SELECT p.*,coalesce(lag(new_id) OVER w,base_previous) AS previous_id,
+ lead(new_id) OVER w AS next_id,lead("effectiveFrom") OVER w AS next_from FROM plan p WINDOW w AS(PARTITION BY record_id ORDER BY new_no)),
+ close_old AS(UPDATE price_version v SET effective_to=n."effectiveFrom"-1,closed_by_version_id=n.new_id FROM linked n
+ WHERE v.id=n.base_previous AND n.previous_id=n.base_previous AND v.effective_to IS NULL RETURNING v.id,v.effective_to,v.closed_by_version_id),
+ closure_audit AS(INSERT INTO audit_log(actor_id,actor_roles,action,object_type,object_id,summary,trace_id)
+ SELECT #{actor},#{roles},'PRICE_VERSION_CLOSE','PRICE_VERSION',id::text,'Closed at '||effective_to||'; successor ID '||closed_by_version_id,#{trace} FROM close_old RETURNING id),
+ inserted AS(INSERT INTO price_version(id,record_id,version_no,amount,source_id,source_code,source_name,source_kind,effective_from,effective_to,previous_version_id,closed_by_version_id,batch_id,created_by)
+ SELECT n.new_id,n.record_id,n.new_no,n."amount",s.id,s.code,s.name,s.kind,n."effectiveFrom",
+ CASE WHEN n."effectiveTo" IS NULL AND n.next_id IS NOT NULL THEN n.next_from-1 ELSE n."effectiveTo" END,
+ n.previous_id,CASE WHEN n."effectiveTo" IS NULL THEN n.next_id END,#{batchId},#{actor}
+ FROM linked n JOIN price_source s ON s.id=n."sourceId" CROSS JOIN(SELECT count(*) FROM close_old) dependency
+ ORDER BY n.record_id,n.new_no RETURNING *),
+ new_closure_audit AS(INSERT INTO audit_log(actor_id,actor_roles,action,object_type,object_id,summary,trace_id)
+ SELECT #{actor},#{roles},'PRICE_VERSION_CLOSE','PRICE_VERSION',n.new_id::text,'Closed at '||(n.next_from-1)||'; successor ID '||n.next_id,#{trace}
+ FROM linked n JOIN inserted v ON v.id=n.new_id WHERE n."effectiveTo" IS NULL AND n.next_id IS NOT NULL RETURNING id)
+ SELECT * FROM inserted ORDER BY record_id,version_no
+ </select>
+ <select id="resolve" resultType="com.evinsurance.platform.pricing.infrastructure.ResolvedImportRow">
+ SELECT d."rowNumber" AS row_number,p.id AS part_id,m.id AS model_id,b.id AS brand_id,p.name AS part_name,rg.id AS region_id,sh.id AS shop_id,s.id AS source_id,s.enabled AS source_enabled,
+ (coalesce(d.alias,'')='' OR EXISTS(SELECT 1 FROM price_alias a WHERE a.part_id=p.id AND a.name=d.alias)) AS alias_valid,
+ EXISTS(SELECT 1 FROM price_part_model pm WHERE pm.part_id=p.id AND pm.model_id=m.id) AS part_model_valid
+ FROM jsonb_to_recordset(CAST(#{rows} AS jsonb)) AS d("rowNumber" integer,"brandCode" varchar,"modelCode" varchar,"internalCode" varchar,alias varchar,"regionCode" varchar,"shopCode" varchar,"sourceCode" varchar)
+ LEFT JOIN price_brand b ON b.code=d."brandCode" LEFT JOIN price_model m ON m.brand_id=b.id AND m.code=d."modelCode"
+ LEFT JOIN price_part p ON p.internal_code=d."internalCode" LEFT JOIN region rg ON rg.code=d."regionCode" LEFT JOIN repair_shop sh ON sh.code=d."shopCode" LEFT JOIN price_source s ON s.code=d."sourceCode"
+ ORDER BY d."rowNumber"
+ </select>
+</mapper>
