@@ -30,7 +30,7 @@ public class SecurityConfiguration {
     SecurityFilterChain securityFilterChain(HttpSecurity http,ObjectMapper json,JwtService jwt,UserMapper users,
         @Value("${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174}") String origins) throws Exception {
         var cors=new CorsConfiguration(); cors.setAllowedOrigins(List.of(origins.split(",")));
-        cors.setAllowedMethods(List.of("GET","POST","PUT","PATCH","OPTIONS"));
+        cors.setAllowedMethods(List.of("GET","POST","PUT","PATCH","DELETE","OPTIONS"));
         cors.setAllowedHeaders(List.of("Authorization","Content-Type","X-Request-Id")); cors.setExposedHeaders(List.of("X-Request-Id"));
         var source=new UrlBasedCorsConfigurationSource(); source.registerCorsConfiguration("/api/**",cors);
         return http.csrf(csrf -> csrf.disable()).cors(c -> c.configurationSource(source))
@@ -46,6 +46,8 @@ public class SecurityConfiguration {
                 .requestMatchers("/api/v1/auth/me").authenticated()
                 .requestMatchers("/api/v1/admin/session").hasAnyRole("ADMIN","CUSTOMER_SERVICE")
                 .requestMatchers("/api/v1/h5/session").hasAnyRole("REPAIR_SHOP","OWNER")
+                .requestMatchers(HttpMethod.GET,"/api/v1/pricing/**").hasAnyRole("ADMIN","CUSTOMER_SERVICE")
+                .requestMatchers("/api/v1/pricing/**").hasRole("ADMIN")
                 .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                 .anyRequest().denyAll()).build();
     }

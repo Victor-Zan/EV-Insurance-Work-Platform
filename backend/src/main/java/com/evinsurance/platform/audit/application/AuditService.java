@@ -14,7 +14,8 @@ public class AuditService {
     private final AuditMapper mapper;
     public AuditService(AuditMapper mapper) { this.mapper = mapper; }
     public enum Action { LOGIN, LOGIN_FAILURE, USER_CREATE, USER_ENABLE, USER_DISABLE, PASSWORD_RESET,
-        ROLE_CHANGE, SHOP_ACCOUNT_CHANGE, REGION_CREATE, REGION_UPDATE, SHOP_CREATE, SHOP_UPDATE, SERVICE_REGION_CHANGE }
+        ROLE_CHANGE, SHOP_ACCOUNT_CHANGE, REGION_CREATE, REGION_UPDATE, SHOP_CREATE, SHOP_UPDATE, SERVICE_REGION_CHANGE,
+        PRICE_CATALOGUE_CREATE, PRICE_CATALOGUE_UPDATE, PRICE_CATALOGUE_DELETE, PRICE_APPLICABILITY_CHANGE }
     // Callers only supply constructed summaries of IDs, roles and state; never request DTOs or credentials.
     @Transactional
     public void record(CurrentUser actor, Action action, String type, Long id, String summary) {

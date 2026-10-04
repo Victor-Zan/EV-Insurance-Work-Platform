@@ -10,6 +10,6 @@ function logout() { authSession.clear(); void router.replace('/login') }
   <main class="page-shell"><ElCard class="status-card" shadow="never">
     <h1>管理端</h1><p>当前用户：{{ currentUser?.displayName }}（{{ currentUser?.username }}）</p>
     <ElTag v-for="role in currentUser?.roles" :key="role">{{ role }}</ElTag>
-    <div class="actions"><ElButton v-if="currentUser?.roles.includes('ADMIN')" @click="router.push('/users')">用户管理验证</ElButton><ElButton @click="logout">退出登录</ElButton></div>
+    <div class="actions"><ElButton v-if="currentUser?.roles.includes('ADMIN')" @click="router.push('/users')">用户管理验证</ElButton><ElButton @click="router.push('/pricing/catalogue/brands')">价格基础资料</ElButton><ElButton @click="logout">退出登录</ElButton></div>
   </ElCard></main>
 </template>

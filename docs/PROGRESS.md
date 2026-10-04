@@ -1,11 +1,41 @@
 # 项目进度
 
+## 2026-10-04 阶段 3：基础资料检查点（尚未完成阶段）
+
+- 执行 git fetch origin、git switch main、git pull --ff-only origin main、git switch -c feature/sherr-price-database。基线为阶段 2 合并提交 5f6f1e0；操作前工作区干净，origin 为 Victor-Zan/EV-Insurance-Work-Platform。没有改动队友代码或既有 Flyway 文件。
+- 已固化本次价格类型、CNY 精度、三种范围、客服只读与候选返回要求。正式价格适用优先级尚待业务确认，不实现自动取价或回退。
+- 新增 V3__price_catalogue.sql：品牌、品牌下车型、全局唯一编号的标准配件、独立别名、多对多车型适配、四类来源字典；复用阶段 2 区域、网点、服务区域、用户、角色及审计。
+- 品牌/车型/配件/别名/来源 CRUD、适配关系增删查、组织只读投影已实现。新增独立 pricing 权限入口，ADMIN 维护，客服只读，网点/车主拒绝。组织管理权限仍仅 ADMIN。维护与审计同事务，外键保护有引用的主数据；所有列表分页、稳定排序、单页至多 100。
+- 管理端五类基础资料与适配关系页面接入真实 API，支持筛选、分页、维护、错误/加载/空态；客服隐藏维护入口。H5 无价格入口。页面通过现有登录守卫、Token 清理和统一错误客户端。
+- 依用户“关键业务规则记录待确认，不自行猜测”及 AGENTS.md 第 1 节，价格事实、版本与正式导入暂不落地：无失效时间旧版本的后续处理、金额零/负边界、生效区间口径已提出确认（见 REQUIREMENTS 7.4）。这些会影响历史不变性、重叠判断、金额检查和批次原子校验。
+- 尚未完成：价格记录及历史版本、组合价格筛选、XLSX/CSV 预览与原子导入、批次/错误报告、相关价格页面、十万条价格生成与查询计划。不能将当前目录测试视为这些能力的验收，不进入阶段 4。
+
+### 当前实际验证（仅覆盖已实现的检查点）
+
+环境沿用本任务目录的 Temurin JDK 21.0.12.1、Maven Wrapper、Node 24/npm 11、独立 PostgreSQL 17.6（127.0.0.1:55432），每个集成测试使用随机隔离 schema，不连接共享或生产数据库；凭据仅在仓库外与环境变量。
+
+| 实际命令/方式 | 结果 |
+| --- | --- |
+| backend: .\\mvnw.cmd -B -ntp clean verify -Ppostgres-it（注入 TEST_DB_*） | 通过；5 单元测试 + 11 既有认证/组织集成测试 + 3 新增目录集成测试，0 失败/错误/跳过，JAR 构建成功 |
+| 最后改动复核：backend .\\mvnw.cmd -B -ntp verify -Ppostgres-it；管理端重新运行 lint/typecheck/test/build | 通过，后端仍为 5 + 14 个测试、管理端仍为 9 个测试，无失败/跳过 |
+| Flyway migrate/validate，空 dev 与普通 schema；重新初始化开发哈希再验证 | 通过；dev V1/V2/V2.1/V3，普通 V1/V2/V3 且无用户；旧迁移 checksum 正常 |
+| 新增目录测试 | ADMIN CRUD、客服只读、H5 拒绝、匿名/非法 Token、内部编号唯一、别名前缀及通配符转义、品牌筛选、关系维护、约束失败无审计残留、分页稳定性/上限、组织投影、OpenAPI 通过 |
+| admin-web: npm run lint、npm run typecheck、npm test、npm run build | 通过；9 测试，0 失败/跳过 |
+| h5-web: npm run lint、npm run typecheck、npm test、npm run build | 通过；6 测试，0 失败/跳过；未修改 H5 源码 |
+| git diff --exit-code origin/main -- 既有 V1/V2/V2.1；git diff --check | 通过；旧迁移原样 |
+
+Docker CLI/Desktop 不可用，Compose 本次未验证且文件未改；未执行浏览器/手机手工验收、生产部署或十万条价格验证。价格库完整测试需待剩余能力实现后补齐。
+
+当前分支 feature/sherr-price-database；本地基础资料检查点提交标题为 feat(pricing): add catalogue foundation and read-only access。此检查点仍未完成阶段 3，不进行完整阶段交付、推送或 Draft PR 创建。确认关键边界后继续当前分支，不改历史、不 force push，不合并 PR。
+
+验证后停止本任务独立 PostgreSQL 实例，测试数据保留；只操作本任务 work/postgres-test-data，不操作共享数据库。
+
 ## 当前状态
 
-- 当前阶段：阶段 2 — 身份认证、RBAC、组织基础数据与审计底座
-- 状态：阶段 2 实现与本地验证已完成；分支已推送，Draft PR 创建被 GitHub 插件权限阻塞
-- 完成日期：2026-10-03
-- 阶段边界：本阶段完成后停止；未进入价格库、工单或其他后续阶段。下一阶段必须另行明确授权。
+- 当前阶段：阶段 3 — 价格数据库
+- 状态：开发中；基础资料已实现，价格版本和导入等待数据正确性边界确认
+- 状态日期：2026-10-04；阶段 2 已合并到 main（5f6f1e0）
+- 阶段边界：只建设价格参考库，禁止工单、案件、OCR、派单、自动核价、支付或结算流程；不进入阶段 4。
 
 ## 阶段 1 完成内容
 

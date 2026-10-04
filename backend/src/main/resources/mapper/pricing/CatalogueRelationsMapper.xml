@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.evinsurance.platform.pricing.infrastructure.CatalogueRelationsMapper">
+ <sql id="filter"><where><if test="partId != null">r.part_id=#{partId}</if><if test="modelId != null">AND r.model_id=#{modelId}</if></where></sql>
+ <select id="count" resultType="long">SELECT count(*) FROM price_part_model r <include refid="filter"/></select>
+ <select id="list" resultType="com.evinsurance.platform.pricing.infrastructure.CatalogueRelationsMapper$Relation">
+ SELECT r.part_id,r.model_id,p.internal_code,p.name AS part_name,m.name AS model_name,m.brand_id
+ FROM price_part_model r JOIN price_part p ON p.id=r.part_id JOIN price_model m ON m.id=r.model_id
+ <include refid="filter"/> ORDER BY r.part_id,r.model_id LIMIT #{size} OFFSET #{offset}</select>
+ <insert id="add">INSERT INTO price_part_model(part_id,model_id,created_by) VALUES(#{partId},#{modelId},#{actorId})</insert>
+ <delete id="delete">DELETE FROM price_part_model WHERE part_id=#{partId} AND model_id=#{modelId}</delete>
+ <select id="regionCount" resultType="long">SELECT count(*) FROM region</select>
+ <select id="regions" resultType="com.evinsurance.platform.pricing.infrastructure.CatalogueRelationsMapper$Lookup">
+ SELECT id,code,name FROM region ORDER BY sort_order,id LIMIT #{size} OFFSET #{offset}</select>
+ <select id="shopCount" resultType="long">SELECT count(*) FROM repair_shop</select>
+ <select id="shops" resultType="com.evinsurance.platform.pricing.infrastructure.CatalogueRelationsMapper$Lookup">
+ SELECT id,code,name FROM repair_shop ORDER BY id LIMIT #{size} OFFSET #{offset}</select>
+ <select id="serviceRegionCount" resultType="long">SELECT count(*) FROM shop_service_region WHERE shop_id=#{shopId}</select>
+ <select id="serviceRegions" resultType="com.evinsurance.platform.pricing.infrastructure.CatalogueRelationsMapper$Lookup">
+ SELECT r.id,r.code,r.name FROM shop_service_region s JOIN region r ON r.id=s.region_id WHERE s.shop_id=#{shopId}
+ ORDER BY r.id LIMIT #{size} OFFSET #{offset}</select>
+</mapper>
