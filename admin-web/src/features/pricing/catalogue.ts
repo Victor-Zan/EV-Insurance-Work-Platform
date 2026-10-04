@@ -19,7 +19,9 @@ export const catalogueDefinitions: Record<CatalogueKind, { title: string; fields
   aliases: { title: '配件别名', fields: [{ key: 'partId', label: '标准配件 ID', numeric: true }, { key: 'name', label: '别名' }], enabled: false },
   sources: { title: '数据来源', fields: [{ key: 'code', label: '来源编码' }, { key: 'name', label: '来源名称' }, { key: 'kind', label: '来源类型' }], enabled: true },
 }
-export function canMaintain(user: User | null): boolean { return !!user?.roles.includes('ADMIN') }
+export function canMaintain(user: User | null, kind?: CatalogueKind): boolean {
+  return !!user && (user.roles.includes('ADMIN') || kind !== 'sources' && user.roles.includes('CUSTOMER_SERVICE'))
+}
 export function catalogueKind(value: unknown): CatalogueKind {
   if (typeof value === 'string' && Object.hasOwn(catalogueDefinitions, value)) return value as CatalogueKind
   throw new Error('未知价格基础资料类型')

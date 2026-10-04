@@ -26,11 +26,22 @@ test('import needs an actual preview and explicit confirmation; an invalid batch
  assert.equal(mayConfirm(null, true, false), false); assert.equal(mayConfirm(preview, false, false), false)
  assert.equal(mayConfirm(preview, true, true), false); assert.equal(mayConfirm(preview, true, false), true)
 })
-test('the actual pricing route policies allow customer service reads and deny maintenance/import routes', async () => {
+test('pricing routes permit customer service operations and keep admin settings and H5 roles excluded', async () => {
  const memory = new Map(), storage = { getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) }
  const session = new AuthSession(storage); const user = { id: 1, username: 'test-cs', displayName: '测试客服', roles: ['CUSTOMER_SERVICE'] }
  session.set({ accessToken: 'test-token', expiresAt: new Date(Date.now() + 60000).toISOString(), user })
  assert.equal(await guard(session, '/pricing', PRICE_READ_ROLES, async () => user), true)
- assert.equal(await guard(session, '/pricing/import', PRICE_WRITE_ROLES, async () => user), '/forbidden')
+ for (const path of ['/pricing/new', '/pricing/records/1/new', '/pricing/import', '/pricing/batches', '/pricing/batches/1'])
+  assert.equal(await guard(session, path, PRICE_WRITE_ROLES, async () => user), true)
+ assert.equal(await guard(session, '/users', ['ADMIN'], async () => user), '/forbidden')
+ for (const role of ['REPAIR_SHOP', 'OWNER']) {
+  const h5User = { ...user, roles: [role] }
+  for (const [path, roles] of [['/pricing', PRICE_READ_ROLES], ['/pricing/import', PRICE_WRITE_ROLES]]) {
+   assert.throws(() => session.set({ accessToken: 'test-token', expiresAt: new Date(Date.now() + 60000).toISOString(), user: h5User }), /不能登录当前端/)
+   session.set({ accessToken: 'test-token', expiresAt: new Date(Date.now() + 60000).toISOString(), user })
+   assert.equal(await guard(session, path, roles, async () => h5User), '/login')
+   assert.equal(session.valid(), false)
+  }
+ }
  session.clear()
 })

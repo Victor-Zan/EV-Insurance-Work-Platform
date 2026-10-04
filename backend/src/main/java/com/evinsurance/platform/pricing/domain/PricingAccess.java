@@ -8,5 +8,6 @@ public final class PricingAccess {
   if (!user.roles().contains(Role.ADMIN) && !user.roles().contains(Role.CUSTOMER_SERVICE)) throw ApiException.denied();
   return user;
  }
- public static CurrentUser write() { var user=CurrentUser.require(); user.requireAdmin(); return user; }
+ public static CurrentUser write() { return read(); }
+ public static CurrentUser configure() { var user=CurrentUser.require(); user.requireAdmin(); return user; }
 }

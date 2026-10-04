@@ -178,7 +178,7 @@ MVP 的核心目标：
 ### 7.3 阶段 3 已确认范围（2026-10-04）
 
 - 四种独立类型：REPAIR_SHOP_RAW_REFERENCE、PLATFORM_EXTERNAL_REFERENCE、INSURER_HISTORICAL_ASSESSED、REPAIR_SHOP_SETTLEMENT_REFERENCE，不混同或覆盖，不生成案件报价。
-- ADMIN 维护基础数据、版本与导入；CUSTOMER_SERVICE 只读；REPAIR_SHOP、OWNER 无价格库权限。
+- ADMIN 与 CUSTOMER_SERVICE 均可维护品牌、车型、标准配件、别名、配件车型关系，查询价格、新建价格版本、预览/确认导入、查看批次及错误报告。数据来源字典、用户/角色、组织、系统配置及审计管理仍仅 ADMIN；REPAIR_SHOP、OWNER 无价格库权限。运营写入与审计同事务，历史金额、来源和创建信息不可修改或删除，调价只追加版本（D-023）。
 - 全国、既有区域、既有网点三种范围并存，返回全部符合条件的候选；禁止自动优先级、回退或加价。
 - 品牌、车型、标准配件及全局唯一内部编号、独立别名、多对多车型适配、来源、历史版本、导入批次和错误行；复用阶段 2 组织、用户与审计，只新增迁移。
 - XLSX / UTF-8 CSV 解析、校验、预览后显式确认，整批价格原子导入；错误仍可追溯。预览不写正式价格，本阶段不接入对象存储。

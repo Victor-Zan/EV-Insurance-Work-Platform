@@ -35,6 +35,8 @@ import org.springframework.dao.DataAccessException;
   for(int offset=0;offset<stored.size();offset+=500)mapper.rows(p.getId(),stored.subList(offset,Math.min(offset+500,stored.size())));
   int invalid=(int)result.stream().filter(r->!r.errors().isEmpty()).count();
   int duplicate=(int)result.stream().filter(r->r.errors().stream().anyMatch(e->e.reason().startsWith("Duplicate"))).count();
+  audit.recordIdentifier(actor,Action.PRICE_IMPORT_PREVIEW,"PRICE_IMPORT_PREVIEW",p.getId().toString(),
+   "Rows "+result.size()+"; invalid "+invalid+"; source "+p.getFileFormat());
   return new Preview(p.getId(),p.getFileName(),p.getFileFormat(),result.size(),result.size()-invalid,invalid,duplicate,p.getExpiresAt());
  }
  private ImportPreviewEntity requirePreview(UUID id,boolean locked){

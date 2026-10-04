@@ -52,14 +52,17 @@ class CataloguePostgresIT {
    request(get("/api/v1/pricing/"+family),null).andExpect(status().isOk());
    String cs=login("customer_service");
    mvc.perform(get("/api/v1/pricing/"+family).header("Authorization","Bearer "+cs)).andExpect(status().isOk());
-   for(var method:List.of(post("/api/v1/pricing/"+family),put("/api/v1/pricing/"+family+"/1"),delete("/api/v1/pricing/"+family+"/1")))
-    mvc.perform(method.header("Authorization","Bearer "+cs).contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isForbidden());
    for(String role:List.of("repair_shop","owner")){
     String token=login(role);mvc.perform(get("/api/v1/pricing/"+family).header("Authorization","Bearer "+token)).andExpect(status().isForbidden());
     mvc.perform(post("/api/v1/pricing/"+family).header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isForbidden());
    }
   }
-  mvc.perform(get("/api/v1/admin/regions").header("Authorization","Bearer "+login("customer_service"))).andExpect(status().isForbidden());
+  String cs=login("customer_service");
+  for(String path:List.of("/users","/roles","/regions","/shops","/audit"))
+   for(var method:List.of(get("/api/v1/admin"+path),post("/api/v1/admin"+path)))
+    mvc.perform(method.header("Authorization","Bearer "+cs).contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isForbidden());
+  for(var method:List.of(post("/api/v1/pricing/sources"),put("/api/v1/pricing/sources/1"),delete("/api/v1/pricing/sources/1")))
+   mvc.perform(method.header("Authorization","Bearer "+cs).contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isForbidden());
   mvc.perform(get("/api/v1/pricing/brands").header("Authorization","Bearer invalid")).andExpect(status().isUnauthorized());
  }
  @Test void catalogueCrudRelationsUniqueCodesAndAtomicAudit()throws Exception{
@@ -92,6 +95,28 @@ class CataloguePostgresIT {
   request(delete("/api/v1/pricing/sources/"+source),null).andExpect(status().isNotFound());
   String logs=json.writeValueAsString(db.queryForList("select * from audit_log"));
   assertThat(logs).contains("PRICE_CATALOGUE_CREATE","PRICE_CATALOGUE_UPDATE","PRICE_CATALOGUE_DELETE","PRICE_APPLICABILITY_CHANGE").doesNotContain(PASSWORD,SECRET,admin,"$2a$");
+ }
+ @Test void customerServiceMaintainsDailyCatalogueWithActorAuditAndReferenceProtection()throws Exception{
+  admin=login("customer_service");String suffix=UUID.randomUUID().toString().substring(0,8);
+  long brand=create("brands",named("CS-B-"+suffix,"客服测试品牌")).path("id").asLong();
+  long model=create("models",Map.of("brandId",brand,"code","CS-M","name","客服测试车型","enabled",true)).path("id").asLong();
+  long part=create("parts",Map.of("internalCode","CS-P-"+suffix,"name","客服测试配件","enabled",true)).path("id").asLong();
+  long alias=create("aliases",Map.of("partId",part,"name","客服测试别名")).path("id").asLong();
+  create("part-models",Map.of("partId",part,"modelId",model));
+  request(delete("/api/v1/pricing/parts/"+part),null).andExpect(status().isConflict());
+  request(put("/api/v1/pricing/brands/"+brand),named("CS-B-"+suffix,"客服更新品牌")).andExpect(status().isOk());
+  request(put("/api/v1/pricing/models/"+model),Map.of("brandId",brand,"code","CS-M","name","客服更新车型","enabled",true)).andExpect(status().isOk());
+  request(put("/api/v1/pricing/parts/"+part),Map.of("internalCode","CS-P-"+suffix,"name","客服更新配件","enabled",true)).andExpect(status().isOk());
+  request(put("/api/v1/pricing/aliases/"+alias),Map.of("partId",part,"name","客服更新别名")).andExpect(status().isOk());
+  request(delete("/api/v1/pricing/part-models/"+part+"/"+model),null).andExpect(status().isOk());
+  request(delete("/api/v1/pricing/aliases/"+alias),null).andExpect(status().isOk());
+  request(delete("/api/v1/pricing/parts/"+part),null).andExpect(status().isOk());
+  request(delete("/api/v1/pricing/models/"+model),null).andExpect(status().isOk());
+  request(delete("/api/v1/pricing/brands/"+brand),null).andExpect(status().isOk());
+  long actor=db.queryForObject("select id from app_user where username='dev_customer_service'",Long.class);
+  var actions=db.queryForList("select action from audit_log where actor_id=? and action like 'PRICE_%'",String.class,actor);
+  assertThat(actions).hasSize(14).contains("PRICE_CATALOGUE_CREATE","PRICE_CATALOGUE_UPDATE","PRICE_CATALOGUE_DELETE","PRICE_APPLICABILITY_CHANGE");
+  assertThat(db.queryForList("select actor_roles from audit_log where actor_id=? and action like 'PRICE_%'",String.class,actor)).containsOnly("CUSTOMER_SERVICE");
  }
  @Test void boundedStablePagesLiteralAliasSearchAndExistingOrganizationLookups()throws Exception{
   String suffix=UUID.randomUUID().toString().substring(0,8);

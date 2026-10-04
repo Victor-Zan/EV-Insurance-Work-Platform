@@ -47,7 +47,8 @@ public class SecurityConfiguration {
                 .requestMatchers("/api/v1/admin/session").hasAnyRole("ADMIN","CUSTOMER_SERVICE")
                 .requestMatchers("/api/v1/h5/session").hasAnyRole("REPAIR_SHOP","OWNER")
                 .requestMatchers(HttpMethod.GET,"/api/v1/pricing/**").hasAnyRole("ADMIN","CUSTOMER_SERVICE")
-                .requestMatchers("/api/v1/pricing/**").hasRole("ADMIN")
+                .requestMatchers("/api/v1/pricing/sources","/api/v1/pricing/sources/**").hasRole("ADMIN")
+                .requestMatchers("/api/v1/pricing/**").hasAnyRole("ADMIN","CUSTOMER_SERVICE")
                 .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                 .anyRequest().denyAll()).build();
     }

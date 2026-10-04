@@ -155,15 +155,56 @@ class PricePostgresIT {
    mvc.perform(get("/api/v1/pricing"+path).header("Authorization","Bearer "+cs)).andExpect(status().isOk());
    for(String role:List.of("repair_shop","owner"))mvc.perform(get("/api/v1/pricing"+path).header("Authorization","Bearer "+login("dev_"+role,"H5"))).andExpect(status().isForbidden());
   }
-  for(String path:List.of("/prices","/records/"+v.path("recordId").asLong()+"/versions","/imports/previews/"+p.path("id").asText()+"/confirm"))
-   mvc.perform(post("/api/v1/pricing"+path).header("Authorization","Bearer "+cs).contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isForbidden());
-  for(String path:List.of("/imports/template","/imports/batches","/imports/previews/"+p.path("id").asText()))mvc.perform(get("/api/v1/pricing"+path).header("Authorization","Bearer "+cs)).andExpect(status().isForbidden());
+  for(String path:List.of("/imports/template","/imports/batches"))mvc.perform(get("/api/v1/pricing"+path).header("Authorization","Bearer "+cs)).andExpect(status().isOk());
+  mvc.perform(get("/api/v1/pricing/imports/previews/"+p.path("id").asText()).header("Authorization","Bearer "+cs)).andExpect(status().isForbidden());
+  mvc.perform(post("/api/v1/pricing/imports/previews/"+p.path("id").asText()+"/confirm").header("Authorization","Bearer "+cs)
+   .contentType(MediaType.APPLICATION_JSON).content("{\"confirmed\":true}")).andExpect(status().isForbidden());
   String account="it_admin_"+UUID.randomUUID().toString().substring(0,8);
   ok(post("/api/v1/admin/users"),Map.of("username",account,"displayName","测试管理员","password",PASSWORD,"roles",List.of("ADMIN")));
   String other=login(account,"ADMIN");
   mvc.perform(get("/api/v1/pricing/imports/previews/"+p.path("id").asText()).header("Authorization","Bearer "+other)).andExpect(status().isForbidden());
   mvc.perform(post("/api/v1/pricing/imports/previews/"+p.path("id").asText()+"/confirm").header("Authorization","Bearer "+other).contentType(MediaType.APPLICATION_JSON).content("{\"confirmed\":true}")).andExpect(status().isForbidden());
   request(post("/api/v1/pricing/imports/previews/"+p.path("id").asText()+"/confirm"),Map.of("confirmed",false)).andExpect(status().isBadRequest());
+ }
+ @Test void customerServiceCreatesVersionsAndImportsCsvAndExcelWithoutHistoryMutation()throws Exception{
+  admin=login("dev_customer_service","ADMIN");var f=fixture();var old=first(f,"2026-01-01",null);
+  long rid=old.path("recordId").asLong(),id=old.path("id").asLong();
+  ok(post("/api/v1/pricing/records/"+rid+"/versions"),version("2026-02-01",null,"222.22"));
+  for(var method:List.of(put("/api/v1/pricing/prices/"+id),patch("/api/v1/pricing/prices/"+id),delete("/api/v1/pricing/prices/"+id)))
+   request(method,Map.of("amount","9.00","sourceId",source,"createdBy",1)).andExpect(status().isConflict())
+    .andExpect(jsonPath("$.code").value("HISTORICAL_PRICE_IMMUTABLE"));
+  var p=preview("cs.csv",csv(List.of(row(f,"2026-03-01",null,"333.33"))));
+  ok(get("/api/v1/pricing/imports/previews/"+p.path("id").asText()+"/summary"),null);
+  ok(get("/api/v1/pricing/imports/previews/"+p.path("id").asText()),null);
+  var success=confirm(p);assertThat(success.path("status").asText()).isEqualTo("SUCCESS");
+  var excel=preview("cs.xlsx",xlsx(row(f,"2026-04-01",null,"444.44")));assertThat(confirm(excel).path("status").asText()).isEqualTo("SUCCESS");
+  long before=count();var invalid=preview("cs-invalid.csv",csv(List.of(row(f,"2026-05-01",null,"0"))));
+  var failed=confirm(invalid);assertThat(failed.path("status").asText()).isEqualTo("FAILED");assertThat(count()).isEqualTo(before);
+  ok(get("/api/v1/pricing/imports/batches"),null);ok(get("/api/v1/pricing/imports/batches/"+success.path("id").asLong()),null);
+  assertThat(ok(get("/api/v1/pricing/imports/batches/"+failed.path("id").asLong()+"/errors"),null).path("total").asInt()).isPositive();
+  var unchanged=ok(get("/api/v1/pricing/prices/"+id),null);
+  for(String field:List.of("amount","sourceId","sourceCode","sourceName","sourceKind","createdAt","createdBy"))assertThat(unchanged.path(field)).isEqualTo(old.path(field));
+  assertThat(unchanged.path("effectiveTo").asText()).isEqualTo("2026-01-31");
+  long actor=db.queryForObject("select id from app_user where username='dev_customer_service'",Long.class);
+  var logs=db.queryForList("select * from audit_log where actor_id=? and action like 'PRICE_%'",actor);
+  assertThat(logs).allSatisfy(entry->{assertThat(entry.get("actor_roles")).isEqualTo("CUSTOMER_SERVICE");assertThat(entry.get("object_id")).isNotNull();assertThat(entry.get("trace_id")).isNotNull();});
+  assertThat(logs.stream().map(entry->entry.get("action"))).contains("PRICE_CATALOGUE_CREATE","PRICE_APPLICABILITY_CHANGE","PRICE_CREATE","PRICE_VERSION_CREATE","PRICE_VERSION_CLOSE","PRICE_IMPORT_PREVIEW","PRICE_IMPORT_SUCCESS","PRICE_IMPORT_FAILURE");
+  assertThat(json.writeValueAsString(logs)).doesNotContain(PASSWORD,SECRET,admin,"$2a$");
+  for(String role:List.of("repair_shop","owner")){
+   String token=login("dev_"+role,"H5");
+   for(String path:List.of("/prices","/records/"+rid+"/versions","/imports/previews/"+p.path("id").asText()+"/confirm"))
+    mvc.perform(post("/api/v1/pricing"+path).header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isForbidden());
+   for(String path:List.of("/imports/template","/imports/batches","/imports/batches/"+failed.path("id").asLong()+"/errors"))
+    mvc.perform(get("/api/v1/pricing"+path).header("Authorization","Bearer "+token)).andExpect(status().isForbidden());
+   mvc.perform(multipart("/api/v1/pricing/imports/previews").file(new MockMultipartFile("file","test.csv","text/csv",csv(List.of(row(f,"2026-06-01",null,"5"))))).header("Authorization","Bearer "+token)).andExpect(status().isForbidden());
+  }
+ }
+ private byte[] xlsx(Map<String,String> values)throws Exception{
+  try(var book=new XSSFWorkbook();var out=new ByteArrayOutputStream()){
+   var sheet=book.createSheet("prices");var header=sheet.createRow(0);var row=sheet.createRow(1);
+   for(int i=0;i<ImportData.FIELDS.size();i++){header.createCell(i).setCellValue(ImportData.FIELDS.get(i));row.createCell(i).setCellValue(values.get(ImportData.FIELDS.get(i)));}
+   book.write(out);return out.toByteArray();
+  }
  }
  @Test void csvPreviewIsReadOnlyAndImportAppendsClosesAndIsIdempotent()throws Exception{
   var f=fixture();var old=first(f,"2026-01-01",null);long count=count();

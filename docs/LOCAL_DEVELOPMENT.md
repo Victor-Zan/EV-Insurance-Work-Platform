@@ -149,7 +149,7 @@ API 契约详见 Swagger：POST /api/v1/auth/login 输入 username、password、
 
 ## 10. 阶段 3 价格库验证
 
-管理端登录后进入“价格数据库”。先配置品牌、车型、配件、别名、配件车型关系及来源，再新增价格或按 [导入说明](PRICE_IMPORT.md) 预览和确认导入。来源字典的 MANUAL / CSV / EXCEL / HISTORICAL_CASE 只是来源类别，不创建或导入案件业务。客服可查基础资料和历史，维护与导入入口仅管理员。
+管理端登录后进入“价格数据库”。先配置品牌、车型、配件、别名、配件车型关系及来源，再新增价格或按 [导入说明](PRICE_IMPORT.md) 预览和确认导入。来源字典的 MANUAL / CSV / EXCEL / HISTORICAL_CASE 只是来源类别，不创建或导入案件业务。管理员和客服均可进行日常资料维护、版本追加、导入及批次查询；来源字典与系统配置维护仅管理员，客服可选用已有来源（D-023）。
 
 上述 postgres-it 命令包含 CataloguePostgresIT 与 PricePostgresIT；后者在独立随机 schema 中调用仅位于 src/test 的 PriceDataFixture.generate，分 20 批各 5,000 条生成十万条模拟价格及配套编号/别名，使用批量 INSERT SELECT，不通过默认迁移或启动初始化产生数据。生成器带 DEV-PERF 前缀，日期和金额均为合成测试值，严禁对生产或共享业务库运行。
 
