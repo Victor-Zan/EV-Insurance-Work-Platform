@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.evinsurance.platform.workorder.infrastructure.WorkOrderMapper">
+  <insert id="insertDraft">
+    INSERT INTO work_order(id,insurance_company,claim_no,claim_reported_at,data_source,current_responsible_id,
+      owner_name,owner_phone,policy_no,vehicle_brand,vehicle_model,vehicle_vin,vehicle_plate,vehicle_other_identifier,
+      accident_at,accident_region_id,accident_address,accident_description,created_by,updated_by,created_at,updated_at)
+    VALUES(#{id},#{insuranceCompany},#{claimNo},#{claimReportedAt},#{dataSource},#{currentResponsibleId},
+      #{ownerName},#{ownerPhone},#{policyNo},#{vehicleBrand},#{vehicleModel},#{vehicleVin},#{vehiclePlate},#{vehicleOtherIdentifier},
+      #{accidentAt},#{accidentRegionId},#{accidentAddress},#{accidentDescription},#{createdBy},#{updatedBy},#{createdAt},#{updatedAt})
+  </insert>
+  <update id="updateDraft">
+    UPDATE work_order SET insurance_company=#{row.insuranceCompany},claim_no=#{row.claimNo},claim_reported_at=#{row.claimReportedAt},
+      owner_name=#{row.ownerName},owner_phone=#{row.ownerPhone},policy_no=#{row.policyNo},vehicle_brand=#{row.vehicleBrand},
+      vehicle_model=#{row.vehicleModel},vehicle_vin=#{row.vehicleVin},vehicle_plate=#{row.vehiclePlate},
+      vehicle_other_identifier=#{row.vehicleOtherIdentifier},accident_at=#{row.accidentAt},accident_region_id=#{row.accidentRegionId},
+      accident_address=#{row.accidentAddress},accident_description=#{row.accidentDescription},updated_by=#{actorId},updated_at=#{now},version=version+1
+    WHERE id=#{row.id} AND status='DRAFT' AND version=#{row.version}
+  </update>
+  <delete id="deleteDraft">DELETE FROM work_order WHERE id=#{id} AND status='DRAFT' AND version=#{version}</delete>
+  <select id="find" resultType="com.evinsurance.platform.workorder.infrastructure.WorkOrderEntity">SELECT * FROM work_order WHERE id=#{id}</select>
+  <select id="lock" resultType="com.evinsurance.platform.workorder.infrastructure.WorkOrderEntity">SELECT * FROM work_order WHERE id=#{id} FOR UPDATE</select>
+
+  <sql id="scopeFilter">
+    <where>
+      <choose>
+        <when test="scope == 'CUSTOMER_SERVICE'">(w.status&lt;&gt;'DRAFT' OR w.created_by=#{scopeId})</when>
+        <when test="scope == 'SHOP'">w.shop_id=#{scopeId}</when>
+        <when test="scope == 'OWNER'">w.owner_user_id=#{scopeId}</when>
+      </choose>
+      <if test="status != null and status != ''">AND w.status=#{status}</if>
+      <if test="query != null and query != ''">
+        AND (lower(COALESCE(w.business_no,'')) LIKE lower('%'||#{query}||'%')
+          OR lower(COALESCE(w.claim_no,'')) LIKE lower('%'||#{query}||'%')
+          OR COALESCE(w.owner_phone,'') LIKE '%'||#{query}||'%')
+      </if>
+    </where>
+  </sql>
+  <select id="count" resultType="long">SELECT count(*) FROM work_order w <include refid="scopeFilter"/></select>
+  <select id="list" resultType="com.evinsurance.platform.workorder.infrastructure.WorkOrderEntity">
+    SELECT w.* FROM work_order w <include refid="scopeFilter"/> ORDER BY w.updated_at DESC,w.id DESC LIMIT #{size} OFFSET #{offset}
+  </select>
+
+  <select id="lockSubmissionGuard" resultType="int">SELECT id FROM work_order_config WHERE id=1 FOR UPDATE</select>
+  <select id="possibleDuplicateDays" resultType="int">SELECT possible_duplicate_days FROM work_order_config WHERE id=1</select>
+  <update id="updatePossibleDuplicateDays">
+    UPDATE work_order_config SET possible_duplicate_days=#{days},updated_by=#{actorId},updated_at=#{now} WHERE id=1
+  </update>
+  <select id="existingFormalClaim" resultType="string">
+    SELECT business_no FROM work_order
+    WHERE status&lt;&gt;'DRAFT' AND lower(insurance_company)=lower(#{insuranceCompany}) AND lower(claim_no)=lower(#{claimNo})
+      <if test="excludeId != null">AND id&lt;&gt;#{excludeId}</if>
+    ORDER BY created_at,id LIMIT 1
+  </select>
+  <sql id="vehicleMatch">
+    ((#{vin,jdbcType=VARCHAR} IS NOT NULL AND w.vehicle_vin=#{vin,jdbcType=VARCHAR})
+      OR (#{plate,jdbcType=VARCHAR} IS NOT NULL AND w.vehicle_plate=#{plate,jdbcType=VARCHAR})
+      OR (#{otherIdentifier,jdbcType=VARCHAR} IS NOT NULL AND w.vehicle_other_identifier=#{otherIdentifier,jdbcType=VARCHAR}))
+  </sql>
+  <select id="possibleDuplicates" resultType="string">
+    SELECT DISTINCT w.business_no FROM work_order w
+    WHERE w.id&lt;&gt;#{id} AND w.status&lt;&gt;'DRAFT' AND (
+      (#{vin,jdbcType=VARCHAR} IS NOT NULL AND w.vehicle_vin=#{vin,jdbcType=VARCHAR}
+        AND w.accident_at BETWEEN CAST(#{accidentAt} AS timestamptz) - make_interval(days =&gt; #{days})
+          AND CAST(#{accidentAt} AS timestamptz) + make_interval(days =&gt; #{days}))
+      OR (w.owner_phone=#{phone,jdbcType=VARCHAR} AND <include refid="vehicleMatch"/>
+        AND w.accident_at BETWEEN CAST(#{accidentAt} AS timestamptz) - make_interval(days =&gt; #{days})
+          AND CAST(#{accidentAt} AS timestamptz) + make_interval(days =&gt; #{days}))
+      OR (#{policyNo,jdbcType=VARCHAR} IS NOT NULL AND w.policy_no=#{policyNo,jdbcType=VARCHAR} AND <include refid="vehicleMatch"/>)
+    ) ORDER BY w.business_no LIMIT 10
+  </select>
+  <select id="possibleShopDuplicates" resultType="string">
+    SELECT DISTINCT w.business_no FROM work_order w
+    WHERE w.id&lt;&gt;#{id} AND w.status&lt;&gt;'DRAFT' AND w.owner_phone=#{phone,jdbcType=VARCHAR} AND w.shop_id=#{shopId}
+      AND w.accident_at BETWEEN CAST(#{accidentAt} AS timestamptz) - make_interval(days =&gt; #{days})
+        AND CAST(#{accidentAt} AS timestamptz) + make_interval(days =&gt; #{days})
+    ORDER BY w.business_no LIMIT 10
+  </select>
+
+  <select id="nextBusinessSequence" resultType="int" affectData="true">
+    INSERT INTO work_order_number_counter(business_date,last_value) VALUES(#{date},1)
+    ON CONFLICT(business_date) DO UPDATE SET last_value=work_order_number_counter.last_value+1 RETURNING last_value
+  </select>
+  <update id="submit">
+    UPDATE work_order SET business_no=#{businessNo},owner_user_id=#{ownerUserId},owner_binding_status=#{binding},
+      status='PENDING_DISPATCH',status_started_at=#{now},updated_by=#{actorId},updated_at=#{now},version=version+1
+    WHERE id=#{id} AND status='DRAFT' AND version=#{version}
+  </update>
+  <update id="updateCriticalFields">
+    UPDATE work_order SET insurance_company=#{insuranceCompany},claim_no=#{claimNo},vehicle_vin=#{vin},vehicle_plate=#{plate},
+      vehicle_other_identifier=#{otherIdentifier},updated_by=#{actorId},updated_at=#{now},version=version+1
+    WHERE id=#{id} AND version=#{version} AND status NOT IN ('DRAFT','CANCELLED','CLOSED')
+  </update>
+  <update id="transition">
+    UPDATE work_order SET status=#{toStatus},status_started_at=#{now},updated_by=#{actorId},updated_at=#{now},version=version+1,
+      <choose><when test="clearShop">shop_id=NULL</when><when test="shopId != null">shop_id=#{shopId}</when><otherwise>shop_id=shop_id</otherwise></choose>
+    WHERE id=#{id} AND status=#{fromStatus} AND version=#{version}
+  </update>
+  <select id="ownersByPhone" resultType="long">
+    SELECT op.user_id FROM owner_profile op JOIN app_user u ON u.id=op.user_id AND u.enabled
+      JOIN user_role ur ON ur.user_id=u.id JOIN app_role r ON r.id=ur.role_id AND r.code='OWNER'
+    WHERE op.contact_phone=#{phone} ORDER BY op.user_id LIMIT 2
+  </select>
+  <select id="regionEnabled" resultType="long">SELECT count(*) FROM region WHERE id=#{id} AND enabled</select>
+  <select id="shopEligible" resultType="long">
+    SELECT count(*) FROM repair_shop s JOIN shop_service_region ssr ON ssr.shop_id=s.id
+    WHERE s.id=#{shopId} AND s.enabled AND ssr.region_id=#{regionId}
+  </select>
+  <select id="eligibleShopCount" resultType="long">
+    SELECT count(DISTINCT s.id) FROM repair_shop s JOIN shop_service_region ssr ON ssr.shop_id=s.id
+    WHERE s.enabled AND ssr.region_id=#{regionId}
+  </select>
+  <select id="eligibleShops" resultType="com.evinsurance.platform.workorder.infrastructure.WorkOrderRows$ShopOption">
+    SELECT DISTINCT s.id,s.code,s.name,s.address FROM repair_shop s JOIN shop_service_region ssr ON ssr.shop_id=s.id
+    WHERE s.enabled AND ssr.region_id=#{regionId} ORDER BY s.name,s.id LIMIT #{size} OFFSET #{offset}
+  </select>
+
+  <select id="nextAssignmentVersion" resultType="int">SELECT COALESCE(max(assignment_version),0)+1 FROM work_order_assignment WHERE work_order_id=#{workOrderId}</select>
+  <insert id="insertAssignment">
+    INSERT INTO work_order_assignment(work_order_id,assignment_version,shop_id,status,transfer_description,assigned_by,assigned_at)
+    VALUES(#{workOrderId},#{version},#{shopId},'PENDING',#{transferDescription},#{actorId},#{now})
+  </insert>
+  <select id="activeAssignment" resultType="com.evinsurance.platform.workorder.infrastructure.WorkOrderRows$Assignment">
+    SELECT * FROM work_order_assignment WHERE work_order_id=#{workOrderId} AND status IN ('PENDING','ACCEPTED') ORDER BY assignment_version DESC LIMIT 1
+  </select>
+  <select id="assignment" resultType="com.evinsurance.platform.workorder.infrastructure.WorkOrderRows$Assignment">
+    SELECT * FROM work_order_assignment WHERE work_order_id=#{workOrderId} AND assignment_version=#{version}
+  </select>
+  <update id="acceptAssignment">UPDATE work_order_assignment SET status='ACCEPTED',responded_by=#{actorId},responded_at=#{now} WHERE id=#{id} AND status='PENDING'</update>
+  <update id="rejectAssignment">UPDATE work_order_assignment SET status='REJECTED',reason=#{reason},responded_by=#{actorId},responded_at=#{now} WHERE id=#{id} AND status='PENDING'</update>
+  <update id="cancelAssignment">UPDATE work_order_assignment SET status='CANCELLED',reason=#{reason},cancelled_by=#{actorId},cancelled_at=#{now} WHERE id=#{id} AND status IN ('PENDING','ACCEPTED')</update>
+
+  <insert id="insertHistory">
+    INSERT INTO work_order_status_history(work_order_id,from_status,to_status,action,reason,actor_id,actor_roles,assignment_version,trace_id,occurred_at)
+    VALUES(#{workOrderId},#{fromStatus},#{toStatus},#{action},#{reason},#{actorId},#{actorRoles},#{assignmentVersion},#{traceId},#{now})
+  </insert>
+  <select id="historyCount" resultType="long">SELECT count(*) FROM work_order_status_history WHERE work_order_id=#{workOrderId}</select>
+  <select id="history" resultType="com.evinsurance.platform.workorder.infrastructure.WorkOrderRows$History">
+    SELECT id,from_status,to_status,action,reason,actor_id,actor_roles,assignment_version,occurred_at
+    FROM work_order_status_history WHERE work_order_id=#{workOrderId} ORDER BY occurred_at,id LIMIT #{size} OFFSET #{offset}
+  </select>
+
+  <insert id="reserveCommand">
+    INSERT INTO work_order_command(actor_id,operation,idempotency_key,work_order_id,assignment_version,created_at)
+    VALUES(#{actorId},#{operation},#{key},#{workOrderId},#{assignmentVersion},#{now})
+    ON CONFLICT(actor_id,operation,idempotency_key) DO NOTHING
+  </insert>
+  <select id="command" resultType="com.evinsurance.platform.workorder.infrastructure.WorkOrderRows$Command">
+    SELECT work_order_id,assignment_version,response_json FROM work_order_command
+    WHERE actor_id=#{actorId} AND operation=#{operation} AND idempotency_key=#{key}
+  </select>
+  <update id="completeCommand">
+    UPDATE work_order_command SET response_json=#{responseJson},completed_at=CURRENT_TIMESTAMP
+    WHERE actor_id=#{actorId} AND operation=#{operation} AND idempotency_key=#{key} AND response_json IS NULL
+  </update>
+</mapper>

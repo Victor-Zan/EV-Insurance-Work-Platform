@@ -1,0 +1,141 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "开发：检查本地配置",
+      "type": "shell",
+      "command": "if (-not (Test-Path -LiteralPath '.env')) { throw '未找到根目录 .env。请先复制 .env.example 为 .env 并填写本地配置。' }",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "powershell.exe",
+          "args": [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command"
+          ]
+        }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "开发：启动 PostgreSQL",
+      "type": "shell",
+      "command": "docker compose --env-file .env -f infra/docker-compose.yml up -d --wait postgres",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": "开发：检查本地配置",
+      "problemMatcher": []
+    },
+    {
+      "label": "开发：启动后端",
+      "type": "shell",
+      "command": "$javaVersion = (& java -version 2>&1 | Select-Object -First 1); if ($javaVersion -notmatch 'version .21[.]') { $jdk21 = Get-ChildItem -LiteralPath (Join-Path $env:USERPROFILE '.jdks') -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '21' -and (Test-Path -LiteralPath (Join-Path $_.FullName 'bin\\java.exe')) } | Select-Object -First 1; if ($jdk21) { $env:JAVA_HOME = $jdk21.FullName; $env:Path = (Join-Path $env:JAVA_HOME 'bin') + ';' + $env:Path } }; $javaVersion = (& java -version 2>&1 | Select-Object -First 1); if ($javaVersion -notmatch 'version .21[.]') { throw '后端需要 Java 21。请安装 Java 21 或在 VS Code 启动前设置 JAVA_HOME。' }; Get-Content -LiteralPath '${workspaceFolder}\\.env' | ForEach-Object { if ($_ -match '^([^#][^=]*)=(.*)$') { [Environment]::SetEnvironmentVariable($matches[1].Trim(), $matches[2].Trim(), 'Process') } }; .\\mvnw.cmd spring-boot:run",
+      "options": {
+        "cwd": "${workspaceFolder}\\backend",
+        "shell": {
+          "executable": "powershell.exe",
+          "args": [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command"
+          ]
+        }
+      },
+      "dependsOn": "开发：启动 PostgreSQL",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "ev-insurance-dev",
+        "focus": false
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      }
+    },
+    {
+      "label": "开发：启动管理端",
+      "type": "shell",
+      "command": "$backendReady = $false; $deadline = (Get-Date).AddSeconds(120); while ((Get-Date) -lt $deadline) { try { $health = Invoke-RestMethod -Uri 'http://localhost:8080/api/v1/health' -TimeoutSec 2; if ($health.data.status -eq 'UP') { $backendReady = $true; break } } catch {}; Start-Sleep -Seconds 1 }; if (-not $backendReady) { throw '后端在 120 秒内未就绪，请查看“开发：启动后端”终端中的错误。' }; if (-not (Test-Path -LiteralPath 'node_modules')) { npm ci; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }; npm run dev",
+      "options": {
+        "cwd": "${workspaceFolder}\\admin-web",
+        "shell": {
+          "executable": "powershell.exe",
+          "args": [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command"
+          ]
+        }
+      },
+      "dependsOn": "开发：检查本地配置",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "ev-insurance-dev",
+        "focus": false
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      }
+    },
+    {
+      "label": "开发：启动 H5",
+      "type": "shell",
+      "command": "$backendReady = $false; $deadline = (Get-Date).AddSeconds(120); while ((Get-Date) -lt $deadline) { try { $health = Invoke-RestMethod -Uri 'http://localhost:8080/api/v1/health' -TimeoutSec 2; if ($health.data.status -eq 'UP') { $backendReady = $true; break } } catch {}; Start-Sleep -Seconds 1 }; if (-not $backendReady) { throw '后端在 120 秒内未就绪，请查看“开发：启动后端”终端中的错误。' }; if (-not (Test-Path -LiteralPath 'node_modules')) { npm ci; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }; npm run dev",
+      "options": {
+        "cwd": "${workspaceFolder}\\h5-web",
+        "shell": {
+          "executable": "powershell.exe",
+          "args": [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command"
+          ]
+        }
+      },
+      "dependsOn": "开发：检查本地配置",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "ev-insurance-dev",
+        "focus": false
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      }
+    },
+    {
+      "label": "开发：启动全部服务",
+      "dependsOn": [
+        "开发：启动后端",
+        "开发：启动管理端",
+        "开发：启动 H5"
+      ],
+      "dependsOrder": "parallel",
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "开发：停止 Docker 基础设施",
+      "type": "shell",
+      "command": "docker compose --env-file .env -f infra/docker-compose.yml down",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": "开发：检查本地配置",
+      "problemMatcher": []
+    }
+  ]
+}

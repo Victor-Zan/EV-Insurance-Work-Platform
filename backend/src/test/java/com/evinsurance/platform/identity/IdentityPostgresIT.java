@@ -162,7 +162,7 @@ class IdentityPostgresIT {
     @Test void unifiedErrorsPaginationOpenApiAndFreshFlywayAreVerified() throws Exception {
         flyway.validate();
         assertThat(Arrays.stream(flyway.info().applied()).filter(info -> info.getVersion()!=null)
-            .map(info -> info.getVersion().toString()).toList()).containsExactly("1","2","2.1","3","4");
+            .map(info -> info.getVersion().toString()).toList()).containsExactly("1","2","2.1","3","4","5");
         mvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content("{}"))
             .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
         mvc.perform(get("/api/v1/admin/users?size=101").header("Authorization","Bearer "+admin)).andExpect(status().isBadRequest());
@@ -174,7 +174,7 @@ class IdentityPostgresIT {
         mvc.perform(get("/api/v1/admin/nonexistent").header("Authorization","Bearer "+admin))
             .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("NOT_FOUND"));
     }
-    @Test void normalProfileNeverSeedsUsersAndDevelopmentHashesCanChangeWithoutChecksumDrift() {
+    @Test void normalProfileNeverSeedsUsersAndDevCanBeEnabledAfterNormalMigrations() {
         String url=System.getenv("TEST_DB_URL"), username=System.getenv("TEST_DB_USERNAME"), password=System.getenv("TEST_DB_PASSWORD");
         String normalSchema=SCHEMA+"_normal";
         Flyway normal=Flyway.configure().dataSource(url,username,password).schemas(normalSchema).defaultSchema(normalSchema)
@@ -185,6 +185,11 @@ class IdentityPostgresIT {
         assertThat(template.queryForObject("select count(*) from app_user",Long.class)).isZero();
         assertThat(template.queryForObject("select count(*) from app_role",Long.class)).isEqualTo(4);
         String newHash=encoder.encode(UUID.randomUUID().toString());
+        Flyway switchedToDev=Flyway.configure().dataSource(url,username,password).schemas(normalSchema).defaultSchema(normalSchema)
+            .locations("classpath:db/migration","classpath:db/dev").outOfOrder(true).placeholders(Map.of("devAdminHash",newHash,
+                "devCustomerServiceHash",newHash,"devRepairShopHash",newHash,"devOwnerHash",newHash)).load();
+        assertThat(switchedToDev.migrate().migrationsExecuted).isEqualTo(1); switchedToDev.validate();
+        assertThat(template.queryForObject("select count(*) from app_user where username='dev_admin'",Long.class)).isEqualTo(1);
         Flyway restarted=Flyway.configure().dataSource(url,username,password).schemas(SCHEMA).defaultSchema(SCHEMA)
             .locations("classpath:db/migration","classpath:db/dev").placeholders(Map.of("devAdminHash",newHash,
                 "devCustomerServiceHash",newHash,"devRepairShopHash",newHash,"devOwnerHash",newHash)).load();

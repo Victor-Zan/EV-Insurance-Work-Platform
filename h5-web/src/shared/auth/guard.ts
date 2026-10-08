@@ -11,7 +11,7 @@ export async function guard(session: AuthSession, path: string, required: Role[]
     return true
   } catch (error) {
     if (error && typeof error === 'object' && 'status' in error && error.status === 401) { session.clear(); return '/login' }
-    if (error && typeof error === 'object' && 'status' in error && error.status === 403) return '/forbidden'
+    if (error && typeof error === 'object' && 'status' in error && error.status === 403) { session.clear(); return '/login' }
     return '/connection-error'
   }
 }

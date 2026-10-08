@@ -10,6 +10,8 @@ import PriceEditorView from '@/features/pricing/PriceEditorView.vue'
 import PriceHistoryView from '@/features/pricing/PriceHistoryView.vue'
 import ImportView from '@/features/pricing/ImportView.vue'
 import BatchesView from '@/features/pricing/BatchesView.vue'
+import WorkOrdersView from '@/features/workorders/WorkOrdersView.vue'
+import WorkOrderDetailView from '@/features/workorders/WorkOrderDetailView.vue'
 import { PRICE_READ_ROLES, PRICE_WRITE_ROLES } from '@/features/pricing/prices'
 import { authSession, api } from '@/shared/http/client'
 import { guard } from '@/shared/auth/guard'
@@ -21,6 +23,8 @@ const router = createRouter({
     { path: '/login', component: LoginView },
     { path: '/', component: HomeView },
     { path: '/users', component: UsersView, meta: { roles: ['ADMIN'] } },
+    { path: '/work-orders', component: WorkOrdersView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
+    { path: '/work-orders/:id', component: WorkOrderDetailView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
     { path: '/pricing/catalogue/:kind(brands|models|parts|aliases|sources)', component: CatalogueView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
     { path: '/pricing/part-models', component: PartModelsView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
     { path: '/pricing', component: PricesView, meta: { roles: PRICE_READ_ROLES } },

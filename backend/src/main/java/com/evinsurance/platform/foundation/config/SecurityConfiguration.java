@@ -31,7 +31,7 @@ public class SecurityConfiguration {
         @Value("${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174}") String origins) throws Exception {
         var cors=new CorsConfiguration(); cors.setAllowedOrigins(List.of(origins.split(",")));
         cors.setAllowedMethods(List.of("GET","POST","PUT","PATCH","DELETE","OPTIONS"));
-        cors.setAllowedHeaders(List.of("Authorization","Content-Type","X-Request-Id")); cors.setExposedHeaders(List.of("X-Request-Id"));
+        cors.setAllowedHeaders(List.of("Authorization","Content-Type","X-Request-Id","Idempotency-Key")); cors.setExposedHeaders(List.of("X-Request-Id"));
         var source=new UrlBasedCorsConfigurationSource(); source.registerCorsConfiguration("/api/**",cors);
         return http.csrf(csrf -> csrf.disable()).cors(c -> c.configurationSource(source))
             .formLogin(form -> form.disable()).httpBasic(basic -> basic.disable())
@@ -44,6 +44,7 @@ public class SecurityConfiguration {
                 .requestMatchers("/api/v1/health","/actuator/health","/v3/api-docs/**","/swagger-ui.html","/swagger-ui/**").permitAll()
                 .requestMatchers(HttpMethod.POST,"/api/v1/auth/login").permitAll()
                 .requestMatchers("/api/v1/auth/me").authenticated()
+                .requestMatchers("/api/v1/work-orders/**").hasAnyRole("ADMIN","CUSTOMER_SERVICE","REPAIR_SHOP","OWNER")
                 .requestMatchers("/api/v1/admin/session").hasAnyRole("ADMIN","CUSTOMER_SERVICE")
                 .requestMatchers("/api/v1/h5/session").hasAnyRole("REPAIR_SHOP","OWNER")
                 .requestMatchers(HttpMethod.GET,"/api/v1/pricing/**").hasAnyRole("ADMIN","CUSTOMER_SERVICE")

@@ -6,6 +6,7 @@ import com.evinsurance.platform.foundation.api.PageResponse;
 import com.evinsurance.platform.foundation.web.TraceContext;
 import com.evinsurance.platform.identity.domain.CurrentUser;
 import java.time.Instant;
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,10 +17,18 @@ public class AuditService {
     public enum Action { LOGIN, LOGIN_FAILURE, USER_CREATE, USER_ENABLE, USER_DISABLE, PASSWORD_RESET,
         ROLE_CHANGE, SHOP_ACCOUNT_CHANGE, REGION_CREATE, REGION_UPDATE, SHOP_CREATE, SHOP_UPDATE, SERVICE_REGION_CHANGE,
         PRICE_CATALOGUE_CREATE, PRICE_CATALOGUE_UPDATE, PRICE_CATALOGUE_DELETE, PRICE_APPLICABILITY_CHANGE,
-        PRICE_CREATE, PRICE_VERSION_CREATE, PRICE_VERSION_CLOSE, PRICE_IMPORT_PREVIEW, PRICE_IMPORT_SUCCESS, PRICE_IMPORT_FAILURE }
+        PRICE_CREATE, PRICE_VERSION_CREATE, PRICE_VERSION_CLOSE, PRICE_IMPORT_PREVIEW, PRICE_IMPORT_SUCCESS, PRICE_IMPORT_FAILURE,
+        WORK_ORDER_DRAFT_CREATE, WORK_ORDER_DRAFT_UPDATE, WORK_ORDER_DRAFT_DELETE, WORK_ORDER_SUBMIT,
+        WORK_ORDER_CRITICAL_UPDATE, WORK_ORDER_CONFIG_UPDATE, WORK_ORDER_DISPATCH, WORK_ORDER_ACCEPT,
+        WORK_ORDER_REJECT, WORK_ORDER_ASSIGNMENT_CANCEL, WORK_ORDER_REASSIGN,
+        WORK_ORDER_ARRIVAL_EXCEPTION, WORK_ORDER_CONTINUE_WAITING, WORK_ORDER_ARRIVE, WORK_ORDER_CANCEL }
     // Callers only supply constructed summaries of IDs, roles and state; never request DTOs or credentials.
     @Transactional
     public void record(CurrentUser actor, Action action, String type, Long id, String summary) {
+        recordIdentifier(actor,action,type,id == null ? null : id.toString(),summary);
+    }
+    @Transactional
+    public void record(CurrentUser actor, Action action, String type, UUID id, String summary) {
         recordIdentifier(actor,action,type,id == null ? null : id.toString(),summary);
     }
     @Transactional

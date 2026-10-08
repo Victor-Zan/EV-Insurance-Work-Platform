@@ -19,4 +19,7 @@ public class ApiException extends RuntimeException {
     public static ApiException denied() {
         return new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN", "Access is denied");
     }
+    public static ApiException conflict(String code,String message) {
+        return new ApiException(HttpStatus.CONFLICT,code,message);
+    }
 }

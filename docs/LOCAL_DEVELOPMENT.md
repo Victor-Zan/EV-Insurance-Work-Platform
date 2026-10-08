@@ -127,7 +127,9 @@ npm run build
 
 只在独立本地数据库设置 SPRING_PROFILES_ACTIVE=dev，并通过本地环境变量或已忽略的 .env 注入 DEV_ADMIN_PASSWORD、DEV_CUSTOMER_SERVICE_PASSWORD、DEV_REPAIR_SHOP_PASSWORD、DEV_OWNER_PASSWORD。值不在此文档提供。非空密码须满足 BCrypt 的 72 字节 UTF-8 输入上限；本阶段不增加复杂度策略。
 
-dev 配置在 Flyway 执行前将注入值转换为 BCrypt 哈希，V2.1 开发迁移只接收哈希。账号为 dev_admin、dev_customer_service（管理端）及 dev_repair_shop、dev_owner（H5），显示名明确标识开发测试；同时创建无真实个人信息的模拟省、市、区和网点服务区域。dev 数据库不可作为生产数据库复用。初始化完成后，修改环境密码不会覆盖现有账号，应调用管理员重置 API；其他环境执行普通迁移（当前 V1、V2、V3、V4），不创建测试账号。
+dev 配置在 Flyway 执行前将注入值转换为 BCrypt 哈希，V2.1 开发迁移只接收哈希。账号为 dev_admin、dev_customer_service（管理端）及 dev_repair_shop、dev_owner（H5），显示名明确标识开发测试；同时创建无真实个人信息的模拟省、市、区和网点服务区域。dev 数据库不可作为生产数据库复用。初始化完成后，修改环境密码不会覆盖现有账号，应调用管理员重置 API；其他环境执行普通迁移（当前 V1、V2、V3、V4、V5），不创建测试账号。
+
+若本地数据库此前已在非 dev 模式完成较新迁移，首次启用 dev 时允许仅位于 `db/dev` 的 V2.1 开发数据迁移乱序补执行；`out-of-order` 只在 `application-dev.yml` 生效，普通及生产配置仍保持严格迁移顺序。
 
 第一位生产管理员的安全初始化属于上线加固阶段，本阶段不提供公开注册或无认证初始化 API。
 
@@ -154,3 +156,27 @@ API 契约详见 Swagger：POST /api/v1/auth/login 输入 username、password、
 上述 postgres-it 命令包含 CataloguePostgresIT 与 PricePostgresIT；后者在独立随机 schema 中调用仅位于 src/test 的 PriceDataFixture.generate，分 20 批各 5,000 条生成十万条模拟价格及配套编号/别名，使用批量 INSERT SELECT，不通过默认迁移或启动初始化产生数据。生成器带 DEV-PERF 前缀，日期和金额均为合成测试值，严禁对生产或共享业务库运行。
 
 测试验证内部编号、别名、品牌/车型、区域、网点、类型、适用日期、稳定分页，以及正金额、日期冲突、自动截止、历史保护、并发追加、XLSX/CSV 与导入整批回滚。执行 EXPLAIN (ANALYZE, BUFFERS) 后把两条选择性查询计划保存至 backend/target/price-query-plans.txt（不提交构建产物）。十万条测试是查询与索引合理性验证，不等同生产容量承诺或十万行单文件导入；单文件限制仍为 20,000 行。
+
+## 11. 提示词 4 工单与前段状态机验证
+
+管理端登录后进入“保险案件”，可创建/编辑/删除本人草稿、提交正式案件、处理疑似重复、派单、取消派单、改派、标记到店异常、继续等待、修改关键字段和取消整个工单。网点在 H5 可查看本店案件、接单/拒单、标记到店异常、继续等待及确认到店；车主 H5 只看到手机号唯一绑定到本人的案件。
+
+本阶段不上传材料，不读取 MinIO，也不使用 OCR 或地图。根目录 Compose 仍保留阶段 1 的 MinIO 基础设施，但它不是提示词 4 的运行前置条件。案件通知单、到店照片及其他材料从提示词 5 开始实现。
+
+`postgres-it` 命令同时运行 `WorkOrderPostgresIT`，在随机 schema 中验证 V5 迁移、草稿范围与删除、正式必填、强/疑似重复、可配置时间窗口、并发编号、车主绑定、派单版本、接拒单、取消/改派、到店异常、重复请求、旧派单、跨网点越权、字段脱敏和审计。测试数据库必须专用，不得指向生产或共享业务库。
+
+## 12. VS Code 快捷启动
+
+先按第 2 节准备好根目录 `.env`，并确保 Docker Desktop 已启动。使用 VS Code 打开仓库根目录后，按 `Ctrl+Shift+B` 即可运行默认任务“开发：启动全部服务”。该任务会：
+
+- 启动并等待 PostgreSQL 健康；提示词 4 不需要启动 MinIO。
+- 自动读取根目录 `.env` 并启动后端；若当前默认 Java 不是 21，会优先查找当前用户 `.jdks` 目录中已安装的 Java 21，仍未找到时给出明确错误。
+- 管理端和 H5 会先等待后端健康接口返回 `UP`，再启动前端开发服务器，避免后端尚未就绪时登录出现 Vite 代理连接错误；等待超过 120 秒会提示查看后端终端。
+- 在缺少 `node_modules` 时为管理端和 H5 执行 `npm ci`，随后启动两个前端。
+- 将后端、管理端和 H5 放在 VS Code 终端面板的独立分屏中。
+
+也可按 `Ctrl+Shift+P`，运行“任务: 运行任务”，单独选择某个“开发：”任务。停止时先运行“任务: 终止任务”并选择终止全部任务，再运行“开发：停止 Docker 基础设施”。停止基础设施会保留数据库卷，不会清空本地数据。
+
+如果快捷任务提示缺少 `.env`，先完成第 2 节；如果提示无法连接 Docker Engine，启动 Docker Desktop 后重试。若端口 `15432`、`8080`、`5173` 或 `5174` 已被占用，应先停止占用对应端口的旧进程。
+
+若 H5 终端出现 `[vite] http proxy error` 或 `AggregateError`，表示前端当时无法连接 `localhost:8080` 的后端，并非账号密码错误。默认快捷任务现已在开放前端端口前等待后端就绪；如单独手工运行 `npm run dev`，应先确认 `http://localhost:8080/api/v1/health` 可访问。
