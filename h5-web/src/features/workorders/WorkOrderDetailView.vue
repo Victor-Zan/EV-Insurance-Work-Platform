@@ -1,9 +1,12 @@
 <script setup lang="ts">
+import QuotationPanel from '../quotation/QuotationPanel.vue'
+import MaterialsPanel from '../materials/MaterialsPanel.vue'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Button, Cell, CellGroup, Field, NavBar, showSuccessToast, showToast, Tag } from 'vant'
 import { currentUser, httpClient } from '@/shared/http/client'
 import { statusLabels, workOrderApi, type History, type WorkOrder } from './work-orders'
+const materialRevision=ref(0)
 const route=useRoute(),router=useRouter(),id=String(route.params.id),api=workOrderApi(httpClient)
 const order=ref<WorkOrder>(),history=ref<History[]>([]),reason=ref(''),busy=ref(false)
 const isShop=computed(()=>currentUser.value?.roles.includes('REPAIR_SHOP')===true)
@@ -29,6 +32,6 @@ onMounted(load)
   <section v-if="isShop&&order.status==='PENDING_ACCEPTANCE'" class="operation"><h2>接单处理</h2><Field v-model="reason" label="拒绝原因" type="textarea" placeholder="拒绝时必填"/><div class="button-row"><Button block type="primary" :loading="busy" @click="action('accept')">接单</Button><Button block :loading="busy" @click="action('reject')">拒单</Button></div></section>
   <section v-if="isShop&&order.status==='PENDING_ARRIVAL'" class="operation"><h2>车辆到店</h2><Field v-model="reason" label="未到店原因" type="textarea" placeholder="出现延误时填写"/><div class="button-row"><Button block :loading="busy" @click="action('exception')">记录到店异常</Button><Button block type="primary" :loading="busy" @click="action('arrive')">确认到店</Button></div></section>
   <section v-if="isShop&&order.status==='ARRIVAL_EXCEPTION'" class="operation"><h2>到店异常处理</h2><Field v-model="reason" label="备注" type="textarea" placeholder="继续等待时可选填"/><div class="button-row"><Button block :loading="busy" @click="action('continue')">继续等待</Button><Button block type="primary" :loading="busy" @click="action('arrive')">确认到店</Button></div></section>
-  <section class="operation"><h2>进度记录</h2><CellGroup><Cell v-for="item in history" :key="item.id" :title="statusLabels[item.toStatus as keyof typeof statusLabels]||item.toStatus" :value="item.occurredAt" :label="item.reason||item.action"/></CellGroup></section>
+  <QuotationPanel v-if="isShop" :case-id="id" :refresh-token="materialRevision" @changed="load"/><MaterialsPanel @changed="materialRevision++;load()" :case-id="id" :status="order.status" :assignment-version="order.currentAssignment?.assignmentVersion"/><section class="operation"><h2>进度记录</h2><CellGroup><Cell v-for="item in history" :key="item.id" :title="statusLabels[item.toStatus as keyof typeof statusLabels]||item.toStatus" :value="item.occurredAt" :label="item.reason||item.action"/></CellGroup></section>
  </main></template>
 <style scoped>.case-head,.operation{padding:22px 20px}.case-head h1{font-size:24px;margin:14px 0 8px}.case-head p{color:#667085}.operation h2{font-size:18px}.button-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}</style>

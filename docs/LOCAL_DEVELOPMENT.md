@@ -180,3 +180,43 @@ API 契约详见 Swagger：POST /api/v1/auth/login 输入 username、password、
 如果快捷任务提示缺少 `.env`，先完成第 2 节；如果提示无法连接 Docker Engine，启动 Docker Desktop 后重试。若端口 `15432`、`8080`、`5173` 或 `5174` 已被占用，应先停止占用对应端口的旧进程。
 
 若 H5 终端出现 `[vite] http proxy error` 或 `AggregateError`，表示前端当时无法连接 `localhost:8080` 的后端，并非账号密码错误。默认快捷任务现已在开放前端端口前等待后端就绪；如单独手工运行 `npm run dev`，应先确认 `http://localhost:8080/api/v1/health` 可访问。
+
+## 本轮阶段5隔离环境与快速启动
+
+已核验Java21.0.10、Node24.14.0、npm11.9.0（项目声明npm11.12.1，未全局改装）、Docker29.8.2/Compose5.5.1、WSL2、PostgreSQL17.6和MinIO。宿主5432不是本轮测试数据库。本任务依赖project `ev-insurance-phase5-audit`，PG25432，MinIO19000/19001。凭据在第二阶段local-validation，禁止提交。
+
+从仓库根目录启动后端（新phase5_local schema，保留现有测试schema与数据）：
+
+```powershell
+.\scripts\Start-Local.ps1 -EnvironmentFile '..\local-validation\.env.phase5'
+```
+
+此命令在当前终端运行，Ctrl+C停止后端。另开终端分别进入admin-web/h5-web，执行 `npm run dev`；Vite默认代理8080，管理端5173、H5 5174。dev_admin/dev_customer_service/dev_repair_shop/dev_owner的本地密码从.env.phase5对应变量查看，不写入报告。已有node_modules，无需重复安装。
+
+Docker不在当前PATH时，用已安装的 `C:\Users\YUFEI\AppData\Local\Programs\DockerDesktop\resources\bin\docker.exe` 执行原Compose命令，并指定 `--project-name ev-insurance-phase5-audit --env-file ..\local-validation\.env`，不加-v。
+
+普通本地.env须新增MINIO_ENDPOINT/MINIO_ACCESS_KEY/MINIO_SECRET_KEY/MINIO_BUCKET；这些是后端配置，Compose的MINIO_ROOT_*不自动映射。私有桶不存在时创建；已有桶存在公开策略则拒绝存取，不擅自修改策略。真实上线应用账号应限定桶权限，本轮隔离验收使用本地测试存储凭据。
+
+完整门禁：`scripts/Verify-Baseline.ps1 -JavaHome 'C:\Program Files\Android\Android Studio\jbr' -TestEnvironmentFile '..\local-validation\.env'`。真实HTTP及重启链路：`scripts/Verify-Phase5-Http.ps1 -TestEnvironmentFile '..\local-validation\.env' -DockerExe 'C:\Users\YUFEI\AppData\Local\Programs\DockerDesktop\resources\bin\docker.exe'`，临时占用18080，结束后停止该后端，数据保留。
+HTTP复验脚本需要PowerShell7（使用HttpClient和SkipHttpErrorCheck）；Start-Local/Verify-Baseline无需该HTTP开关。
+
+## 第6阶段启动和复验（2026-10-10）
+
+沿用上述隔离 PostgreSQL/MinIO。本轮backend/target清理两次被Windows拒绝，未发现Java进程，也未改权限或删除目录；通过可选Maven profile将完整构建放到第二阶段local-validation/phase6-build。原默认构建方式保留。
+
+从仓库根目录启动（凭据仍由本地环境文件注入，不写文档）：
+
+```powershell
+.\scripts\Start-Local.ps1 -EnvironmentFile '..\local-validation\.env.phase5' -BuildDirectory '..\local-validation\phase6-dev-build'
+```
+
+仍使用8080，两前端分别npm run dev。客服进入已到店案件可审核加价、录入核损并两项确认；网点在H5提交原始报价、查看四项门禁并开修；管理员只读，车主无报价入口。材料上传沿用阶段5真实MinIO，完成/取消只读。停止用Ctrl+C，不删数据。
+
+完整门禁与真实业务复验（PowerShell7，真实HTTP占用18080且结束停止自己的JAR；不停止其他服务）：
+
+```powershell
+.\scripts\Verify-Baseline.ps1 -JavaHome 'C:\Program Files\Android\Android Studio\jbr' -TestEnvironmentFile '..\local-validation\.env' -BuildDirectory '..\local-validation\phase6-build'
+.\scripts\Verify-Phase6-Http.ps1 -TestEnvironmentFile '..\local-validation\.env' -DockerExe 'C:\Users\YUFEI\AppData\Local\Programs\DockerDesktop\resources\bin\docker.exe'
+```
+
+HTTP脚本默认读取phase6-build/backend-0.0.1-SNAPSHOT.jar，临时随机schema与测试JWT/密码，仅测试专用数据库；保存脱敏结果，不清空现有schema/卷。日志及JSON在第二阶段local-validation；API见PHASE6_API.md。

@@ -1,0 +1,5 @@
+{
+  "check": "anonymous_actual_business_object",
+  "status": "PASS",
+  "httpStatus": 403
+}

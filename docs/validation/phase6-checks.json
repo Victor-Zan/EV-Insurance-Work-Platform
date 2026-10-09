@@ -1,0 +1,56 @@
+[
+  {
+    "check": "backend-verify",
+    "status": "PASS",
+    "exitCode": 0,
+    "logFile": "backend-verify.log"
+  },
+  {
+    "check": "admin-web-lint",
+    "status": "PASS",
+    "exitCode": 0,
+    "logFile": "admin-web-lint.log"
+  },
+  {
+    "check": "admin-web-typecheck",
+    "status": "PASS",
+    "exitCode": 0,
+    "logFile": "admin-web-typecheck.log"
+  },
+  {
+    "check": "admin-web-test",
+    "status": "PASS",
+    "exitCode": 0,
+    "logFile": "admin-web-test.log"
+  },
+  {
+    "check": "admin-web-build",
+    "status": "PASS",
+    "exitCode": 0,
+    "logFile": "admin-web-build.log"
+  },
+  {
+    "check": "h5-web-lint",
+    "status": "PASS",
+    "exitCode": 0,
+    "logFile": "h5-web-lint.log"
+  },
+  {
+    "check": "h5-web-typecheck",
+    "status": "PASS",
+    "exitCode": 0,
+    "logFile": "h5-web-typecheck.log"
+  },
+  {
+    "check": "h5-web-test",
+    "status": "PASS",
+    "exitCode": 0,
+    "logFile": "h5-web-test.log"
+  },
+  {
+    "check": "h5-web-build",
+    "status": "PASS",
+    "exitCode": 0,
+    "logFile": "h5-web-build.log"
+  }
+]

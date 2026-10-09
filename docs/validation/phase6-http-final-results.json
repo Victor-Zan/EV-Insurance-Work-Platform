@@ -1,0 +1,20 @@
+[
+  {
+    "check": "raw_fixed_percentage_immutable_snapshots",
+    "caseId": "a953c3e4-afd2-40c1-97f9-64730bda502f",
+    "status": "PASS"
+  },
+  {
+    "check": "role_field_and_external_export_isolation",
+    "status": "PASS"
+  },
+  {
+    "check": "four_gate_invalidation_reconfirm_start_and_freeze",
+    "status": "PASS"
+  },
+  {
+    "check": "jar_restart_persists_history_and_amounts",
+    "status": "PASS",
+    "schema": "phase6_http_954055ebb8d64b728644f28031289a8b"
+  }
+]

@@ -165,7 +165,7 @@ public class WorkOrderService {
         var actor=requireStaff();
         var row=lock(id);
         requireVisibleRow(row,actor);
-        if(Set.of(WorkOrderStatus.DRAFT.name(),WorkOrderStatus.CANCELLED.name(),WorkOrderStatus.CLOSED.name()).contains(row.getStatus())) {
+        if(Set.of(WorkOrderStatus.DRAFT.name(),WorkOrderStatus.CANCELLED.name(),WorkOrderStatus.CLOSED.name(),WorkOrderStatus.COMPLETED.name()).contains(row.getStatus())) {
             throw state("Critical fields cannot be changed in the current state");
         }
         String insurance=required(request.insuranceCompany(),"insuranceCompany");

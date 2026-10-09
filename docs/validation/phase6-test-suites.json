@@ -1,0 +1,82 @@
+[
+  {
+    "name": "com.evinsurance.platform.health.api.HealthControllerTest",
+    "kind": "unit",
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  {
+    "name": "com.evinsurance.platform.identity.ScopeTest",
+    "kind": "unit",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  {
+    "name": "com.evinsurance.platform.quotation.domain.QuoteCalculatorTest",
+    "kind": "unit",
+    "tests": 4,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  {
+    "name": "com.evinsurance.platform.quotation.domain.RepairAuthorizationGateTest",
+    "kind": "unit",
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  {
+    "name": "com.evinsurance.platform.document.MaterialsPostgresIT",
+    "kind": "postgres-integration",
+    "tests": 5,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  {
+    "name": "com.evinsurance.platform.identity.IdentityPostgresIT",
+    "kind": "postgres-integration",
+    "tests": 11,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  {
+    "name": "com.evinsurance.platform.pricing.CataloguePostgresIT",
+    "kind": "postgres-integration",
+    "tests": 4,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  {
+    "name": "com.evinsurance.platform.pricing.PricePostgresIT",
+    "kind": "postgres-integration",
+    "tests": 13,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  {
+    "name": "com.evinsurance.platform.quotation.QuotationPostgresIT",
+    "kind": "postgres-integration",
+    "tests": 5,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  {
+    "name": "com.evinsurance.platform.workorder.WorkOrderPostgresIT",
+    "kind": "postgres-integration",
+    "tests": 6,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  }
+]

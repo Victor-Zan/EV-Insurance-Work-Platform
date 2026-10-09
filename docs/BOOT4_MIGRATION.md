@@ -16,6 +16,8 @@ Java21保留；Boot3.5.16→4.1.1，MP3.5.17改用boot4 starter，springdoc2.8.1
 | 实际JAR HTTP | 18080独立smoke schema，health/actuator/OpenAPI均200，四角色真实登录成功 |
 | 既有迁移与锁文件 | 相对origin/main原样；git diff --check通过 |
 
-证据位于第二阶段local-validation/backend-verify.log、baseline-results.json、boot4-smoke-results.json及两个前端日志；测试schema与数据卷保留。首次实际JAR启动因烟测命令遗漏JWT_TTL_SECONDS失败，补齐进程变量后复验通过，未加入源码默认密钥或放宽校验。首次依赖安装网络重置，按原锁文件重试成功；没有删除或跳过测试。
+迁移门禁已在本轮工具输出确认；backend-verify.log与baseline-results.json随后用于阶段5完整回归（新增集成测试，仍覆盖原34项），独立实际JAR证据保存在第二阶段local-validation/boot4-smoke-results.json及boot4-runtime-retry.log，阶段5回归保存在phase5-complete-regression.log与两个前端日志；测试schema与数据卷保留。首次实际JAR启动因烟测命令遗漏JWT_TTL_SECONDS失败，补齐进程变量后复验通过，未加入源码默认密钥或放宽校验。首次依赖安装网络重置，按原锁文件重试成功；没有删除或跳过测试。
 
 MinIO基础设施另验：私有测试桶写入、重启后SHA256一致、匿名读取403。这不能代替阶段5附件API授权验收。迁移验证JAR进程已停止；隔离PostgreSQL/MinIO仍运行，数据未删除。未推送、创建PR或部署。
+
+Git迁移文件曾单独暂存，尝试本地提交因仓库未配置user.name/user.email失败；未伪造作者、修改全局配置或绕过Git。技术迁移与阶段5业务范围在本记录和PHASE5_VERIFICATION.md中分别交付，尚无新提交。

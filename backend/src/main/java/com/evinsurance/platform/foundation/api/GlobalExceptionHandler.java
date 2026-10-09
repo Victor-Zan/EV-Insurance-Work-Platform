@@ -24,6 +24,7 @@ public class GlobalExceptionHandler {
     }
     @ExceptionHandler({ConstraintViolationException.class,MethodArgumentTypeMismatchException.class,HttpMessageNotReadableException.class,
         org.springframework.web.bind.MissingServletRequestParameterException.class,
+        org.springframework.web.bind.MissingRequestHeaderException.class,
         org.springframework.web.multipart.support.MissingServletRequestPartException.class})
     public ResponseEntity<ApiResponse<Void>> malformed(Exception error) {
         return ResponseEntity.badRequest().body(ApiResponse.failure("VALIDATION_ERROR","Invalid request parameters"));

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.evinsurance.platform.ocr.infrastructure.OcrMapper">
+ <select id="find" resultType="com.evinsurance.platform.ocr.infrastructure.OcrRow">SELECT * FROM ocr_job WHERE id=#{id}</select>
+ <select id="lock" resultType="com.evinsurance.platform.ocr.infrastructure.OcrRow">SELECT * FROM ocr_job WHERE id=#{id} FOR UPDATE</select>
+ <select id="byFile" resultType="com.evinsurance.platform.ocr.infrastructure.OcrRow">SELECT * FROM ocr_job WHERE file_id=#{fileId}</select>
+ <insert id="insert">INSERT INTO ocr_job(id,file_id,state,created_by,simulate_failure) VALUES(#{id},#{fileId},'QUEUED',#{actor},#{fail})</insert>
+ <update id="retry">UPDATE ocr_job SET state='QUEUED',error_code=NULL,updated_at=now() WHERE id=#{id} AND state='FAILED'</update>
+ <update id="expire">UPDATE ocr_job SET state='FAILED',error_code='LEASE_EXHAUSTED',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE state='RUNNING' AND lease_until&lt;now() AND attempts&gt;=#{maxAttempts} AND EXISTS(SELECT 1 FROM case_file f JOIN work_order w ON w.id=f.work_order_id WHERE f.id=ocr_job.file_id AND w.status NOT IN ('COMPLETED','CANCELLED'))</update>
+ <select id="claim" resultType="com.evinsurance.platform.ocr.infrastructure.OcrRow" affectData="true">
+  WITH next AS (SELECT j.id FROM ocr_job j JOIN case_file f ON f.id=j.file_id JOIN work_order w ON w.id=f.work_order_id WHERE w.status NOT IN ('COMPLETED','CANCELLED') AND (j.state='QUEUED' OR (j.state='RUNNING' AND lease_until&lt;now())) AND attempts&lt;#{maxAttempts} ORDER BY j.created_at,j.id FOR UPDATE OF j SKIP LOCKED LIMIT 1)
+  UPDATE ocr_job j SET state='RUNNING',attempts=j.attempts+1,lease_token=#{token},lease_until=now()+make_interval(secs=&gt;#{seconds}),updated_at=now() FROM next WHERE j.id=next.id RETURNING j.*
+ </select>
+ <update id="finish">UPDATE ocr_job SET state=CASE WHEN #{error,jdbcType=VARCHAR} IS NULL THEN 'SUCCEEDED' ELSE 'FAILED' END,candidate_json=#{candidate,jdbcType=VARCHAR},error_code=#{error,jdbcType=VARCHAR},lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=#{id} AND lease_token=#{token} AND state='RUNNING' AND lease_until&gt;now()</update>
+ <update id="review">UPDATE ocr_job SET review_version=#{version}+1,candidate_json=#{candidate},updated_at=now() WHERE id=#{id} AND review_version=#{version} AND state='SUCCEEDED'</update>
+ <insert id="appendReview">INSERT INTO ocr_review(job_id,revision,candidate_json,actor_id,command_key) VALUES(#{id},#{version},#{candidate},#{actor},#{key})</insert>
+ <select id="reviewCommand" resultType="map">SELECT candidate_json,revision FROM ocr_review WHERE job_id=#{id} AND command_key=#{key}</select>
+ <insert id="confirm">INSERT INTO ocr_confirmation VALUES(#{id},#{version},#{actor},now()) ON CONFLICT DO NOTHING</insert>
+ <select id="confirmed" resultType="long">SELECT count(*) FROM ocr_confirmation WHERE job_id=#{id} AND revision=#{version}</select>
+ <select id="historyCount" resultType="long">SELECT count(*) FROM ocr_review WHERE job_id=#{id}</select>
+ <select id="history" resultType="map">SELECT r.revision,r.candidate_json,r.actor_id,r.created_at,c.actor_id AS confirmed_by,c.created_at AS confirmed_at FROM ocr_review r LEFT JOIN ocr_confirmation c USING(job_id,revision) WHERE r.job_id=#{id} ORDER BY r.revision DESC LIMIT #{size} OFFSET #{offset}</select>
+</mapper>

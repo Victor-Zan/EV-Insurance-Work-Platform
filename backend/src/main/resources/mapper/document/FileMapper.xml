@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.evinsurance.platform.document.infrastructure.FileMapper">
+ <select id="find" resultType="com.evinsurance.platform.document.infrastructure.FileRow">SELECT * FROM case_file WHERE id=#{id}</select>
+ <insert id="insert">INSERT INTO case_file VALUES(#{id},#{workOrderId},#{groupId},#{category},#{versionNo},#{state},#{objectKey},#{originalName},#{contentType},#{byteSize},#{sha256},#{shopId},#{assignmentVersion},#{uploadedBy},#{createdAt})</insert>
+ <update id="changeState">UPDATE case_file SET state=#{state} WHERE id=#{id} AND state='ACTIVE'</update>
+ <select id="activeCount" resultType="long">SELECT count(*) FROM case_file WHERE work_order_id=#{orderId} AND category=#{category} AND state='ACTIVE'</select>
+ <sql id="scope">work_order_id=#{orderId}
+  <if test="scope != 'STAFF'">AND state='ACTIVE'
+   <choose>
+    <when test="scope == 'OWNER'">AND category IN ('ARRIVAL_PHOTO','PROGRESS_PHOTO','COMPLETION_PHOTO')</when>
+    <otherwise>AND category IN ('SHOP_QUOTE','ARRIVAL_PHOTO','PROGRESS_PHOTO','COMPLETION_PHOTO') AND shop_id=#{shopId} AND assignment_version=#{assignmentVersion}</otherwise>
+   </choose>
+  </if>
+ </sql>
+ <select id="list" resultType="com.evinsurance.platform.document.infrastructure.FileRow">SELECT * FROM case_file WHERE <include refid="scope"/> ORDER BY created_at DESC,id LIMIT #{limit} OFFSET #{offset}</select>
+ <select id="count" resultType="long">SELECT count(*) FROM case_file WHERE <include refid="scope"/></select>
+ <select id="command" resultType="map">SELECT request_hash,file_id FROM case_file_command WHERE actor_id=#{actor} AND command_key=#{key}</select>
+ <insert id="insertCommand">INSERT INTO case_file_command VALUES(#{actor},#{key},#{hash},#{fileId})</insert>
+ <select id="missingReason" resultType="string">SELECT reason FROM case_material_exception WHERE work_order_id=#{orderId} ORDER BY version DESC LIMIT 1</select>
+ <insert id="missing">INSERT INTO case_material_exception SELECT #{orderId},#{reason},#{actor},coalesce(max(version),0)+1,now() FROM case_material_exception WHERE work_order_id=#{orderId}</insert>
+</mapper>

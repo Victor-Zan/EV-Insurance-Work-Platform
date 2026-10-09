@@ -1,5 +1,53 @@
 # 项目进度
 
+## 2026-10-10 第6阶段完成
+
+用户授权进入第6阶段并确认D-032金额、占比分摊、版本及确认规则。本轮保留阶段1—5、Boot4.1.1及既有暂存/未暂存改动，继续同一指定第二阶段仓库与分支；origin正确，HEAD85fa6f0，无推送/PR/部署。
+
+- 新增V7和quotation模块：不可变网点原始版、客服固定额/比例审核、价格快照、精确外部行金额、核损版本/材料快照、确认、授权历史及幂等记录。客服不能改原单价，OWNER不看价格，网点不看加价/正式总额/核损金额。
+- 四项开修后端门禁、当前派单/角色/状态验证，复用案件行锁/CAS/状态历史/审计。报价/核损/材料变更使两确认失效并撤销授权，开修后拒绝普通修订；无网点二次确认或回款条件。
+- 两端案件详情必要验证面板、受控对外CSV数据；不做正式模板/UI重设计或阶段7—8。
+
+| 检查 | 本轮结果 |
+| --- | --- |
+| 完整后端clean verify -Ppostgres-it | 12单元 + 44 PG集成，0失败/错误/跳过，JAR通过；保留此前39集成 |
+| Flyway | 隔离PG随机schema，V7及普通/dev迁移与validate通过；V1—V6未改 |
+| 两前端lint/typecheck/test/build | 全通过，管理21/H5 11测试 |
+| 实际HTTP/MinIO | 固定额、比例、历史、权限、确认失效、重新授权/开修、开修后冻结通过 |
+| JAR重启 | 正式金额101.23、核损105、REPAIRING与历史持久保留通过 |
+| 并发 | 同键报价只一版；开修与核损作废的事务竞态通过 |
+| git diff --check | 通过 |
+
+默认target清理两次失败的日志保留，完整门禁改用第二阶段local-validation/phase6-build，无跳过/删除/放宽测试。浏览器逐项点击及视觉QA未执行。Git作者身份仍未设置，改动未提交，未更改全局配置、清库/删卷。详细失败/未执行与证据见PHASE6_VERIFICATION.md，接口见PHASE6_API.md。
+
+启动：scripts/Start-Local.ps1 -EnvironmentFile '..\local-validation\.env.phase5' -BuildDirectory '..\local-validation\phase6-dev-build'，两端npm run dev，详见LOCAL_DEVELOPMENT.md。实际测试JAR已停止，隔离PG/MinIO和数据保留。
+
+第6阶段无阻塞规则。停在阶段6，等用户确认第7阶段，届时先确认维修状态、完工照片最低数量、收车、评价与投诉规则。
+
+
+## 2026-10-09 独立Boot4迁移与阶段5完成
+
+工作区为用户指定第二阶段仓库，origin正确，初始main/85fa6f0干净；现feature/phase5-files-ocr-map。本轮先独立迁移Boot4.1.1、MP boot4 starter/springdoc3.1.1/Jackson3并完整回归原阶段1—4，然后实现阶段5，见BOOT4_MIGRATION.md及PHASE5_VERIFICATION.md。
+
+- 完成真实私有MinIO附件、分类/元数据/哈希/类型/大小校验、20有效件限制、不可覆盖版本、客服替换作废/缺失补传、真实鉴权下载；后端覆盖角色、当前派单与车主绑定、字段输出和审计。
+- 完成可替换Mock OCR、持久化任务/去重/租约并发领取/有限失败重试、人工候选修订/确认/审计；确认只留快照，不进正式业务。
+- 完成客服Mock地图五项操作，接实际区域网点；管理端/H5只增加本阶段必要验证页面。阶段4机制及共享迁移保留；修复COMPLETED仍可修改关键字段的直接冲突。
+- 用户确认PDF/JPG/PNG、10MiB、每类20有效附件且无总量上限、七类权限、历史保留、不物理删除/自动清理、完成取消只读、OCR与地图范围；D-030/OPEN_QUESTIONS已同步。
+
+| 本轮检查 | 最终结果 |
+| --- | --- |
+| 完整后端clean verify -Ppostgres-it | 5单元+39集成通过，0失败/错误/跳过，JAR构建通过，保留原34集成 |
+| 补充权限边界focused verify | 5单元+5材料集成通过；最终完整门禁全部39集成再次通过 |
+| PostgreSQL17.6 / Flyway | 隔离25432数据库随机schema，普通/dev迁移及validate通过，V6通过 |
+| 两前端lint/typecheck/test/build | 全通过：管理18、H5 8测试 |
+| 真实HTTP业务及重启 | MinIO下载哈希、车主越权403、定时OCR失败重试/人工修正确认、JAR与MinIO重启保留通过；实际业务对象匿名403 |
+| git diff --check | 通过 |
+
+失败与未执行项明确保留在PHASE5_VERIFICATION.md，未删除/跳过/放宽测试。浏览器逐项点击/视觉QA未执行，生产及真实外部服务不在范围。Spring精确维护窗口待官方API复核。Git本地提交因无作者身份失败，未修改全局配置，未推送/PR/部署。HTTP测试后端已停止，隔离数据库/MinIO保留。
+
+启动：仓库根目录scripts/Start-Local.ps1 -EnvironmentFile '..\local-validation\.env.phase5'，另开两端npm run dev；详细见LOCAL_DEVELOPMENT.md。完成阶段5后停止，等待用户确认阶段6及财务规则。
+
+
 ## 2026-10-08 提示词 0—4 对齐与提示词 4 完成
 
 - 以用户提供的《Codex_电动车保险平台_MVP_完整分步提示词》为准，重新核对提示词 0—4；当前分支只保留提示词 4 的工单核心、重复判断、派单及到店前后衔接，不进入提示词 5。
@@ -395,3 +443,9 @@ Docker CLI/Desktop 不可用，Compose 本次未验证且文件未改；未执�
 - 可供人工创建 Draft PR 的分支：https://github.com/Victor-Zan/EV-Insurance-Work-Platform/tree/feature/sherr-auth-rbac 。需为 GitHub 集成配置 Pull requests 写权限，或由具有权限的协作者人工建立指向 main 的 Draft PR。
 - 本任务创建的独立 PostgreSQL 测试实例已通过 pg_ctl -D work/postgres-test-data -m fast -w stop 停止，测试库数据保留；未删除或修改共享数据库。
 - 本文件的收尾提交仅记录验证与 Git 交付结果；阶段 2 在此停止，不进入后续阶段。
+
+## 2026-10-10 设计学习记录与GitHub交付
+
+用户授权记录awesome-design-md学习并上传截至当前全部项目成果。新增DESIGN_RESEARCH.md，区分上游分析、自己的建议与未实施的视觉规范；本轮不改UI、不进入阶段7。阶段5—6及Boot4可公开验证摘要整理到docs/validation，保留历史失败和未执行说明，真实凭据/缓存/构建/数据库/对象数据不上传。
+
+沿用现有成果分支feature/phase5-files-ocr-map；远端main核验仍为85fa6f0，与本地基线一致。Boot4迁移保留独立提交，随后提交阶段5—6和设计学习/验证记录；仅普通推送成果分支，不强推、不直接合并main、不创建PR或部署。提交署名取自仓库当前基线作者Victor-Zan，用本次Git命令参数注入，不修改全局Git配置。

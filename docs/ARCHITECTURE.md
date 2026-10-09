@@ -193,7 +193,7 @@ PriceRules 同时服务手工维护和 ImportValidator；手工与批量导入�
 | Vue 3 + TypeScript + Vite | 组件生态成熟；Composition API 适合复杂表单和流程；TS 提前发现接口/状态错误；Vite 开发与构建反馈快 | 两个前端应用会有少量重复；TS 与构建工具需要统一规范。先保持应用独立，重复真实出现后再抽共享代码 |
 | Element Plus（管理端） | 表格、表单、分页、上传等后台场景组件齐全，能快速交付一致的桌面体验 | 默认样式较通用、包体较大；通过按需引入、设计变量和业务组件控制，不做无关深度定制 |
 | Vant（H5） | 面向移动端，触控、表单、上传与反馈组件成熟，适合网点和车主 H5 | 不适合复杂桌面表格；因此与管理端分应用，不混用组件库 |
-| Java 21 + Spring Boot 3.5 | Java 21 是 LTS，类型与生态稳定；Spring Boot/Security 适合事务、权限、审计和企业集成；团队后续招聘与维护成本可控 | 启动和内存高于轻量运行时，框架配置有复杂度；用模块化单体、清晰依赖和有限组件控制成本 |
+| Java 21 + Spring Boot 4.1.1 | Java 21保留；用户确认迁移至Boot4路线，采用Framework7、Boot4 starter、Jackson3、MP Boot4 starter及springdoc3.1.1 | 主版本迁移单独回归身份/价格/工单/幂等快照与迁移，业务开发不混入财务或状态机变更 |
 | Spring Security + JWT + RBAC | 服务端认证授权能力成熟；JWT 适合前后端分离；RBAC 与四类固定角色匹配 | Token 撤销与权限实时变更需要设计；RBAC 本身不解决网点/本人数据范围。使用 30 分钟有效期、过期重新登录（无刷新 Token），每次请求检查数据库状态，并在应用层做数据范围校验 |
 | PostgreSQL | 强事务、约束、索引和 `NUMERIC` 适合金额与状态一致性；复杂查询和批量能力可支撑正式价格库；还能承载 MVP 任务表 | 单库会成为容量和故障集中点；需索引、备份、连接池和监控，未来依据数据再扩展而非提前分库 |
 | MyBatis-Plus + MyBatis XML | 简单 CRUD 少样板，复杂价格/报表查询仍能完全控制 SQL 和执行计划 | 两套写法增加规范成本，XML 与对象变更可能不同步；明确使用边界并用数据库集成测试约束 |
@@ -214,3 +214,19 @@ PriceRules 同时服务手工维护和 ImportValidator；手工与批量导入�
 - 报价总额加价但单项价格不变会产生“正式总额与明细合计关系”的展示问题，需在报价阶段前确认。
 - JWT 每请求读取实时账号状态；数据库不可用时认证不能继续。阶段 2 登录与生命周期规则见 D-018。
 - PostgreSQL 任务表与价格库共享数据库，需要用指标防止 Worker 或批量导入影响在线请求。
+
+## 阶段5模块与事务
+
+document负责案件分类/角色/版本/幂等/审计，integration.storage依赖ObjectStorageService并由MinioObjectStorage实际存取。数据库锁住案件串行化单类有效计数、替换和提交；对象成功但数据库回滚时补偿未提交对象（历史对象不删除）。无分布式事务、失败补偿可能需要人工核对。
+
+ocr任务表通过SKIP LOCKED+有限租约并发领取；过期令牌不能写回。OcrTaskStore单独事务领取/完成，Worker校验源哈希后调用可替换OcrProvider。完成写回先锁案件检查只读状态，人工复核及审计同事务；确认记录引用不可变快照。异步失败的错误码不包含源内容或凭据。
+
+MapProvider本轮Mock，不真实定位；CS端接真实区域网点筛选与合成地图数据。所有新增路由默认鉴权，业务服务重新执行案件/角色/字段权限。阶段8通知/导出尚未实现，不存在新增旁路。
+
+## 第6阶段 quotation 模块
+
+新增quotation/{api,application,domain,infrastructure}及MyBatis XML，继续模块化单体。QuoteCalculator集中BigDecimal/BigInteger分计算与最大余数分摊，RepairAuthorizationGate只判断四项证据。QuotationService负责角色字段过滤、不可变快照、幂等、历史和开修；QuotationLifecycle与现有FileService同事务共享案件行锁，将核损材料变化与确认撤销绑定。复用WorkOrderMapper CAS和状态历史、AuditService及私有MinIO，不直接暴露表或对象存储键。
+
+V7追加不可变原始/正式/核损/确认/事件/幂等表及可更新上下文，V1—V6不改。管理员只读、客服财务操作、当前网点原始报价/开修，OWNER拒绝报价接口。导出明确对外字段名单，不输出内部金额。两前端详情的QuotationPanel仅做当前阶段验证，金额保留字符串。
+
+Windows既有target目录清理被拒绝时，可用validation.build.directory激活isolated-validation-build profile；Verify-Baseline与Start-Local限制路径在第二阶段local-validation内。仍执行完整clean verify，不跳过测试、迁移或构建。

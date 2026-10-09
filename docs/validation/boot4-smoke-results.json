@@ -1,0 +1,30 @@
+[
+  {
+    "check": "/api/v1/health",
+    "status": 200
+  },
+  {
+    "check": "/actuator/health",
+    "status": 200
+  },
+  {
+    "check": "/v3/api-docs",
+    "status": 200
+  },
+  {
+    "check": "login-admin",
+    "status": "SUCCESS"
+  },
+  {
+    "check": "login-customer_service",
+    "status": "SUCCESS"
+  },
+  {
+    "check": "login-repair_shop",
+    "status": "SUCCESS"
+  },
+  {
+    "check": "login-owner",
+    "status": "SUCCESS"
+  }
+]

@@ -87,10 +87,12 @@
 
 ## 3. 后续阶段主要实体（尚未实现）
 
+2026-10-09：文件/OCR已在V6落地，准确表名与字段见下文“第5阶段（V6）”。下表仅为后续报价/维修/资金的概念边界，不作为已实现数据结构。现有V1—V5及阶段4工单字段保持原样，不将价格库NUMERIC(18,2)自动套用到后续报价或OCR字段。实施顺序见PHASE5_PLAN.md。
+
 | 实体 | 核心职责 | 关键约束 |
 | --- | --- | --- |
-| `work_order_file` | 案件材料元数据与 Object Key | 二进制不入 PostgreSQL；访问必须鉴权；提示词 5 实现 |
-| `ocr_job/ocr_result/ocr_confirmation` | Mock OCR、候选字段、人工确认 | 原始结果与人工修改均可追溯，不直接污染正式字段 |
+| `case_file` | 已实现，见下文V6 | 二进制不入PostgreSQL；按角色/案件鉴权 |
+| `ocr_job/ocr_review/ocr_confirmation` | Mock OCR、候选字段、人工确认 | 原始结果与人工修改均可追溯，不直接污染正式字段 |
 | `shop_quote/quote_item` | 网点原始报价和明细版本 | 单价/工时不可被客服改写；历史版本不覆盖 |
 | `platform_quote` | 平台正式报价和总额加价 | FIXED_AMOUNT/PERCENTAGE 二选一，只作用总额 |
 | `insurer_assessment` | 最终核损金额与确认 | 人工录入，需材料和双重确认 |
@@ -103,3 +105,32 @@
 | `async_task` | PostgreSQL Worker 任务 | 幂等、有限重试、并发领取；不引入 RabbitMQ |
 
 上述后续实体只固定已确认边界，字段与迁移必须等对应提示词开始并解决 `OPEN_QUESTIONS.md` 中的前置问题后再设计。
+
+## 第5阶段（V6）
+
+| 表 | 关键字段及约束 |
+| --- | --- |
+| case_file | UUID id/work_order_id/group_id；category七枚举；version_no正整数；state ACTIVE/SUPERSEDED/VOID；同group/version唯一、每组至多一个有效版；object_key内部私有；original_name/content_type/byte_size/sha256；shop_id/assignment_version固定来源范围；uploaded_by/created_at。内容元数据不可更新、不可删除。 |
+| case_file_command | (actor_id,command_key)主键；request_hash/file_id，重复请求返回原附件，不同载荷冲突。 |
+| case_material_exception | (work_order_id,version)主键；reason/actor_id/updated_at，缺失原因追加保留。 |
+| ocr_job | 每file唯一；provider MOCK_V1；QUEUED/RUNNING/SUCCEEDED/FAILED；attempts、simulate_failure(dev)、lease_token/until、error_code、candidate_json、review_version、created_by/created_at/updated_at。 |
+| ocr_review | (job_id,revision)主键，candidate_json/actor_id/command_key/created_at；不可覆盖删除。revision0为机器候选，后续为人工修订。 |
+| ocr_confirmation | (job_id,revision)主键；actor_id/created_at，关联对应复核快照；不可覆盖删除。 |
+
+二进制只在私有MinIO。附件不向客户端输出对象键、哈希、存储凭据；非内部角色使用合成文件名，防止文件名泄露价格。任务确认不写正式业务字段。此段为阶段5边界；阶段6新增报价/金额表见下节。
+
+为兼容阶段4物理删除草稿，case_file/work_order_id保留原UUID但不设置阻止草稿删除的外键；读取必须先解析仍存在的work_order，已删除草稿材料不可从业务API访问，保留对象/审计不清理。
+
+## 第6阶段（V7）
+
+| 表 | 数据与约束 |
+| --- | --- |
+| quote_raw / quote_raw_item | 案件/版本唯一；shop_id与assignment_version固定；来源SHOP_MANUAL快照；数量正INTEGER、单价及行金额NUMERIC(38,2)，行金额=数量×原价；不可UPDATE/DELETE |
+| quote_formal / quote_formal_item | 正式版本与原始版引用；加价方式/值、原始合计/加价额/总额；原价快照、分摊额、external_amount NUMERIC(38,2)、external_unit_price NUMERIC(42,6)；总额=原始+加价；算法PRO_RATA_LARGEST_REMAINDER_V1；不可UPDATE/DELETE |
+| quote_assessment | 不可变核损版本；amount NUMERIC(38,2)、file_snapshot有效核损附件ID/版本、source_formal_id可空、操作者/时间 |
+| quotation_context | 每案件当前raw/formal/assessment指针；version乐观版本、basis_version确认依据、insurer_confirmed/service_confirmed/authorized；仅此上下文可事务更新 |
+| quotation_confirmation | (案件,basis,kind)唯一；INSURER/CUSTOMER_SERVICE；报价/核损版本及file_snapshot、操作者/时间；追加不可变 |
+| quotation_event | 追加确认失效、授权授予/撤销、开修事件；案件/basis/kind/summary/操作者/时间，summary不含内部金额 |
+| quotation_command | (actor_id,operation,command_key)主键；请求hash和首次JSON响应，用于幂等，不可UPDATE/DELETE，不能从公开API直接读取 |
+
+上述版本、明细、确认、事件及幂等行均有数据库不可变触发器。币种CNY/元，金额接口字符串；输入最多2位，比例0..100、最多2位，百分比派生金额HALF_UP到分。原始行占比最大余数分摊，零行不分配，行金额为对外依据；6位单价仅展示。金额容量为技术表示上限，数量正32位整数，每版最多1000行；历史版本无自动删除。历史分页字段按角色过滤，网点仅自身当前派单原始版，车主不可读。

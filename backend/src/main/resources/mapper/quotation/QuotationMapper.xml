@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.evinsurance.platform.quotation.infrastructure.QuotationMapper">
+ <select id="context" resultType="com.evinsurance.platform.quotation.infrastructure.QuotationRows$Context">SELECT * FROM quotation_context WHERE work_order_id=#{id}</select>
+ <insert id="ensure">INSERT INTO quotation_context(work_order_id) VALUES(#{id}) ON CONFLICT DO NOTHING</insert>
+ <update id="save">UPDATE quotation_context SET version=version+1,basis_version=#{basisVersion},raw_quote_id=#{rawQuoteId,jdbcType=OTHER},formal_quote_id=#{formalQuoteId,jdbcType=OTHER},assessment_id=#{assessmentId,jdbcType=OTHER},insurer_confirmed=#{insurerConfirmed},service_confirmed=#{serviceConfirmed},authorized=#{authorized} WHERE work_order_id=#{workOrderId} AND version=#{version}</update>
+ <sql id="versionTable"><choose><when test="type == 'RAW'">quote_raw</when><when test="type == 'FORMAL'">quote_formal</when><otherwise>quote_assessment</otherwise></choose></sql>
+ <select id="nextVersion" resultType="int">SELECT coalesce(max(version_no),0)+1 FROM <include refid="versionTable"/> WHERE work_order_id=#{id}</select>
+ <select id="raw" resultType="com.evinsurance.platform.quotation.infrastructure.QuotationRows$Raw">SELECT * FROM quote_raw WHERE id=#{id}</select>
+ <select id="rawItems" resultType="com.evinsurance.platform.quotation.infrastructure.QuotationRows$RawItem">SELECT line_no,description,quantity,unit_price,amount,source_snapshot FROM quote_raw_item WHERE raw_quote_id=#{id} ORDER BY line_no LIMIT 1000</select>
+ <insert id="insertRaw">INSERT INTO quote_raw(id,work_order_id,version_no,shop_id,assignment_version,total,created_by) VALUES(#{id},#{caseId},#{version},#{shop},#{assignment},#{total},#{actor})</insert>
+ <insert id="insertRawItem">INSERT INTO quote_raw_item VALUES(#{id},#{line},#{description},#{quantity},#{unit},#{amount},#{snapshot})</insert>
+ <select id="formal" resultType="com.evinsurance.platform.quotation.infrastructure.QuotationRows$Formal">SELECT * FROM quote_formal WHERE id=#{id}</select>
+ <select id="formalItems" resultType="com.evinsurance.platform.quotation.infrastructure.QuotationRows$FormalItem">SELECT line_no,description,quantity,original_unit_price,original_amount,allocated_markup,external_unit_price,external_amount FROM quote_formal_item WHERE formal_quote_id=#{id} ORDER BY line_no LIMIT 1000</select>
+ <insert id="insertFormal">INSERT INTO quote_formal(id,work_order_id,version_no,raw_quote_id,markup_mode,markup_value,original_total,markup_amount,total,calculation_version,created_by) VALUES(#{id},#{caseId},#{version},#{raw},#{mode},#{value},#{original},#{markup},#{total},'PRO_RATA_LARGEST_REMAINDER_V1',#{actor})</insert>
+ <insert id="insertFormalItem">INSERT INTO quote_formal_item VALUES(#{id},#{line.sequence},#{line.description},#{line.quantity},#{line.originalUnitPrice},#{line.originalAmount},#{line.allocatedMarkup},#{line.externalUnitPrice},#{line.externalAmount})</insert>
+ <select id="assessment" resultType="com.evinsurance.platform.quotation.infrastructure.QuotationRows$Assessment">SELECT * FROM quote_assessment WHERE id=#{id}</select>
+ <insert id="insertAssessment">INSERT INTO quote_assessment(id,work_order_id,version_no,source_formal_id,amount,file_snapshot,created_by) VALUES(#{id},#{caseId},#{version},#{formal,jdbcType=OTHER},#{amount},#{snapshot},#{actor})</insert>
+ <select id="activeLossFiles" resultType="map">SELECT id,version_no FROM case_file WHERE work_order_id=#{id} AND category='LOSS_ASSESSMENT' AND state='ACTIVE' ORDER BY id LIMIT 20</select>
+ <insert id="confirmation">INSERT INTO quotation_confirmation(id,work_order_id,basis_version,kind,raw_quote_id,formal_quote_id,assessment_id,file_snapshot,actor_id) VALUES(#{id},#{c.workOrderId},#{c.basisVersion},#{kind},#{c.rawQuoteId,jdbcType=OTHER},#{c.formalQuoteId,jdbcType=OTHER},#{c.assessmentId,jdbcType=OTHER},#{snapshot},#{actor}) ON CONFLICT(work_order_id,basis_version,kind) DO NOTHING</insert>
+ <insert id="event">INSERT INTO quotation_event(work_order_id,basis_version,kind,summary,actor_id) VALUES(#{id},#{basis},#{kind},#{summary},#{actor})</insert>
+ <select id="command" resultType="map">SELECT request_hash,response_json FROM quotation_command WHERE actor_id=#{actor} AND operation=#{operation} AND command_key=#{key}</select>
+ <insert id="insertCommand">INSERT INTO quotation_command VALUES(#{actor},#{operation},#{key},#{hash},#{response})</insert>
+ <sql id="historyTable"><choose><when test="type == 'RAW'">quote_raw</when><when test="type == 'FORMAL'">quote_formal</when><when test="type == 'ASSESSMENT'">quote_assessment</when><when test="type == 'CONFIRMATION'">quotation_confirmation</when><otherwise>quotation_event</otherwise></choose></sql>
+ <sql id="historyScope">work_order_id=#{id}<if test="shop != null"> AND shop_id=#{shop} AND assignment_version=#{assignment}</if></sql>
+ <select id="historyCount" resultType="long">SELECT count(*) FROM <include refid="historyTable"/> WHERE <include refid="historyScope"/></select>
+ <select id="history" resultType="map">SELECT * FROM <include refid="historyTable"/> WHERE <include refid="historyScope"/> ORDER BY created_at DESC,id DESC LIMIT #{size} OFFSET #{offset}</select>
+</mapper>
