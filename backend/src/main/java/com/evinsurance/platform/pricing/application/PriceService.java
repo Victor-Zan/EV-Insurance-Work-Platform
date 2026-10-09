@@ -6,14 +6,14 @@ import com.evinsurance.platform.audit.application.AuditService;
 import com.evinsurance.platform.audit.application.AuditService.Action;
 import com.evinsurance.platform.foundation.api.*;
 import com.evinsurance.platform.foundation.web.TraceContext;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import java.util.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 @Service public class PriceService {
  private final PriceMapper mapper;private final SourceMapper sources;private final AuditService audit;private final ObjectMapper json;
  public PriceService(PriceMapper mapper,SourceMapper sources,AuditService audit,ObjectMapper json){this.mapper=mapper;this.sources=sources;this.audit=audit;this.json=json;}
- public String encode(Object value){try{return json.writeValueAsString(value);}catch(com.fasterxml.jackson.core.JsonProcessingException e){throw new IllegalStateException("Cannot encode price data");}}
+ public String encode(Object value){try{return json.writeValueAsString(value);}catch(tools.jackson.core.JacksonException e){throw new IllegalStateException("Cannot encode price data");}}
  public PageResponse<PriceView> list(PriceFilter f,int page,int size){PricingAccess.read();int offset=PageResponse.offset(page,size);return new PageResponse<>(page,size,mapper.count(f),mapper.list(f,offset,size));}
  public PriceView detail(long id){PricingAccess.read();var v=mapper.detail(id);if(v==null)throw ApiException.missing("Price version");return v;}
  public PageResponse<PriceView> history(long id,int page,int size){PricingAccess.read();if(mapper.record(id)==null)throw ApiException.missing("Price record");int offset=PageResponse.offset(page,size);return new PageResponse<>(page,size,mapper.historyCount(id),mapper.history(id,offset,size));}

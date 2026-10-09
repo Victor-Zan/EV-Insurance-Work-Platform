@@ -7,7 +7,7 @@ import com.evinsurance.platform.foundation.api.*;
 import com.evinsurance.platform.foundation.web.TraceContext;
 import com.evinsurance.platform.audit.application.AuditService;
 import com.evinsurance.platform.audit.application.AuditService.Action;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import java.util.*;
 import java.time.Instant;
@@ -102,7 +102,7 @@ import org.springframework.dao.DataAccessException;
    "Rows "+result.size()+"; success "+b.getSuccessCount()+"; failure "+b.getFailureCount()+"; source "+b.getSource());
   return batches.selectById(b.getId());
  }
- private <T> T decode(String text,Class<T> type){try{return json.readValue(text,type);}catch(com.fasterxml.jackson.core.JsonProcessingException e){throw new IllegalStateException("Stored import data invalid");}}
+ private <T> T decode(String text,Class<T> type){try{return json.readValue(text,type);}catch(tools.jackson.core.JacksonException e){throw new IllegalStateException("Stored import data invalid");}}
  public PageResponse<ImportBatchEntity> batches(int page,int size){
   PricingAccess.write();int offset=PageResponse.offset(page,size);return new PageResponse<>(page,size,batches.selectCount(null),
    batches.selectList(new QueryWrapper<ImportBatchEntity>().orderByDesc("id").last("LIMIT "+size+" OFFSET "+offset)));

@@ -27,7 +27,7 @@
 ## 3. 工程结构规则
 
 - 前后端分离：管理端、移动 H5、后端分别构建和部署。
-- 后端使用 Java 21、Spring Boot 3.5，并按业务领域 `package-by-feature` 组织。
+- 后端使用 Java 21、Spring Boot 4.1.1（用户在2026-10-09选择先迁移，见D-028），并按业务领域 `package-by-feature` 组织。
 - 每个领域内部按实际复杂度划分 API、应用、领域、基础设施职责；禁止形成全局巨型 `controller`、`service`、`mapper` 目录。
 - 前端使用 Vue 3、TypeScript、Vite。管理端使用 Element Plus；网点和车主 H5 使用 Vant。
 - 数据库为 PostgreSQL；所有结构和基础数据变更必须通过 Flyway，禁止依赖 Hibernate 自动建表。

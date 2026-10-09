@@ -4,7 +4,7 @@ import com.evinsurance.platform.foundation.api.ApiResponse;
 import com.evinsurance.platform.identity.infrastructure.JwtAuthenticationFilter;
 import com.evinsurance.platform.identity.infrastructure.JwtService;
 import com.evinsurance.platform.identity.infrastructure.UserMapper;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.List;

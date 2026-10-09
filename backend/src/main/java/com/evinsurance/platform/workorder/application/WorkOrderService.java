@@ -13,8 +13,8 @@ import com.evinsurance.platform.workorder.domain.WorkOrderStatus;
 import com.evinsurance.platform.workorder.infrastructure.WorkOrderEntity;
 import com.evinsurance.platform.workorder.infrastructure.WorkOrderMapper;
 import com.evinsurance.platform.workorder.infrastructure.WorkOrderRows;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -423,7 +423,7 @@ public class WorkOrderService {
             if(mapper.completeCommand(actor.id(),operation,key,json.writeValueAsString(result))!=1) {
                 throw ApiException.conflict("IDEMPOTENCY_CONFLICT","Idempotency result could not be stored");
             }
-        } catch(JsonProcessingException error) {
+        } catch(JacksonException error) {
             throw new IllegalStateException("Idempotency result could not be serialized",error);
         }
         return result;
@@ -436,7 +436,7 @@ public class WorkOrderService {
         if(existing.getResponseJson()==null) throw ApiException.conflict("IDEMPOTENCY_IN_PROGRESS","The original request is still in progress");
         try {
             return json.readValue(existing.getResponseJson(),WorkOrderViews.WorkOrder.class);
-        } catch(JsonProcessingException error) {
+        } catch(JacksonException error) {
             throw new IllegalStateException("Stored idempotency result is invalid",error);
         }
     }

@@ -18,6 +18,8 @@ spring:
     locations: classpath:db/migration
     validate-on-migrate: true
   jackson:
+    # Preserve the existing API/snapshot defaults while using Jackson 3.
+    use-jackson2-defaults: true
     default-property-inclusion: non_null
 
 mybatis-plus:
