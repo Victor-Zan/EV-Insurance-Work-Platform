@@ -1,0 +1,14 @@
+
+> ev-insurance-h5-web@0.1.0 build
+> vite build
+
+vite v8.3.1 building client environment for production...
+transforming...
+✓ 403 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.53 kB │ gzip:  0.37 kB
+dist/assets/index-CtfTwItb.css  203.86 kB │ gzip: 54.46 kB
+dist/assets/index-D5LoTLlN.js   256.07 kB │ gzip: 93.52 kB
+
+✓ built in 396ms

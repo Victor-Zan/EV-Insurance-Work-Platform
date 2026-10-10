@@ -1,5 +1,35 @@
 # 项目进度
 
+## 2026-10-10 第8阶段完成
+
+D-038—D-040已确认，在feature/phase8-funds-reminders保留第7阶段未提交成果续建。新增V11资金与导入、V12个人通知/outbox/deadline，人工目标版本/分笔流水/冲销、双编号匹配与人工处理、全局流水去重、实际MinIO源文件、角色字段过滤、通知实时授权及必要两端验证面板。自动超时/重复/升级关闭，客服可选单待办期限，过期仅标签，短信不发送。维修状态与资金独立，实际付款记账守收车/应付/保险回款门禁，不执行付款。
+
+最终完整clean verify -Ppostgres-it：19单元＋62真实PG集成，0失败/错误/跳过；Flyway V1—V12及dev迁移/validate和JAR通过。管理端21/H5 11测试，两端lint/typecheck/test/build全部PASS。最终JAR真实HTTP/MinIO14组链路与重启全部PASS，分笔账本、私有导入、个人已读、deadline历史保留。失败与修复、准确范围见[第8阶段验证](PHASE8_VERIFICATION.md)，接口见[第8阶段API](PHASE8_API.md)。
+
+本阶段无阻塞未决规则；浏览器视觉QA、2000行性能基准和生产部署未执行。启动/复验见LOCAL_DEVELOPMENT.md，所有新增文件与报告均在第二阶段，第一阶段只读。未提交/推送、未开PR/部署、未进入阶段9；停止等待用户下一步指令。以下历史阶段“未开始阶段8”等文字仅描述当时状态。
+
+
+## 2026-10-10 第7阶段完成
+
+D-035/D-036/D-037全部已确认；本轮在feature/phase7-repair-delivery实现维修、收车、撤回、评价及独立投诉，保留阶段1—6和四角色。客服代录仍守开修授权及网点照片要求，收车后COMPLETED、客服有原因撤回待收车；评价与投诉原文保留、车主不再修改、客服追加纠正、管理员处理投诉。
+
+新增V8—V10与repair/complaint模块、私有完工证据冻结、并发CAS与幂等、不可变审计和最小真实API页面。最终clean verify -Ppostgres-it通过14单元＋54真实PostgreSQL集成（零失败/错误/跳过），其中保留原44集成；Flyway V1—V10及dev迁移/validate通过。管理端21/H5 11测试，两端lint/typecheck/test/build全部PASS。最终JAR真实HTTP/MinIO 7组链路与重启保留全部PASS，合法角色变更后的幂等回放字段过滤也通过。准确结果及失败记录见[第7阶段验证](PHASE7_VERIFICATION.md)。
+
+启动与复验命令见[本地开发](LOCAL_DEVELOPMENT.md)。未提交/推送、未开PR/部署、未进入第8阶段；浏览器视觉QA未执行。第一阶段资料保持只读，新增项目和证据全部留在第二阶段。
+
+以下为实施过程与阶段1—6历史记录，较早的待确认/未完成描述已由本条及D-037更新。
+
+## 2026-10-10 第7阶段已开始（规则确认与入口核验）
+
+用户授权维修、收车、评价和独立投诉阶段。基线9619766已推送，入口工作区干净；feature/phase7-repair-delivery从阶段6成果继续。Java/Node/npm、Docker Client/Server/Compose、隔离PostgreSQL真实SQL和25432 TCP、MinIO ready200均通过，详见PHASE7_PLAN.md。
+
+已核对计划与当前决策、状态枚举、案件绑定、派单/取消、附件权限和阶段6开修实现。维修/完工已确认D-035，已实施V8、repair模块、完工照片冻结及两端真实API验证面板，正在验证。收车/评价及投诉用户要求修改；已明确收车后COMPLETED、客服可撤回、评价评分非必填，但其余细节仍待答复，不开放未决写接口。不标记阶段7完成。
+
+维修部分最终验证：后端完整clean verify为14单元＋48 PostgreSQL集成，0失败/错误/跳过；Flyway V8迁移/validate和JAR通过。管理端21/H5 11测试，两端lint/typecheck/test/build全部PASS。真实HTTP/MinIO完成进度幂等、缺照拒绝、完工冻结、绑定车主下载、JAR重启快照/文件保留；Compose config --quiet、PG/MinIO healthy、MinIO ready200。失败修复及未执行项见[PHASE7_VERIFICATION](PHASE7_VERIFICATION.md)。
+
+第7阶段整体未完成：已收到车主/客服可收车、确认后COMPLETED、客服可撤回、评价评分非必填；等待客服代操作范围、撤回状态/原因及已有评价处理、评价修改规则、投诉修改细则。未推送、未开PR、未部署、未进入阶段8。HTTP验证进程已停止，专用PG/MinIO保留。
+
+阶段1—6历史记录保留在下方；此前未提交/未推送表述描述当时状态，最终上传结果见文末。进入阶段7不代表进入阶段8或授权完整UI重设计。
 ## 2026-10-10 第6阶段完成
 
 用户授权进入第6阶段并确认D-032金额、占比分摊、版本及确认规则。本轮保留阶段1—5、Boot4.1.1及既有暂存/未暂存改动，继续同一指定第二阶段仓库与分支；origin正确，HEAD85fa6f0，无推送/PR/部署。
@@ -455,3 +485,23 @@ Docker CLI/Desktop 不可用，Compose 本次未验证且文件未改；未执�
 已通过Git Credential Manager浏览器授权取得fishingfishinfisherence-fei账号，并使用仅本次命令生效的credential.username推送到Victor-Zan/EV-Insurance-Work-Platform的feature/phase5-files-ocr-map分支。此前旧账号fishingfishinfisherence的403已解决；GitHub连接器缺少Git对象写入权限的尝试未上传任何成果。
 
 代码与记录提交：599df29（独立Boot4.1.1迁移）、44fcbb9（阶段5—6、设计学习与公开验证摘要）。普通推送成功并设置分支跟踪；后续本条交付记录单独提交。main未合并，未创建PR或部署；本地凭据、数据库/对象数据、缓存和构建产物未上传。本轮仅补记交付，没有改业务代码或重跑此前已通过的测试，仍停在阶段6。
+
+## 2026-10-10 第8阶段视觉验收补充
+
+用户授权浏览器视觉验收。Edge实际检查客服/管理员桌面及网点/车主390、360像素H5，数据来自独立合成schema和真实API。发现H5进度操作名称与右侧时间重叠，已改为独立时间行及说明换行；两种宽度截图复查通过。H5 lint/typecheck/11测试/build全部PASS。单待办deadline表单、逾期标签与历史实际可见，角色资金入口符合边界。
+
+基础布局验收完成；JSON/英文状态、长详情、原生小按钮/英文错误、UUID手填等可用性问题保留，未标记正式UI定稿。详见[视觉验收报告](PHASE8_VISUAL_VERIFICATION.md)及截图。此条更新第8阶段此前“浏览器视觉QA未执行”的历史结论，仅覆盖报告列出的页面与尺寸；未做物理手机或全部状态验收，未推送/部署/进入下一阶段。
+
+同次视觉验收补充：管理端案件列表v-loading未注册警告已通过局部ElLoading.directive声明修复。管理端lint/typecheck/21测试/build通过，浏览器实际重新进入案件列表后未再出现该指令警告；与H5重叠共修复2项，截图见视觉报告。仍有构建分包提醒，未修改警告阈值。
+
+## 阶段8可用性修复（2026-10-10）
+
+已实现报价行表单/明细表格、中文提示、分页照片及人工案件选择、顶部通知与分区导航、触控尺寸、期限预填和路由按需加载。完整后端19单元+62 PG集成/Flyway、两端24/14测试及8前端门禁通过；14真实HTTP链路通过；2000行XLSX首次记账/重复去重及金额准确性通过。首次时钟中断导致JWT过期的失败已留存并原样重跑通过。浏览器连接故障导致本轮新界面视觉复查未完成，未标为视觉通过。详情[修复记录](USABILITY_FIXES.md)。未推送/PR/部署，仍停在阶段8。
+
+## 第8阶段继续复查（2026-10-10）
+
+内置浏览器完成四角色代表性新版界面，H5 360/390照片和报价布局、实际提交、人工案件匹配、deadline预填与历史。CSV页面上传发现FormData被JSON化，已修复两端请求拦截器，真实CSV及2000行XLSX预览成功。两端25/15测试及lint/typecheck/build PASS，14真实HTTP链路再次PASS，独立API验证账目/报价/投诉照片/权限。详见[复查报告](USABILITY_VISUAL_RECHECK.md)。物理手机、Edge/多浏览器、全状态和生产压力未验证；未推送/部署。
+
+## GitHub交付准备（2026-10-10）
+
+用户授权将当前全部项目成果提交到Victor-Zan/EV-Insurance-Work-Platform；当前分支feature/phase8-funds-reminders。纳入第7—8阶段源码、迁移、测试、文档、合成截图与公开验证结果，并补齐报告引用的8份前端检查日志和3个辅助脚本。环境凭据、Token、数据库/MinIO运行数据、构建产物和工具缓存不提交。验证状态及局限按USABILITY_VISUAL_RECHECK保留，无部署或主分支合并。提交成功以远端分支和提交SHA核对为准。

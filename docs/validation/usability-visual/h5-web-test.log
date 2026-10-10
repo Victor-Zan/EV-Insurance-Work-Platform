@@ -1,0 +1,27 @@
+
+> ev-insurance-h5-web@0.1.0 test
+> node --test tests/*.test.mjs
+
+✔ all four roles are restricted to the correct portal (0.6166ms)
+✔ wrong portal is rejected and does not persist authentication (1.7218ms)
+✔ expiry, malformed persisted state and logout clear all authentication (0.2608ms)
+✔ guard blocks unauthenticated, wrong role and server rejected sessions (0.3458ms)
+✔ login sends credentials and portal to API; authenticated calls attach Bearer (2.7106ms)
+✔ API 401 clears state, 403 preserves valid state and network failures have explicit messages (3.164ms)
+✔ English failures show Chinese guidance while preserving status and code (0.4443ms)
+✔ multipart uploads preserve file bytes instead of JSON serialization (1.0426ms)
+✔ markup payload preserves decimal strings beyond JavaScript integer precision and excludes the other mode (0.537ms)
+✔ quotation mutations carry case scope, original decimal payload and a stable caller-supplied idempotency key (0.316ms)
+✔ historical external quote export uses the authenticated API client and exact quote ID as a blob (0.3768ms)
+✔ quote input keeps money exact, including zero and quantities greater than one (1.7234ms)
+✔ deadline editing preserves China timezone; clearing explicitly sends null (17.957ms)
+✔ shop and owner can enter scoped work-order routes on H5 (7.4422ms)
+✔ shop actions carry assignment version and remain within phase four (1.3155ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 60350.7258

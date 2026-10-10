@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.evinsurance.platform.funds.infrastructure.FundsImportMapper">
+ <select id="matches" resultType="map">
+  SELECT 'CLAIM' kind,k.value identifier,w.id FROM jsonb_array_elements_text(CAST(#{claims} AS jsonb)) k
+   CROSS JOIN LATERAL(SELECT id FROM work_order WHERE claim_no=k.value AND status&lt;&gt;'DRAFT' ORDER BY id LIMIT 2) w
+  UNION ALL
+  SELECT 'BUSINESS' kind,k.value identifier,w.id FROM jsonb_array_elements_text(CAST(#{businesses} AS jsonb)) k
+   CROSS JOIN LATERAL(SELECT id FROM work_order WHERE business_no=k.value AND status&lt;&gt;'DRAFT' LIMIT 2) w
+ </select>
+ <insert id="insertRows">INSERT INTO funds_import_row(import_id,row_number,raw_json,case_id,status,error_code) VALUES
+  <foreach collection="rows" item="row" separator=",">(#{id},#{row.number},#{row.raw},#{row.caseId},#{row.status},#{row.error})</foreach>
+ </insert>
+</mapper>

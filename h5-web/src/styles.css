@@ -42,3 +42,17 @@ body {
 .actions { display: flex; gap: 12px; padding: 24px 0; }
 .error-message { color: #b42318; padding: 16px 24px; }
 .actions { padding: 24px; }
+
+/* Business verification panels: readable controls and touch targets. */
+.quotation,.repair,.funds,.complaint,.materials{background:#fff;border-radius:8px;min-width:0;scroll-margin-top:64px}
+:is(.quotation,.repair,.funds,.complaint,.materials,.notifications) button{min-height:40px;padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#1f2937;cursor:pointer;font:inherit}
+:is(.quotation,.repair,.funds,.complaint,.materials,.notifications) button:disabled{opacity:.5;cursor:not-allowed}
+:is(.quotation,.repair,.funds,.complaint,.materials,.notifications) :is(input:not([type=checkbox]):not([type=radio]),select,textarea){min-height:40px;padding:8px;border:1px solid #cbd5e1;border-radius:6px;font:inherit;max-width:100%}
+:is(.quotation,.repair,.funds,.complaint,.materials,.notifications) label{display:block;margin:10px 0;overflow-wrap:anywhere}
+:is(.quotation,.repair,.funds,.complaint,.materials,.notifications) p[role=status]:not(:empty){padding:10px;margin:10px 0;background:#f1f5f9;color:#1f2937;border-radius:6px;overflow-wrap:anywhere}
+.case-sections{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.case-sections a{color:#175cd3;padding:10px;border:1px solid #d0d5dd;border-radius:6px;text-decoration:none}
+@media(max-width:600px){:is(.quotation,.repair,.funds,.complaint,.materials,.notifications) button{min-height:44px}:is(.quotation,.repair,.funds,.complaint,.materials,.notifications) input:not([type=checkbox]):not([type=radio]),select{min-height:44px}.case-sections a{min-height:44px}}
+
+:is(.photo-picker,.case-picker) label{display:flex;gap:8px;align-items:center}
+.quote-draft-line{display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;min-width:0}
+@media(max-width:600px){.quote-draft-line{display:block}}

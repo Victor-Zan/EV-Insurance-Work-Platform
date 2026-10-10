@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.evinsurance.platform.complaint.infrastructure.ComplaintMapper">
+ <sql id="scope">work_order_id=#{caseId}<if test="shop != null"> AND shop_id=#{shop} AND assignment_version=#{assignment}</if></sql>
+ <select id="count" resultType="long">SELECT count(*) FROM complaint WHERE <include refid="scope"/></select>
+ <select id="list" resultType="map">SELECT * FROM complaint WHERE <include refid="scope"/> ORDER BY created_at DESC,id DESC LIMIT #{size} OFFSET #{offset}</select>
+</mapper>

@@ -56,3 +56,22 @@ test('API 401 clears state, 403 preserves valid state and network failures have 
     assert.equal(session.valid(),status!==401);session.clear()
   }
 })
+
+test('English failures show Chinese guidance while preserving status and code',async()=>{
+ const session=new AuthSession(storage());session.set(result());const api=createClient(session,'/api/v1')
+ api.client.defaults.adapter=async config=>{throw new AxiosError('failure','ERR_TEST',config,{}, {status:409,statusText:'',headers:{},config,data:{code:'REPAIR_VERSION_CONFLICT',message:'Refresh before submitting'}})}
+ await assert.rejects(api.me(),error=>error instanceof ApiError && error.status===409 && error.code==='REPAIR_VERSION_CONFLICT' && /刷新/.test(error.message))
+ assert.equal(session.valid(),true)
+})
+
+test('multipart uploads preserve file bytes instead of JSON serialization',async()=>{
+ const api=createClient(new AuthSession(storage()),'/api/v1'),form=new FormData()
+ form.append('file',new Blob(['SYNTHETIC,1.00\n'],{type:'text/csv'}),'synthetic.csv')
+ api.client.defaults.adapter=async config=>{
+  assert.ok(config.data instanceof FormData)
+  assert.equal(await config.data.get('file').text(),'SYNTHETIC,1.00\n')
+  assert.notEqual(config.headers.getContentType(),'application/json')
+  return {status:200,statusText:'OK',headers:{},config,data:{code:'SUCCESS'}}
+ }
+ await api.client.post('/funds/imports',form)
+})

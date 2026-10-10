@@ -1,0 +1,48 @@
+
+> ev-insurance-admin-web@0.1.0 build
+> vite build
+
+vite v8.3.1 building client environment for production...
+transforming...
+✓ 1728 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                 0.53 kB │ gzip:  0.36 kB
+dist/assets/PartModelsView-CdRqeapG.css         0.11 kB │ gzip:  0.11 kB
+dist/assets/ImportView-Cw7OQsDq.css             0.12 kB │ gzip:  0.09 kB
+dist/assets/UsersView-CBpoaKoL.css              0.15 kB │ gzip:  0.13 kB
+dist/assets/PriceEditorView-8t21nTbN.css        0.23 kB │ gzip:  0.15 kB
+dist/assets/PricesView-OHJk_TuX.css             0.25 kB │ gzip:  0.16 kB
+dist/assets/CatalogueView-BPlt6jhe.css          0.26 kB │ gzip:  0.16 kB
+dist/assets/WorkOrdersView-AjWd4X5y.css         0.48 kB │ gzip:  0.27 kB
+dist/assets/WorkOrderDetailView-DvDLK-Zn.css    3.72 kB │ gzip:  0.98 kB
+dist/assets/index-K-sEZ_Ip.css                363.43 kB │ gzip: 48.86 kB
+dist/assets/AccessView-RDpBhe4u.js              0.55 kB │ gzip:  0.40 kB
+dist/assets/card-ClDMBT8J.js                    1.20 kB │ gzip:  0.53 kB
+dist/assets/HomeView-BnZqL30i.js                1.22 kB │ gzip:  0.73 kB
+dist/assets/catalogue-BWXDDpZ3.js               1.41 kB │ gzip:  0.74 kB
+dist/assets/LoginView-zQDncCzG.js               1.68 kB │ gzip:  0.94 kB
+dist/assets/tag-DreR0fvu.js                     1.89 kB │ gzip:  0.85 kB
+dist/assets/alert-E-ceB8q3.js                   1.94 kB │ gzip:  0.91 kB
+dist/assets/PriceHistoryView-Bt4fuv6N.js        2.91 kB │ gzip:  1.49 kB
+dist/assets/PartModelsView-Bqe9W2VO.js          3.82 kB │ gzip:  1.71 kB
+dist/assets/BatchesView-DgUK4vRX.js             4.01 kB │ gzip:  1.88 kB
+dist/assets/UsersView-Bkh8wryK.js               4.54 kB │ gzip:  1.88 kB
+dist/assets/_baseClone-DutuaoAx.js              4.66 kB │ gzip:  1.88 kB
+dist/assets/ImportView-bIqJS7ew.js              5.66 kB │ gzip:  2.82 kB
+dist/assets/PriceEditorView-_V7ANbiq.js         5.70 kB │ gzip:  2.55 kB
+dist/assets/PricesView-Tcc1WZzb.js              5.94 kB │ gzip:  2.47 kB
+dist/assets/CatalogueView-DEICtJur.js           6.41 kB │ gzip:  2.72 kB
+dist/assets/pagination-371AkLP6.js             11.47 kB │ gzip:  3.93 kB
+dist/assets/WorkOrdersView-C5IzFOEQ.js         12.80 kB │ gzip:  4.89 kB
+dist/assets/message-box-CaHY575d.js            14.06 kB │ gzip:  5.27 kB
+dist/assets/input-BC6HCOWe.js                  21.52 kB │ gzip:  8.03 kB
+dist/assets/form-BOh83ABS.js                   26.56 kB │ gzip:  9.13 kB
+dist/assets/button-BkMKoOH4.js                 59.27 kB │ gzip: 21.62 kB
+dist/assets/WorkOrderDetailView-wi9N1PTE.js    64.43 kB │ gzip: 18.71 kB
+dist/assets/select-DB7ZOa1k.js                 84.95 kB │ gzip: 28.81 kB
+dist/assets/table-rQGVwtXr.js                  85.64 kB │ gzip: 29.06 kB
+dist/assets/work-orders-dm1Mg8xL.js           128.61 kB │ gzip: 36.89 kB
+dist/assets/index-BUFr1hUA.js                 177.65 kB │ gzip: 69.06 kB
+
+✓ built in 768ms

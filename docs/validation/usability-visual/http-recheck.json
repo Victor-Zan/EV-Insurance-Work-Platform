@@ -1,0 +1,67 @@
+[
+  {
+    "caseId": "26a0f946-8f82-4529-a0bb-77d4a084f3e5",
+    "status": "PASS",
+    "check": "raw_fixed_percentage_immutable_snapshots"
+  },
+  {
+    "status": "PASS",
+    "check": "role_field_and_external_export_isolation"
+  },
+  {
+    "status": "PASS",
+    "check": "four_gate_invalidation_reconfirm_start_and_freeze"
+  },
+  {
+    "caseId": "26a0f946-8f82-4529-a0bb-77d4a084f3e5",
+    "status": "PASS",
+    "check": "repair_progress_idempotency_completion_evidence_freeze_owner_download",
+    "photoId": "32917277-255d-46db-804d-55c609198c29"
+  },
+  {
+    "status": "PASS",
+    "check": "cs_receipt_withdraw_owner_rereceipt_review_original_and_correction"
+  },
+  {
+    "status": "PASS",
+    "check": "complaint_completed_case_idempotency_history_public_internal_isolation",
+    "complaintId": "a4346516-c158-4723-80ea-3c05792d0d13"
+  },
+  {
+    "status": "PASS",
+    "check": "partial_receipt_replay_and_insurer_settlement_gate"
+  },
+  {
+    "status": "PASS",
+    "check": "manual_optional_deadline_history_and_overdue_label_only"
+  },
+  {
+    "batchId": "e6f63876-d6b4-4d51-961a-93f9e458f1d9",
+    "status": "PASS",
+    "check": "private_import_row_results_manual_matching_and_no_double_accounting"
+  },
+  {
+    "status": "PASS",
+    "check": "payment_reversal_history_and_scoped_export"
+  },
+  {
+    "status": "PASS",
+    "check": "station_notification_scope_read_dedup_and_disabled_automation",
+    "notificationId": 30
+  },
+  {
+    "status": "PASS",
+    "check": "station_notice_read_and_deadline_history_restart"
+  },
+  {
+    "caseId": "26a0f946-8f82-4529-a0bb-77d4a084f3e5",
+    "status": "PASS",
+    "batchId": "e6f63876-d6b4-4d51-961a-93f9e458f1d9",
+    "check": "funds_and_private_import_restart_persistence"
+  },
+  {
+    "status": "PASS",
+    "schema": "phase8_visual_afb7c54748954da89382b6e5a1ca9dc6",
+    "check": "jar_restart_persists_repair_evidence_receipts_reviews_complaints_and_amounts"
+  }
+]

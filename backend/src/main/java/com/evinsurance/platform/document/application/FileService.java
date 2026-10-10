@@ -20,8 +20,9 @@ public class FileService {
     public record MaterialStatus(boolean noticePresent,String missingReason) {}
     public record Download(View metadata,InputStream stream) {}
     private final com.evinsurance.platform.quotation.application.QuotationLifecycle quotationLifecycle;
+    private final com.evinsurance.platform.repair.application.RepairMaterialPolicy repairMaterials;
     private final FileMapper files; private final FileAccess access; private final ObjectStorageService storage; private final AuditService audit;
-    public FileService(FileMapper files,FileAccess access,ObjectStorageService storage,AuditService audit,com.evinsurance.platform.quotation.application.QuotationLifecycle quotationLifecycle) {this.quotationLifecycle=quotationLifecycle;this.files=files;this.access=access;this.storage=storage;this.audit=audit;}
+    public FileService(FileMapper files,FileAccess access,ObjectStorageService storage,AuditService audit,com.evinsurance.platform.quotation.application.QuotationLifecycle quotationLifecycle,com.evinsurance.platform.repair.application.RepairMaterialPolicy repairMaterials) {this.repairMaterials=repairMaterials;this.quotationLifecycle=quotationLifecycle;this.files=files;this.access=access;this.storage=storage;this.audit=audit;}
     public View view(FileRow f) {
         boolean staff=access.staff(CurrentUser.require());
         String name=staff?f.originalName():f.category().toLowerCase(Locale.ROOT)+"-"+f.id()+extension(f.contentType());
@@ -57,6 +58,7 @@ public class FileService {
         }
         FileRow previous=replace==null?null:accessible(replace);
         if(previous!=null && (!previous.workOrderId().equals(orderId)||!previous.category().equals(category.name())||!"ACTIVE".equals(previous.state()))) throw ApiException.conflict("FILE_VERSION_CONFLICT","Only the current active version of the same category can be replaced");
+        if(previous!=null)repairMaterials.requireChangeable(previous.id());
         if(previous==null&&files.activeCount(orderId,category.name())>=20) throw ApiException.conflict("FILE_LIMIT","At most 20 active files per category");
         UUID id=UUID.randomUUID(); String objectKey=orderId+"/"+id;
         // Compensate on rollback, including failures during transaction commit.
@@ -74,6 +76,7 @@ public class FileService {
     @Transactional public void voidFile(UUID id) {
         var a=CurrentUser.require(); access.customerService(a); var f=accessible(id); var order=access.order(f.workOrderId(),true); access.mutable(order);
         if("VOID".equals(f.state())) return;
+        repairMaterials.requireChangeable(id);
         quotationLifecycle.beforeMaterialChange(order,FileCategory.valueOf(f.category()));
         if(files.changeState(id,"VOID")!=1) throw ApiException.conflict("FILE_VERSION_CONFLICT","File is no longer active");
         quotationLifecycle.afterMaterialChange(order,FileCategory.valueOf(f.category()));

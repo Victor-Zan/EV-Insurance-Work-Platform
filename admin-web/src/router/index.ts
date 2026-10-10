@@ -1,17 +1,17 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import HomeView from '@/views/HomeView.vue'
-import LoginView from '@/views/LoginView.vue'
-import AccessView from '@/views/AccessView.vue'
-import UsersView from '@/views/UsersView.vue'
-import CatalogueView from '@/features/pricing/CatalogueView.vue'
-import PartModelsView from '@/features/pricing/PartModelsView.vue'
-import PricesView from '@/features/pricing/PricesView.vue'
-import PriceEditorView from '@/features/pricing/PriceEditorView.vue'
-import PriceHistoryView from '@/features/pricing/PriceHistoryView.vue'
-import ImportView from '@/features/pricing/ImportView.vue'
-import BatchesView from '@/features/pricing/BatchesView.vue'
-import WorkOrdersView from '@/features/workorders/WorkOrdersView.vue'
-import WorkOrderDetailView from '@/features/workorders/WorkOrderDetailView.vue'
+const HomeView = () => import('@/views/HomeView.vue')
+const LoginView = () => import('@/views/LoginView.vue')
+const AccessView = () => import('@/views/AccessView.vue')
+const UsersView = () => import('@/views/UsersView.vue')
+const CatalogueView = () => import('@/features/pricing/CatalogueView.vue')
+const PartModelsView = () => import('@/features/pricing/PartModelsView.vue')
+const PricesView = () => import('@/features/pricing/PricesView.vue')
+const PriceEditorView = () => import('@/features/pricing/PriceEditorView.vue')
+const PriceHistoryView = () => import('@/features/pricing/PriceHistoryView.vue')
+const ImportView = () => import('@/features/pricing/ImportView.vue')
+const BatchesView = () => import('@/features/pricing/BatchesView.vue')
+const WorkOrdersView = () => import('@/features/workorders/WorkOrdersView.vue')
+const WorkOrderDetailView = () => import('@/features/workorders/WorkOrderDetailView.vue')
 import { PRICE_READ_ROLES, PRICE_WRITE_ROLES } from '@/features/pricing/prices'
 import { authSession, api } from '@/shared/http/client'
 import { guard } from '@/shared/auth/guard'

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.evinsurance.platform.repair.infrastructure.RepairMapper">
+ <select id="started" resultType="boolean">
+  SELECT EXISTS(SELECT 1 FROM quotation_event WHERE work_order_id=#{id} AND kind='REPAIR_STARTED')
+ </select>
+ <select id="shopUploaded" resultType="boolean">
+  SELECT EXISTS(SELECT 1 FROM audit_log WHERE object_type='CASE_FILE' AND object_id=CAST(#{id} AS text)
+   AND action='FILE_UPLOAD' AND actor_id=#{actor} AND 'REPAIR_SHOP'=ANY(string_to_array(actor_roles,',')))
+ </select>
+ <sql id="scope">
+  work_order_id=#{id}
+  <if test="shop != null">AND shop_id=#{shop} AND assignment_version=#{assignment}</if>
+ </sql>
+ <select id="count" resultType="long">SELECT count(*) FROM repair_progress WHERE <include refid="scope"/></select>
+ <select id="history" resultType="map">
+  SELECT id,note,photo_snapshot,shop_id,assignment_version,created_at FROM repair_progress
+  WHERE <include refid="scope"/> ORDER BY created_at DESC,id DESC LIMIT #{size} OFFSET #{offset}
+ </select>
+</mapper>

@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.evinsurance.platform.notification.infrastructure.NotificationMapper">
+ <sql id="assignment">LEFT JOIN LATERAL(SELECT * FROM work_order_assignment a WHERE a.work_order_id=w.id AND a.status IN ('PENDING','ACCEPTED') ORDER BY a.assignment_version DESC LIMIT 1) a ON true</sql>
+ <select id="recipients" resultType="map">
+  SELECT DISTINCT u.id,r.code FROM app_user u JOIN user_role ur ON ur.user_id=u.id JOIN app_role r ON r.id=ur.role_id
+  JOIN work_order w ON w.id=#{id} LEFT JOIN shop_account sa ON sa.user_id=u.id WHERE u.enabled AND w.status&lt;&gt;'DRAFT' AND (
+   (r.code='CUSTOMER_SERVICE' AND u.id=w.current_responsible_id)
+   OR (r.code='ADMIN' AND #{kind} IN ('COMPLAINT_NEW','COMPLAINT_UPDATED'))
+   OR (r.code='OWNER' AND u.id=w.owner_user_id AND #{kind} IN ('ARRIVED','OWNER_RECEIPT','OWNER_RECEIVED','RECEIPT_WITHDRAWN','COMPLAINT_NEW','COMPLAINT_UPDATED'))
+   OR (r.code='REPAIR_SHOP' AND sa.shop_id=w.shop_id AND #{kind} IN ('DISPATCHED','ARRIVED','OWNER_RECEIVED','RECEIPT_WITHDRAWN','PAY_UPDATED')))
+ </select>
+ <sql id="notificationFrom">
+  FROM in_app_notification n JOIN notification_event e ON e.audit_id=n.event_id JOIN work_order w ON w.id=e.work_order_id
+  LEFT JOIN notification_read nr ON nr.notification_id=n.id AND nr.user_id=#{user}
+  <include refid="assignment"/>
+  WHERE n.recipient_id=#{user} AND w.status&lt;&gt;'DRAFT'
+   AND EXISTS(SELECT 1 FROM app_user u JOIN user_role ur ON ur.user_id=u.id JOIN app_role r ON r.id=ur.role_id WHERE u.id=#{user} AND u.enabled AND r.code=n.recipient_role)
+   AND (n.recipient_role IN ('ADMIN','CUSTOMER_SERVICE') OR (n.recipient_role='OWNER' AND w.owner_user_id=#{user})
+    OR (n.recipient_role='REPAIR_SHOP' AND a.assignment_version=e.assignment_version AND a.shop_id=e.shop_id AND w.shop_id=e.shop_id AND EXISTS(SELECT 1 FROM shop_account sa WHERE sa.user_id=#{user} AND sa.shop_id=e.shop_id)))
+ </sql>
+ <select id="count" resultType="long">SELECT count(*) <include refid="notificationFrom"/></select>
+ <select id="inbox" resultType="map">SELECT n.id,e.work_order_id,e.kind,n.created_at,nr.read_at <include refid="notificationFrom"/> ORDER BY n.id DESC LIMIT #{size} OFFSET #{offset}</select>
+ <select id="visible" resultType="map">SELECT n.id,e.work_order_id,e.kind,n.created_at,nr.read_at <include refid="notificationFrom"/> AND n.id=#{id}</select>
+ <sql id="tasks">
+  WITH states AS (
+   SELECT w.*,a.assignment_version,
+    CASE w.status WHEN 'PENDING_ACCEPTANCE' THEN 'ACCEPT_SHOP' WHEN 'PENDING_ARRIVAL' THEN 'ARRIVE_SHOP' WHEN 'ARRIVAL_EXCEPTION' THEN 'ARRIVE_SHOP' WHEN 'ARRIVED' THEN 'QUOTE_SHOP' WHEN 'WAITING_QUOTE' THEN 'QUOTE_SHOP' WHEN 'QUOTE_REVIEWING' THEN 'REVIEW_QUOTE' WHEN 'WAITING_INSURER_ASSESSMENT' THEN 'CONFIRM_ASSESSMENT' WHEN 'WAITING_REPAIR_AUTHORIZATION' THEN CASE WHEN q.insurer_confirmed AND q.service_confirmed AND q.assessment_id IS NOT NULL AND EXISTS(SELECT 1 FROM case_file f WHERE f.work_order_id=w.id AND f.category='LOSS_ASSESSMENT' AND f.state='ACTIVE') THEN 'START_REPAIR_SHOP' ELSE 'CONFIRM_ASSESSMENT' END WHEN 'REPAIRING' THEN 'REPAIR_SHOP' WHEN 'WAITING_OWNER_CONFIRMATION' THEN 'RECEIVE_OWNER' ELSE NULL END state_kind,
+    r.id receive_target_id,r.amount receive_target,p.id pay_target_id,CASE WHEN p.shop_id=w.shop_id AND p.assignment_version=a.assignment_version THEN p.amount ELSE NULL END pay_target,
+    (SELECT coalesce(sum(e.amount),0) FROM funds_entry e WHERE e.work_order_id=w.id AND e.direction='RECEIVE' AND NOT EXISTS(SELECT 1 FROM funds_reversal fr WHERE fr.entry_id=e.id)) net_receive,
+    (SELECT coalesce(sum(e.amount),0) FROM funds_entry e WHERE e.work_order_id=w.id AND e.direction='PAY' AND NOT EXISTS(SELECT 1 FROM funds_reversal fr WHERE fr.entry_id=e.id)) net_pay
+   FROM work_order w <include refid="assignment"/>
+   LEFT JOIN quotation_context q ON q.work_order_id=w.id
+   LEFT JOIN LATERAL(SELECT * FROM funds_target r WHERE r.work_order_id=w.id AND r.direction='RECEIVE' ORDER BY id DESC LIMIT 1) r ON true
+   LEFT JOIN LATERAL(SELECT * FROM funds_target p WHERE p.work_order_id=w.id AND p.direction='PAY' ORDER BY id DESC LIMIT 1) p ON true
+   WHERE w.status NOT IN ('DRAFT','CANCELLED','CLOSED') <if test="caseId != null">AND w.id=#{caseId}</if>
+  ), tasks AS (
+   SELECT id work_order_id,state_kind kind,id::text||':'||state_kind||':'||coalesce(assignment_version,0)::text||':'||extract(epoch from status_started_at)::text task_key,
+    CASE WHEN state_kind LIKE '%SHOP' THEN 'SHOP' WHEN state_kind='RECEIVE_OWNER' THEN 'OWNER_CS' ELSE 'CS' END role_scope,created_at FROM states WHERE state_kind IS NOT NULL
+   UNION ALL SELECT id,'SET_RECEIVABLE',id::text||':SET_RECEIVABLE','CS',created_at FROM states WHERE receive_target IS NULL
+   UNION ALL SELECT id,'COLLECT_FUNDS',id::text||':COLLECT_FUNDS:'||receive_target_id::text,'CS',created_at FROM states WHERE receive_target IS NOT NULL AND net_receive&lt;receive_target
+   UNION ALL SELECT id,'SET_PAYABLE',id::text||':SET_PAYABLE:'||coalesce(pay_target_id,0)::text,'CS',created_at FROM states WHERE status='COMPLETED' AND pay_target IS NULL
+   UNION ALL SELECT id,'PAY_SHOP',id::text||':PAY_SHOP:'||pay_target_id::text,'CS',created_at FROM states WHERE status='COMPLETED' AND pay_target IS NOT NULL AND net_pay&lt;pay_target AND receive_target IS NOT NULL AND net_receive=receive_target
+   UNION ALL SELECT work_order_id,'HANDLE_COMPLAINT','COMPLAINT:'||id::text||':'||status,'ADMIN',created_at FROM complaint WHERE status&lt;&gt;'CLOSED' <if test="caseId != null">AND work_order_id=#{caseId}</if>
+  )
+ </sql>
+ <sql id="taskScope">
+  FROM tasks t JOIN work_order w ON w.id=t.work_order_id LEFT JOIN todo_deadline d ON d.task_key=t.task_key
+  WHERE true <if test="key != null">AND t.task_key=#{key}</if>
+  <if test="!all">AND EXISTS(
+   SELECT 1 FROM app_user u JOIN user_role ur ON ur.user_id=u.id JOIN app_role r ON r.id=ur.role_id LEFT JOIN shop_account sa ON sa.user_id=u.id
+   WHERE u.id=#{user} AND u.enabled AND ((r.code='ADMIN' AND t.role_scope='ADMIN')
+    OR (r.code='CUSTOMER_SERVICE' AND t.role_scope IN ('CS','OWNER_CS') AND u.id=w.current_responsible_id)
+    OR (r.code='OWNER' AND t.role_scope='OWNER_CS' AND u.id=w.owner_user_id)
+    OR (r.code='REPAIR_SHOP' AND t.role_scope='SHOP' AND sa.shop_id=w.shop_id)))</if>
+ </sql>
+ <select id="todoCount" resultType="long"><include refid="tasks"/> SELECT count(*) <include refid="taskScope"/></select>
+ <select id="todos" resultType="map"><include refid="tasks"/> SELECT t.task_key,t.work_order_id,t.kind,t.created_at,d.deadline,coalesce(d.version,0) version <include refid="taskScope"/> ORDER BY t.created_at DESC,t.task_key LIMIT #{size} OFFSET #{offset}</select>
+</mapper>

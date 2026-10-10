@@ -220,3 +220,31 @@ HTTP复验脚本需要PowerShell7（使用HttpClient和SkipHttpErrorCheck）；S
 ```
 
 HTTP脚本默认读取phase6-build/backend-0.0.1-SNAPSHOT.jar，临时随机schema与测试JWT/密码，仅测试专用数据库；保存脱敏结果，不清空现有schema/卷。日志及JSON在第二阶段local-validation；API见PHASE6_API.md。
+
+## 第7阶段本地启动与验证
+
+使用已有阶段5专用开发环境，保持数据与私有MinIO；无需重新安装工具或删除数据库/卷。
+
+```powershell
+.\scripts\Start-Local.ps1 -EnvironmentFile '..\local-validation\.env.phase5' -BuildDirectory '..\local-validation\phase7-dev-build'
+.\scripts\Verify-Baseline.ps1 -JavaHome 'C:\Program Files\Android\Android Studio\jbr' -TestEnvironmentFile '..\local-validation\.env' -BuildDirectory '..\local-validation\phase7-release-final-build'
+.\scripts\Verify-Phase7-Http.ps1 -TestEnvironmentFile '..\local-validation\.env' -DockerExe 'C:\Users\YUFEI\AppData\Local\Programs\DockerDesktop\resources\bin\docker.exe'
+```
+
+后端8080，两端分别进入admin-web、h5-web执行npm run dev，管理端5173、H5 5174。在现有案件详情操作维修、收车、评价和投诉；客服代操作仍遵守开修门禁及网点照片证据，管理员仅处理投诉。开发账号密码从未提交的.env.phase5读取，不复制到文档。
+
+HTTP复验使用专用数据库的随机schema及合成材料、临时18080端口，结束停止自己的JAR，保留数据和日志。验证构建目录被Windows锁定时，改用第二阶段local-validation中的新目录，不手动删除或更改ACL；同时用-JarPath指定新JAR。业务边界见PHASE7_API.md，结果见PHASE7_VERIFICATION.md。
+
+## 第8阶段启动与复验
+
+在指定第二阶段仓库根目录运行，继续复用开发PG/私有MinIO；环境文件不提交或打印凭据：
+
+```powershell
+.\scripts\Start-Local.ps1 -EnvironmentFile '..\local-validation\.env.phase5' -BuildDirectory '..\local-validation\phase8-dev-build'
+.\scripts\Verify-Baseline.ps1 -JavaHome 'C:\Program Files\Android\Android Studio\jbr' -TestEnvironmentFile '..\local-validation\.env' -BuildDirectory '..\local-validation\phase8-delivery-build'
+.\scripts\Verify-Phase8-Http.ps1 -TestEnvironmentFile '..\local-validation\.env' -DockerExe 'C:\Users\YUFEI\AppData\Local\Programs\DockerDesktop\resources\bin\docker.exe'
+```
+
+后端8080；admin-web/h5-web各执行npm run dev，5173/5174。客服在案件详情设置目标、记账/冲销和导入；网点只读本次派单应付/实付；车主无资金入口。登录后站内通知折叠面板查看本人通知和待办，客服可填原因设置/清除期限，自动提醒保持关闭。
+
+HTTP脚本默认phase8-delivery-build JAR，专用验证数据库随机schema、私有合成CSV和图片、18080临时端口；结束停止自己的JAR，保留数据库/对象/报告，不删卷。复验目录若有Windows锁，用第二阶段local-validation新BuildDirectory并传-JarPath，不改ACL或手动清理。资金导出按页最多100行，全部需遍历页码。接口/结果见PHASE8_API.md与PHASE8_VERIFICATION.md。

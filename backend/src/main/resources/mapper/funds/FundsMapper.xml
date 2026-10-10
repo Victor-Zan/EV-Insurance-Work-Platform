@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.evinsurance.platform.funds.infrastructure.FundsMapper">
+ <sql id="scope">e.work_order_id=#{id}<if test="shop != null"> AND e.direction='PAY' AND e.shop_id=#{shop} AND e.assignment_version=#{assignment}</if></sql>
+ <select id="net" resultType="java.math.BigDecimal">SELECT coalesce(sum(e.amount),0) FROM funds_entry e WHERE <include refid="scope"/> AND e.direction=#{direction} AND NOT EXISTS(SELECT 1 FROM funds_reversal r WHERE r.entry_id=e.id)</select>
+ <select id="count" resultType="long">SELECT count(*) FROM funds_entry e WHERE <include refid="scope"/></select>
+ <select id="entries" resultType="map">SELECT e.*,r.id reversal_id,r.reason reversal_reason,r.created_at reversed_at FROM funds_entry e LEFT JOIN funds_reversal r ON r.entry_id=e.id WHERE <include refid="scope"/> ORDER BY e.created_at DESC,e.id DESC LIMIT #{size} OFFSET #{offset}</select>
+</mapper>

@@ -1,0 +1,30 @@
+{
+  "status": "PASS",
+  "caseId": "56668376-e58a-41e4-86e8-926de0460e02",
+  "businessNo": "EVR-20261010-000004",
+  "bytes": 58381,
+  "results": [
+    {
+      "attempt": 1,
+      "previewSeconds": 0.173,
+      "confirmSeconds": 60.342,
+      "statuses": {
+        "RECORDED": 2000
+      },
+      "net": "2000.00",
+      "ledgerRows": 2000,
+      "batchId": "08b6167f-db0c-47de-898a-568ac9fc2d2a"
+    },
+    {
+      "attempt": 2,
+      "previewSeconds": 0.197,
+      "confirmSeconds": 38.611,
+      "statuses": {
+        "DUPLICATE": 2000
+      },
+      "net": "2000.00",
+      "ledgerRows": 2000,
+      "batchId": "12a72b9d-c01b-48b6-8a50-2fd98ea6fdc3"
+    }
+  ]
+}

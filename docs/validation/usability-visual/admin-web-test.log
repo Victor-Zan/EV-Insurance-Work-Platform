@@ -1,0 +1,37 @@
+
+> ev-insurance-admin-web@0.1.0 test
+> node --test tests/*.test.mjs
+
+✔ all four roles are restricted to the correct portal (0.5639ms)
+✔ wrong portal is rejected and does not persist authentication (1.8725ms)
+✔ expiry, malformed persisted state and logout clear all authentication (0.277ms)
+✔ guard blocks unauthenticated, wrong role and server rejected sessions (0.307ms)
+✔ login sends credentials and portal to API; authenticated calls attach Bearer (3.0732ms)
+✔ API 401 clears state, 403 preserves valid state and network failures have explicit messages (1.5312ms)
+✔ English failures show Chinese guidance while preserving status and code (0.4181ms)
+✔ multipart uploads preserve file bytes instead of JSON serialization (1.0189ms)
+✔ price amounts remain decimal strings at the maximum precision; zero, negative and rounding are rejected (0.8299ms)
+✔ natural dates are strict, inclusive boundaries retain their values and China date is timezone specific (17.4548ms)
+✔ filters preserve explicit scope and identifiers rather than picking one candidate (0.4768ms)
+✔ import needs an actual preview and explicit confirmation; an invalid batch can be recorded as FAILED (0.1351ms)
+✔ pricing routes permit customer service operations and keep admin settings and H5 roles excluded (2.0274ms)
+✔ ADMIN and customer service maintain daily price catalogues, while source configuration remains ADMIN only (0.5032ms)
+✔ catalogue edits send typed IDs, trimmed identifiers and explicit enabled state (0.7588ms)
+✔ unknown catalogue routes cannot select arbitrary API paths (0.1007ms)
+✔ markup payload preserves decimal strings beyond JavaScript integer precision and excludes the other mode (0.5114ms)
+✔ quotation mutations carry case scope, original decimal payload and a stable caller-supplied idempotency key (0.3235ms)
+✔ historical external quote export uses the authenticated API client and exact quote ID as a blob (0.2618ms)
+✔ quote input keeps money exact, including zero and quantities greater than one (1.3608ms)
+✔ deadline editing preserves China timezone; clearing explicitly sends null (11.5141ms)
+✔ draft payload keeps exact business values and sends instants, numeric region and null optionals (3.7323ms)
+✔ state-changing operations receive distinct idempotency keys (3.4347ms)
+✔ work-order routes are limited to admin-side staff roles (0.8ms)
+✔ phase-four UI does not expose phase-five materials or transport operations (0.3726ms)
+ℹ tests 25
+ℹ suites 0
+ℹ pass 25
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 60325.6234

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElButton, ElCard, ElDatePicker, ElDialog, ElForm, ElFormItem, ElInput, ElMessage, ElMessageBox, ElOption, ElSelect, ElTable, ElTableColumn, ElTag } from 'element-plus'
+import { ElLoading, ElButton, ElCard, ElDatePicker, ElDialog, ElForm, ElFormItem, ElInput, ElMessage, ElMessageBox, ElOption, ElSelect, ElTable, ElTableColumn, ElTag } from 'element-plus'
 import { currentUser, httpClient } from '@/shared/http/client'
 import { statusLabels, workOrderApi, type DraftForm, type RegionOption, type WorkOrder, type WorkOrderStatus } from './work-orders'
 
+const vLoading=ElLoading.directive
 const api=workOrderApi(httpClient),router=useRouter(),loading=ref(false),rows=ref<WorkOrder[]>([]),total=ref(0),page=ref(1)
 const status=ref(''),query=ref(''),dialog=ref(false),saving=ref(false),regions=ref<RegionOption[]>([])
 const isAdmin=computed(()=>currentUser.value?.roles.includes('ADMIN')===true)

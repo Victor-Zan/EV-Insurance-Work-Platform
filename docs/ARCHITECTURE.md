@@ -230,3 +230,17 @@ MapProvider本轮Mock，不真实定位；CS端接真实区域网点筛选与合
 V7追加不可变原始/正式/核损/确认/事件/幂等表及可更新上下文，V1—V6不改。管理员只读、客服财务操作、当前网点原始报价/开修，OWNER拒绝报价接口。导出明确对外字段名单，不输出内部金额。两前端详情的QuotationPanel仅做当前阶段验证，金额保留字符串。
 
 Windows既有target目录清理被拒绝时，可用validation.build.directory激活isolated-validation-build profile；Verify-Baseline与Start-Local限制路径在第二阶段local-validation内。仍执行完整clean verify，不跳过测试、迁移或构建。
+
+## 第7阶段维修模块（部分实现）
+
+repair领域API/application/domain/infrastructure复用workorder锁和CAS、quotation四项授权与开修事件、document私有附件以及audit不可变日志。独立repair_context版本控制进度/完工；不可变完工记录和文件版本关联保护证据，文件服务通过RepairMaterialPolicy检查冻结。复杂身份/分页查询使用MyBatis XML。事务命令锁避免同操作者同键跨案件并发重复执行。没有新微服务或外部接入；收车/投诉待规则确认。
+
+第7阶段补齐V9/V10与complaint领域。repair统一案件行锁/CAS/事务命令锁控制收车、撤回与评价并保留原评价；complaint采用独立行锁/CAS与追加事件，复用FileAccess执行附件/案件/角色范围；内部说明在服务DTO构造时过滤。读取稳定分页，不耦合资金，不拆微服务。
+
+## 第8阶段模块与事务边界
+
+新增funds与notification领域，保持模块化单体。资金命令在案件行锁、独立context CAS及幂等/流水号事务锁下执行；目标、流水、冲销、审计原子落库。导入源文件统一ObjectStorageService私有MinIO存储、SHA256元数据，数据库回滚仅补偿本次未提交对象；不公开桶。CSV/XLSX内存解析，输入有界，预览编号批量匹配和500行分块写入；确认每行独立事务，错误不回滚其他行。
+
+V12审计触发器同事务生成notification_event。Worker用FOR UPDATE SKIP LOCKED有界领取50事件，唯一键防重复投影；崩溃事务回滚后可恢复，不引入消息队列。个人通知读取重验角色和当前业务范围，固定安全消息不传播内部审计文本。待办基于正式业务状态SQL查询；deadline有独立CAS与历史，修改时锁案件/必要投诉记录并复核仍有效。
+
+资金权限入口与字段输出均服务端执行；网点PAY查询限定当前派单，车主403，导入批次创建人限定。通知scope独立检查，导出私有no-store并防CSV公式注入。短信仅SmsProvider/DisabledSmsProvider，自动超时/重复/升级均关闭，无真实外部连接。
