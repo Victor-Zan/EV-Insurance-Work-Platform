@@ -449,3 +449,9 @@ Docker CLI/Desktop 不可用，Compose 本次未验证且文件未改；未执�
 用户授权记录awesome-design-md学习并上传截至当前全部项目成果。新增DESIGN_RESEARCH.md，区分上游分析、自己的建议与未实施的视觉规范；本轮不改UI、不进入阶段7。阶段5—6及Boot4可公开验证摘要整理到docs/validation，保留历史失败和未执行说明，真实凭据/缓存/构建/数据库/对象数据不上传。
 
 沿用现有成果分支feature/phase5-files-ocr-map；远端main核验仍为85fa6f0，与本地基线一致。Boot4迁移保留独立提交，随后提交阶段5—6和设计学习/验证记录；仅普通推送成果分支，不强推、不直接合并main、不创建PR或部署。提交署名取自仓库当前基线作者Victor-Zan，用本次Git命令参数注入，不修改全局Git配置。
+
+### GitHub上传结果（2026-10-10）
+
+已通过Git Credential Manager浏览器授权取得fishingfishinfisherence-fei账号，并使用仅本次命令生效的credential.username推送到Victor-Zan/EV-Insurance-Work-Platform的feature/phase5-files-ocr-map分支。此前旧账号fishingfishinfisherence的403已解决；GitHub连接器缺少Git对象写入权限的尝试未上传任何成果。
+
+代码与记录提交：599df29（独立Boot4.1.1迁移）、44fcbb9（阶段5—6、设计学习与公开验证摘要）。普通推送成功并设置分支跟踪；后续本条交付记录单独提交。main未合并，未创建PR或部署；本地凭据、数据库/对象数据、缓存和构建产物未上传。本轮仅补记交付，没有改业务代码或重跑此前已通过的测试，仍停在阶段6。
