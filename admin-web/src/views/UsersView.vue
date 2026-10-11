@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { ElAlert, ElButton, ElInput, ElSelect, ElOption, ElTable, ElTableColumn, ElPagination, ElCard } from 'element-plus'
+import { ElAlert, ElButton, ElInput, ElSelect, ElOption, ElTable, ElTableColumn, ElPagination, ElCard, ElDialog, ElCheckbox, ElCheckboxGroup } from 'element-plus'
 import { httpClient } from '@/shared/http/client'
 import type { ApiResponse, Page } from '@/shared/http/create-client'
 import type { Role, User } from '@/shared/auth/session'
-const router = useRouter()
 const users = ref<User[]>([]), total = ref(0), page = ref(1), error = ref(''), message = ref(''), busy = ref(false)
 const create = reactive({ username: '', displayName: '', password: '', role: 'CUSTOMER_SERVICE' as Role, shopId: '' })
 const resetId = ref(''), resetPassword = ref('')
+const assignmentOpen=ref(false),assignmentId=ref(0),assignmentRoles=ref<Role[]>([]),assignmentShopId=ref('')
+const roleOptions:Role[]=['ADMIN','CUSTOMER_SERVICE','REPAIR_SHOP','OWNER']
+function openAssignment(user:User){assignmentId.value=user.id;assignmentRoles.value=[...user.roles];assignmentShopId.value=user.shopId?String(user.shopId):'';assignmentOpen.value=true}
+async function saveAssignment(){await run(async()=>{if(!assignmentRoles.value.length)throw Error('至少选择一个角色');await httpClient.put(`/admin/users/${assignmentId.value}/assignment`,{roles:assignmentRoles.value,shopId:assignmentRoles.value.includes('REPAIR_SHOP')?Number(assignmentShopId.value):null});assignmentOpen.value=false;message.value='角色与网点归属已更新，旧会话失效';await load()})}
 async function run(action: () => Promise<void>) {
   if (busy.value) return
   busy.value = true; error.value = ''; message.value = ''
@@ -38,24 +40,25 @@ async function reset() {
 onMounted(() => { void run(load) })
 </script>
 <template>
-  <main style="padding: 32px"><ElButton @click="router.push('/')">返回首页</ElButton><h1>用户管理验证</h1>
+  <main><header class="module-page-head"><p>ADMIN / USERS</p><h1>用户与角色</h1><span>仅管理员可创建账号、调整现有角色及网点归属；权限以服务端校验为准。</span></header>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" role="alert" />
     <ElAlert v-if="message" :title="message" type="success" :closable="false" />
-    <ElCard><h2>创建账号</h2><form @submit.prevent="submitCreate">
+    <ElCard shadow="never"><h2>创建账号</h2><form @submit.prevent="submitCreate">
       <label>账号<ElInput v-model="create.username" autocomplete="off" /></label><label>显示名<ElInput v-model="create.displayName" /></label>
       <label>初始密码<ElInput v-model="create.password" type="password" autocomplete="new-password" /></label>
       <label>角色<ElSelect v-model="create.role"><ElOption v-for="role in ['ADMIN','CUSTOMER_SERVICE','REPAIR_SHOP','OWNER']" :key="role" :label="role" :value="role" /></ElSelect></label>
       <label v-if="create.role === 'REPAIR_SHOP'">网点 ID<ElInput v-model="create.shopId" inputmode="numeric" /></label>
-      <ElButton native-type="submit" :disabled="busy">创建</ElButton>
+      <ElButton type="primary" native-type="submit" :disabled="busy">创建</ElButton>
     </form></ElCard>
-    <ElTable :data="users"><ElTableColumn prop="id" label="ID" /><ElTableColumn prop="username" label="账号" />
+    <section class="admin-surface"><h2>账号列表</h2><ElTable :data="users"><ElTableColumn prop="id" label="ID" /><ElTableColumn prop="username" label="账号" />
       <ElTableColumn prop="displayName" label="显示名" /><ElTableColumn label="角色"><template #default="scope">{{ scope.row.roles.join('、') }}</template></ElTableColumn>
       <ElTableColumn label="状态"><template #default="scope">{{ scope.row.enabled ? '启用' : '停用' }}</template></ElTableColumn>
-      <ElTableColumn label="操作"><template #default="scope"><ElButton :disabled="busy" @click="toggle(scope.row as User)">{{ scope.row.enabled ? '停用' : '启用' }}</ElButton></template></ElTableColumn>
-    </ElTable><ElPagination v-model:current-page="page" :page-size="20" :total="total" layout="prev,pager,next" @current-change="run(load)" />
-    <ElCard><h2>重置密码</h2><form @submit.prevent="reset"><label>用户 ID<ElInput v-model="resetId" inputmode="numeric" /></label>
+      <ElTableColumn label="操作" min-width="180"><template #default="scope"><ElButton :disabled="busy" @click="toggle(scope.row as User)">{{ scope.row.enabled ? '停用' : '启用' }}</ElButton><ElButton :disabled="busy" @click="openAssignment(scope.row as User)">角色与归属</ElButton></template></ElTableColumn>
+    </ElTable><ElPagination v-model:current-page="page" :page-size="20" :total="total" layout="prev,pager,next" @current-change="run(load)" /></section>
+    <ElCard shadow="never"><h2>重置密码</h2><form @submit.prevent="reset"><label>用户 ID<ElInput v-model="resetId" inputmode="numeric" /></label>
       <label>新密码<ElInput v-model="resetPassword" type="password" autocomplete="new-password" /></label><ElButton native-type="submit" :disabled="busy">重置</ElButton>
     </form></ElCard>
+    <ElDialog v-model="assignmentOpen" title="调整角色与网点归属" width="min(520px,calc(100vw - 32px))"><p>更改后该用户原有会话失效；角色范围仍仅限现有四类。</p><ElCheckboxGroup v-model="assignmentRoles"><ElCheckbox v-for="role in roleOptions" :key="role" :value="role">{{ role }}</ElCheckbox></ElCheckboxGroup><label v-if="assignmentRoles.includes('REPAIR_SHOP')">所属网点 ID<ElInput v-model="assignmentShopId" inputmode="numeric"/></label><ElAlert v-if="error" :title="error" type="error" :closable="false"/><template #footer><ElButton @click="assignmentOpen=false">取消</ElButton><ElButton type="primary" :loading="busy" @click="saveAssignment">保存并审计</ElButton></template></ElDialog>
   </main>
 </template>
-<style scoped>form { display: flex; flex-wrap: wrap; align-items: end; gap: 16px; } label { max-width: 220px; } .el-card { margin: 24px 0; }</style>
+<style scoped>form { display: flex; flex-wrap: wrap; align-items: end; gap: 16px; } label { display:grid;gap:6px;width:220px;max-width:100%; } .el-card { margin: 24px 0; } .admin-surface h2{margin-top:0}.admin-surface :deep(.el-pagination){justify-content:flex-end;margin-top:16px}@media(max-width:640px){form{align-items:stretch}label{width:100%}}</style>

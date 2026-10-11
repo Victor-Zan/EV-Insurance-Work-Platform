@@ -3,6 +3,12 @@ const HomeView = () => import('@/views/HomeView.vue')
 const LoginView = () => import('@/views/LoginView.vue')
 const AccessView = () => import('@/views/AccessView.vue')
 const UsersView = () => import('@/views/UsersView.vue')
+const RegionsView = () => import('@/views/RegionsView.vue')
+const ShopsView = () => import('@/views/ShopsView.vue')
+const AuditView = () => import('@/views/AuditView.vue')
+const WorkOrderSettingsView = () => import('@/views/WorkOrderSettingsView.vue')
+const NotificationsView = () => import('@/features/notification/NotificationPanel.vue')
+const FundsImportsView = () => import('@/views/FundsImportsView.vue')
 const CatalogueView = () => import('@/features/pricing/CatalogueView.vue')
 const PartModelsView = () => import('@/features/pricing/PartModelsView.vue')
 const PricesView = () => import('@/features/pricing/PricesView.vue')
@@ -22,7 +28,14 @@ const router = createRouter({
   routes: [
     { path: '/login', component: LoginView },
     { path: '/', component: HomeView },
-    { path: '/users', component: UsersView, meta: { roles: ['ADMIN'] } },
+    { path: '/users', redirect: '/admin/users', meta: { roles: ['ADMIN'] } },
+    { path: '/admin/users', component: UsersView, meta: { roles: ['ADMIN'] } },
+    { path: '/admin/regions', component: RegionsView, meta: { roles: ['ADMIN'] } },
+    { path: '/admin/shops', component: ShopsView, meta: { roles: ['ADMIN'] } },
+    { path: '/admin/audit-logs', component: AuditView, meta: { roles: ['ADMIN'] } },
+    { path: '/admin/settings/work-orders', component: WorkOrderSettingsView, meta: { roles: ['ADMIN'] } },
+    { path: '/notifications', component: NotificationsView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
+    { path: '/funds/imports', component: FundsImportsView, meta: { roles: ['CUSTOMER_SERVICE'] } },
     { path: '/work-orders', component: WorkOrdersView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
     { path: '/work-orders/:id', component: WorkOrderDetailView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
     { path: '/pricing/catalogue/:kind(brands|models|parts|aliases|sources)', component: CatalogueView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },

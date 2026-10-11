@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#F7F8F8"/><stop offset="1" stop-color="#ECEEEF"/></linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#FFFFFF" stop-opacity=".88"/><stop offset="1" stop-color="#F7F8F8" stop-opacity=".68"/></linearGradient>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M24 0H0V24" fill="none" stroke="#D5D9DA" stroke-opacity=".35" stroke-width="1"/></pattern>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="8" stdDeviation="16" flood-color="#526E6E" flood-opacity=".10"/></filter>
+    <style>
+      text{font-family:"PingFang SC","Microsoft YaHei",sans-serif;fill:#2C3133}.muted{fill:#6F777A}.mono{font-family:"SFMono-Regular",Consolas,monospace;font-variant-numeric:tabular-nums}.small{font-size:12px}.body{font-size:14px}.label{font-size:13px;font-weight:600}.title{font-size:26px;font-weight:700}.h2{font-size:18px;font-weight:700}.line{stroke:#D5D9DA;stroke-width:1}.accent{fill:#526E6E}.white{fill:#fff}.success{fill:#3F6D62}.warning{fill:#9B6C2D}.danger{fill:#A34E49}
+    </style>
+  </defs>
+  <rect width="1440" height="900" fill="url(#bg)"/><rect x="78" width="1362" height="214" fill="url(#grid)"/>
+  <g opacity=".18" stroke="#526E6E" fill="none" stroke-width="1.4">
+    <path d="M930 149h112l46-49h128l38 42h57M1012 149c16-51 57-88 111-88 52 0 94 37 110 88M1082 100h116M1123 61v88M1216 100l37-45M1260 43h33"/>
+    <circle cx="1050" cy="151" r="29"/><circle cx="1229" cy="151" r="29"/><path d="M1074 148l45-72 55 2 56 73M1118 77l-24-23m13-7h-39"/>
+    <path d="M887 42h402M887 48v-12m402 12v-12M917 33l-30 9 30 9m342-18l30 9-30 9"/>
+    <text x="1065" y="27" class="mono small">1180 mm / ENGINEERING REFERENCE</text>
+  </g>
+  <rect width="78" height="900" fill="#FFFFFF"/><path d="M77.5 0v900" class="line"/>
+  <g transform="translate(18 22)"><path d="M21 0l18 8v15c0 13-8 23-18 28C11 46 3 36 3 23V8z" fill="#526E6E"/><path d="M13 16l8 7 11-12" fill="none" stroke="#fff" stroke-width="4"/><text x="21" y="74" text-anchor="middle" font-size="18" font-weight="700">e保</text></g>
+  <g class="body" text-anchor="middle">
+    <g transform="translate(8 114)"><rect width="62" height="64" rx="12" fill="#F7F8F8"/><path d="M22 30h18v17H22zM19 30l12-11 12 11" fill="none" stroke="#6F777A" stroke-width="2"/><text x="31" y="57" class="small">工作台</text></g>
+    <g transform="translate(8 190)" filter="url(#shadow)"><rect width="62" height="68" rx="14" fill="#526E6E"/><path d="M21 20h20v25H21zM26 16h10v8H26" fill="none" stroke="#fff" stroke-width="2"/><text x="31" y="59" class="small white">案件</text></g>
+    <g transform="translate(8 270)"><path d="M22 16h18v32H22zM26 12h10" fill="none" stroke="#6F777A" stroke-width="2"/><text x="31" y="61" class="small">价格库</text></g>
+    <g transform="translate(8 347)"><path d="M18 37h26M22 37V20h7v17m5 0V13h7v24" fill="none" stroke="#6F777A" stroke-width="2"/><text x="31" y="60" class="small">资金</text></g>
+    <g transform="translate(8 424)"><path d="M31 13l15 29H16zM31 23v9m0 5v2" fill="none" stroke="#6F777A" stroke-width="2"/><text x="31" y="61" class="small">投诉</text></g>
+    <g transform="translate(8 794)"><path d="M31 12a11 11 0 110 22 11 11 0 010-22zm-16 35c3-8 9-12 16-12s13 4 16 12" fill="none" stroke="#6F777A" stroke-width="2"/><text x="31" y="63" class="small">客服</text></g>
+  </g>
+  <rect x="88" y="186" width="174" height="236" rx="16" fill="url(#glass)" stroke="#FFFFFF" filter="url(#shadow)"/>
+  <text x="108" y="218" class="label">案件中心</text><text x="108" y="243" class="small muted">当前模块导航</text>
+  <g class="body"><rect x="100" y="262" width="150" height="42" rx="9" fill="#E4EAEA"/><circle cx="116" cy="283" r="4" class="accent"/><text x="130" y="288" font-weight="600">全部案件</text><text x="229" y="288" text-anchor="end" class="mono muted">32</text>
+  <circle cx="116" cy="329" r="4" fill="#9AA2A5"/><text x="130" y="334">我的待办</text><text x="229" y="334" text-anchor="end" class="mono muted">6</text>
+  <circle cx="116" cy="375" r="4" fill="#9AA2A5"/><text x="130" y="380">案件草稿</text><text x="229" y="380" text-anchor="end" class="mono muted">3</text></g>
+  <g transform="translate(278 22)"><rect width="470" height="40" rx="9" fill="#FFFFFF" stroke="#D5D9DA"/><circle cx="22" cy="20" r="7" fill="none" stroke="#6F777A" stroke-width="2"/><path d="M27 25l6 6" stroke="#6F777A" stroke-width="2"/><text x="45" y="25" class="body muted">搜索案件号、报案号、手机号或车辆标识</text></g>
+  <g transform="translate(1164 24)" class="body"><text x="0" y="24">站内通知</text><circle cx="75" cy="18" r="10" fill="#A34E49"/><text x="75" y="22" text-anchor="middle" class="small white">3</text><text x="106" y="24" class="muted">客服专员 · 陈岚</text></g>
+  <text x="278" y="112" class="title">客服工作台</text><text x="278" y="140" class="body muted">从待办进入真实案件，不展示无法由现有接口支撑的经营统计。</text>
+  <g transform="translate(278 180)">
+    <rect width="1138" height="168" rx="16" fill="#FFFFFF" stroke="#D5D9DA"/>
+    <text x="22" y="34" class="h2">我的待办</text><text x="1114" y="34" text-anchor="end" class="body accent">查看全部</text>
+    <line x1="22" y1="52" x2="1116" y2="52" class="line"/>
+    <g transform="translate(22 70)"><circle cx="10" cy="10" r="6" fill="#9B6C2D"/><text x="28" y="15" class="label">客服确认当前依据</text><text x="290" y="15" class="mono body">EVR-20261010-000021</text><text x="548" y="15" class="body muted">待维修授权</text><text x="816" y="15" class="body warning">截止 10月10日 16:00</text><rect x="986" y="-4" width="106" height="30" rx="8" fill="#526E6E"/><text x="1039" y="16" text-anchor="middle" class="body white">进入处理</text></g>
+    <g transform="translate(22 116)"><circle cx="10" cy="10" r="6" fill="#526E6E"/><text x="28" y="15" class="label">审核网点报价</text><text x="290" y="15" class="mono body">EVR-20261010-000019</text><text x="548" y="15" class="body muted">报价审核中</text><text x="816" y="15" class="body muted">不限期</text><rect x="986" y="-4" width="106" height="30" rx="8" fill="#F7F8F8" stroke="#D5D9DA"/><text x="1039" y="16" text-anchor="middle" class="body">打开案件</text></g>
+  </g>
+  <g transform="translate(278 366)">
+    <rect width="744" height="506" rx="16" fill="#FFFFFF" stroke="#D5D9DA"/>
+    <text x="22" y="38" class="h2">案件队列</text><text x="719" y="38" text-anchor="end" class="body muted">稳定排序 · 20 条/页</text>
+    <g transform="translate(22 56)"><rect width="250" height="38" rx="8" fill="#F7F8F8" stroke="#D5D9DA"/><text x="15" y="24" class="body muted">案件号 / 报案号 / 手机号</text><rect x="282" width="126" height="38" rx="8" fill="#F7F8F8" stroke="#D5D9DA"/><text x="297" y="24" class="body">全部状态⌄</text><rect x="418" width="126" height="38" rx="8" fill="#F7F8F8" stroke="#D5D9DA"/><text x="433" y="24" class="body">全部渠道⌄</text><rect x="554" width="68" height="38" rx="8" fill="#526E6E"/><text x="588" y="24" text-anchor="middle" class="body white">筛选</text></g>
+    <g transform="translate(22 116)" class="small muted"><text x="0" y="12">案件号</text><text x="226" y="12">车辆</text><text x="346" y="12">当前状态</text><text x="490" y="12">待办期限</text><text x="650" y="12">更新时间</text></g>
+    <line x1="22" y1="140" x2="722" y2="140" class="line"/>
+    <g transform="translate(14 146)"><rect width="716" height="58" rx="8" fill="#EFF3F2"/><rect width="3" height="58" rx="2" class="accent"/><text x="16" y="23" class="mono label">EVR-20261010-000021</text><text x="242" y="23" class="body">雅迪 G6 Pro</text><circle cx="365" cy="18" r="4" fill="#9B6C2D"/><text x="377" y="23" class="body">待维修授权</text><text x="506" y="23" class="body warning">10/10 16:00</text><text x="650" y="23" class="mono small muted">12:16</text><text x="16" y="45" class="small muted">报案号 PA-20261010-8471 · 张先生 138****8821</text></g>
+    <g transform="translate(22 212)"><text x="0" y="22" class="mono body">EVR-20261010-000019</text><text x="226" y="22" class="body">小牛 UQi+</text><circle cx="349" cy="17" r="4" fill="#526E6E"/><text x="361" y="22" class="body">报价审核中</text><text x="484" y="22" class="body muted">不限期</text><text x="628" y="22" class="mono small muted">11:03</text></g><line x1="22" y1="250" x2="722" y2="250" class="line"/>
+    <g transform="translate(22 258)"><text x="0" y="22" class="mono body">EVR-20261010-000018</text><text x="226" y="22" class="body">爱玛 Q5</text><circle cx="349" cy="17" r="4" fill="#9AA2A5"/><text x="361" y="22" class="body">等待保险核损</text><text x="484" y="22" class="body muted">不限期</text><text x="628" y="22" class="mono small muted">10:42</text></g><line x1="22" y1="296" x2="722" y2="296" class="line"/>
+    <g transform="translate(22 304)"><text x="0" y="22" class="mono body">EVR-20261010-000017</text><text x="226" y="22" class="body">台铃 T9</text><circle cx="349" cy="17" r="4" fill="#3F6D62"/><text x="361" y="22" class="body">维修中</text><text x="484" y="22" class="body muted">不限期</text><text x="628" y="22" class="mono small muted">10:21</text></g><line x1="22" y1="342" x2="722" y2="342" class="line"/>
+    <g transform="translate(22 350)"><text x="0" y="22" class="mono body">EVR-20261010-000016</text><text x="226" y="22" class="body">九号 N70C</text><circle cx="349" cy="17" r="4" fill="#9AA2A5"/><text x="361" y="22" class="body">待车主确认收车</text><text x="484" y="22" class="body muted">不限期</text><text x="628" y="22" class="mono small muted">09:58</text></g><line x1="22" y1="388" x2="722" y2="388" class="line"/>
+    <text x="22" y="474" class="body muted">共 32 条记录</text><g transform="translate(548 450)" class="body"><rect width="32" height="32" rx="7" fill="#526E6E"/><text x="16" y="21" text-anchor="middle" class="white">1</text><rect x="40" width="32" height="32" rx="7" fill="#F7F8F8" stroke="#D5D9DA"/><text x="56" y="21" text-anchor="middle">2</text><rect x="80" width="32" height="32" rx="7" fill="#F7F8F8" stroke="#D5D9DA"/><text x="96" y="21" text-anchor="middle">3</text></g>
+  </g>
+  <g transform="translate(1040 366)"><rect width="376" height="506" rx="16" fill="url(#glass)" stroke="#FFFFFF" filter="url(#shadow)"/><text x="22" y="38" class="h2">最近通知</text><text x="354" y="38" text-anchor="end" class="body accent">全部通知</text><line x1="22" y1="54" x2="354" y2="54" class="line"/>
+    <g transform="translate(22 78)"><circle cx="7" cy="7" r="5" class="accent"/><text x="22" y="12" class="label">维修授权条件已更新</text><text x="22" y="34" class="small muted mono">EVR-20261010-000021 · 12:16</text></g>
+    <g transform="translate(22 142)"><circle cx="7" cy="7" r="5" fill="#9AA2A5"/><text x="22" y="12" class="label">网点已提交报价</text><text x="22" y="34" class="small muted mono">EVR-20261010-000019 · 11:03</text></g>
+    <g transform="translate(22 206)"><circle cx="7" cy="7" r="5" fill="#9AA2A5"/><text x="22" y="12" class="label">投诉进入处理中</text><text x="22" y="34" class="small muted mono">EVR-20261010-000013 · 10:37</text></g>
+    <line x1="22" y1="270" x2="354" y2="270" class="line"/><text x="22" y="302" class="h2">快捷入口</text>
+    <g class="body"><rect x="22" y="324" width="158" height="46" rx="9" fill="#526E6E"/><text x="101" y="353" text-anchor="middle" class="white">新建案件草稿</text><rect x="192" y="324" width="162" height="46" rx="9" fill="#FFFFFF" stroke="#D5D9DA"/><text x="273" y="353" text-anchor="middle">价格数据库</text><rect x="22" y="382" width="158" height="46" rx="9" fill="#FFFFFF" stroke="#D5D9DA"/><text x="101" y="411" text-anchor="middle">资金导入</text><rect x="192" y="382" width="162" height="46" rx="9" fill="#FFFFFF" stroke="#D5D9DA"/><text x="273" y="411" text-anchor="middle">投诉处理</text></g>
+    <text x="22" y="474" class="small muted">设计示例数据 · 仅使用现有案件、待办、通知与路由能力</text>
+  </g>
+</svg>

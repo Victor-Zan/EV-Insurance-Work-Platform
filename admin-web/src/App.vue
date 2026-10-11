@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { RouterView } from 'vue-router'
-import NotificationPanel from './features/notification/NotificationPanel.vue'
+import { RouterView, useRoute } from 'vue-router'
+import AppShell from '@/shared/ui/AppShell.vue'
 import { currentUser } from '@/shared/http/client'
+const route = useRoute()
 </script>
 
 <template>
-  <NotificationPanel v-if="currentUser" :key="currentUser.id" />
-  <RouterView />
+  <AppShell v-if="currentUser && route.path !== '/login'"><RouterView :key="route.path" /></AppShell>
+  <RouterView v-else :key="route.path" />
 </template>
