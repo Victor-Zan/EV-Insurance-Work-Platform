@@ -4,21 +4,25 @@ import ComplaintPanel from '../complaint/ComplaintPanel.vue'
 import RepairPanel from '../repair/RepairPanel.vue'
 import QuotationPanel from '../quotation/QuotationPanel.vue'
 import MaterialsPanel from '../materials/MaterialsPanel.vue'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Button, Cell, CellGroup, Field, NavBar, showSuccessToast, showToast, Tag } from 'vant'
+import { Button, Cell, CellGroup, Field, NavBar, Skeleton, showSuccessToast, showToast, Tag } from 'vant'
 import { currentUser, httpClient } from '@/shared/http/client'
-import { statusLabels, workOrderApi, type History, type WorkOrder } from './work-orders'
-const materialRevision=ref(0)
-const route=useRoute(),router=useRouter(),id=String(route.params.id),api=workOrderApi(httpClient)
-const order=ref<WorkOrder>(),history=ref<History[]>([]),reason=ref(''),busy=ref(false)
+import { actionFor, statusLabels, workOrderApi, type History, type WorkOrder } from './work-orders'
+
+const materialRevision=ref(0),route=useRoute(),router=useRouter(),id=String(route.params.id),api=workOrderApi(httpClient)
+const order=ref<WorkOrder>(),history=ref<History[]>([]),historyTotal=ref(0),reason=ref(''),busy=ref(false),loading=ref(false),error=ref('')
 const isShop=computed(()=>currentUser.value?.roles.includes('REPAIR_SHOP')===true)
 const assignmentVersion=computed(()=>order.value?.currentAssignment?.assignmentVersion)
-async function load(){try{order.value=await api.detail(id);history.value=(await api.history(id)).records}catch(error){showToast(error instanceof Error?error.message:'加载失败')}}
+const sections=computed(()=>isShop.value
+  ? [{key:'overview',label:'概览与动作'},{key:'quotation',label:'报价授权'},{key:'materials',label:'上传反馈'},{key:'repair',label:'维修进度'},{key:'settlement',label:'结算'},{key:'complaint',label:'投诉'},{key:'history',label:'历史'}]
+  : [{key:'overview',label:'案件进度'},{key:'progress',label:'维修进度'},{key:'photos',label:'维修照片'},{key:'receipt',label:'收车评价'},{key:'complaint',label:'投诉'},{key:'history',label:'历史'}])
+const activeSection=computed(()=>sections.value.some(item=>item.key===String(route.query.section))?String(route.query.section):'overview')
+function goSection(section:string){void router.replace({path:route.path,query:{section}})}
+async function load(){loading.value=true;error.value='';try{order.value=await api.detail(id);const result=await api.history(id,1);history.value=result.records;historyTotal.value=result.total}catch(e){error.value=e instanceof Error?e.message:'案件加载失败'}finally{loading.value=false}}
 async function action(operation:'accept'|'reject'|'exception'|'continue'|'arrive'){
   if((operation==='reject'||operation==='exception')&&!reason.value.trim())return showToast('请填写原因')
-  const version=assignmentVersion.value
-  if(version===undefined)return showToast('当前派单版本缺失，请刷新后重试')
+  const version=assignmentVersion.value;if(version===undefined)return showToast('当前派单版本缺失，请刷新后重试')
   busy.value=true
   try{
     if(operation==='accept')order.value=await api.accept(id,version)
@@ -27,15 +31,29 @@ async function action(operation:'accept'|'reject'|'exception'|'continue'|'arrive
     if(operation==='continue')order.value=await api.continueWaiting(id,version,reason.value.trim()||null)
     if(operation==='arrive')order.value=await api.arrive(id,version)
     reason.value='';showSuccessToast('操作成功');await load()
-  }catch(error){showToast(error instanceof Error?error.message:'操作失败')}finally{busy.value=false}
+  }catch(e){showToast(e instanceof Error?e.message:'操作失败')}finally{busy.value=false}
 }
+watch(()=>route.query.section,value=>{if(value&&!sections.value.some(item=>item.key===String(value)))void router.replace({path:route.path,query:{section:'overview'}})},{immediate:true})
 onMounted(load)
 </script>
-<template><main v-if="order" class="mobile-shell"><NavBar :title="order.businessNo||'案件详情'" left-arrow @click-left="router.push('/work-orders')"/><section class="case-head"><Tag type="primary" size="large">{{ statusLabels[order.status] }}</Tag><h1>{{ order.vehicleBrand }} {{ order.vehicleModel }}</h1><p>{{ order.accidentAddress || '未填写详细地址' }}</p></section><CellGroup inset><Cell title="保险公司" :value="order.insuranceCompany"/><Cell title="报案号" :value="order.claimNo"/><Cell title="车主" :value="order.ownerName"/><Cell title="联系电话" :value="order.ownerPhone"/><Cell title="事故说明" :label="order.accidentDescription"/></CellGroup>
-  <section v-if="isShop&&order.status==='PENDING_ACCEPTANCE'" class="operation"><h2>接单处理</h2><Field v-model="reason" label="拒绝原因" type="textarea" placeholder="拒绝时必填"/><div class="button-row"><Button block type="primary" :loading="busy" @click="action('accept')">接单</Button><Button block :loading="busy" @click="action('reject')">拒单</Button></div></section>
-  <section v-if="isShop&&order.status==='PENDING_ARRIVAL'" class="operation"><h2>车辆到店</h2><Field v-model="reason" label="未到店原因" type="textarea" placeholder="出现延误时填写"/><div class="button-row"><Button block :loading="busy" @click="action('exception')">记录到店异常</Button><Button block type="primary" :loading="busy" @click="action('arrive')">确认到店</Button></div></section>
-  <section v-if="isShop&&order.status==='ARRIVAL_EXCEPTION'" class="operation"><h2>到店异常处理</h2><Field v-model="reason" label="备注" type="textarea" placeholder="继续等待时可选填"/><div class="button-row"><Button block :loading="busy" @click="action('continue')">继续等待</Button><Button block type="primary" :loading="busy" @click="action('arrive')">确认到店</Button></div></section>
-  <nav class="case-sections" aria-label="案件分区"><a v-if="isShop" href="#case-quotation">报价授权</a><a href="#case-repair">维修收车</a><a v-if="isShop" href="#case-funds">结算</a><a href="#case-complaint">投诉</a><a href="#case-materials">附件</a></nav><QuotationPanel id="case-quotation" v-if="isShop" :case-id="id" :refresh-token="materialRevision" @changed="materialRevision++;load()"/><RepairPanel id="case-repair" :case-id="id" :refresh-token="materialRevision" @changed="materialRevision++;load()"/><FundsPanel id="case-funds" v-if="!currentUser?.roles.includes('OWNER')" :case-id="id" :refresh-token="materialRevision" />
-    <ComplaintPanel id="case-complaint" :case-id="id" :status="order.status" :refresh-token="materialRevision"/><MaterialsPanel id="case-materials" @changed="materialRevision++;load()" :case-id="id" :status="order.status" :assignment-version="order.currentAssignment?.assignmentVersion"/><section class="operation"><h2>进度记录</h2><CellGroup><Cell v-for="item in history" :key="item.id" :title="statusLabels[item.toStatus as keyof typeof statusLabels]||item.toStatus"><template #label><div class="history-action">{{ item.reason||item.action }}</div><time :datetime="item.occurredAt">{{ new Date(item.occurredAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }) }}</time></template></Cell></CellGroup></section>
- </main></template>
-<style scoped>.case-head,.operation{padding:22px 20px}.case-head h1{font-size:24px;margin:14px 0 8px}.case-head p{color:#667085}.operation h2{font-size:18px}.button-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}.history-action{overflow-wrap:anywhere}time{display:block;margin-top:4px}</style>
+
+<template><div class="mobile-page"><NavBar :title="order?.businessNo||'案件详情'" left-arrow @click-left="router.push('/work-orders')"/><Skeleton v-if="loading&&!order" title :row="8" class="detail-skeleton"/><p v-if="error" class="inline-error" role="alert">{{ error }} <Button size="small" @click="load">重试</Button></p>
+  <template v-if="order"><header class="case-head"><div><p class="eyebrow">{{ isShop?'SHOP CASE':'OWNER CASE' }}</p><h1>{{ order.vehicleBrand||'未填写品牌' }} {{ order.vehicleModel }}</h1><p class="mono">{{ order.businessNo||'案件' }}</p></div><Tag plain type="primary" size="large">{{ statusLabels[order.status] }}</Tag><p class="next-action">当前动作：{{ actionFor(order.status,isShop?'REPAIR_SHOP':'OWNER').label }}</p></header>
+    <nav class="case-sections" aria-label="案件分区"><button v-for="section in sections" :key="section.key" :aria-current="activeSection===section.key?'page':undefined" @click="goSection(section.key)">{{ section.label }}</button></nav>
+
+    <section v-if="activeSection==='overview'" class="overview-panel"><CellGroup inset><Cell title="当前状态" :value="statusLabels[order.status]"/><Cell v-if="isShop" title="车主" :value="order.ownerName||'未填写'"/><Cell v-if="isShop" title="联系信息" :value="order.ownerPhone||'未提供'"/><Cell title="车辆" :value="`${order.vehicleBrand||''} ${order.vehicleModel||''}`.trim()||'未填写'"/><Cell title="事故位置" :value="order.accidentAddress||'未填写详细地址'"/><Cell title="事故说明" :label="order.accidentDescription||'未填写'"/></CellGroup>
+      <section v-if="isShop&&['PENDING_ACCEPTANCE','PENDING_ARRIVAL','ARRIVAL_EXCEPTION'].includes(order.status)" class="surface-section action-panel"><h2>{{ order.status==='PENDING_ACCEPTANCE'?'接单处理':order.status==='PENDING_ARRIVAL'?'车辆到店':'到店异常处理' }}</h2><Field v-model="reason" :label="order.status==='PENDING_ACCEPTANCE'?'拒绝原因':'处理说明'" type="textarea" :placeholder="order.status==='PENDING_ACCEPTANCE'?'拒绝时必填':'异常时填写原因'"/><Button v-if="order.status==='PENDING_ACCEPTANCE'" block plain :loading="busy" @click="action('reject')">拒绝接单</Button><Button v-if="order.status==='PENDING_ACCEPTANCE'" block type="primary" :loading="busy" @click="action('accept')">接受案件</Button><Button v-if="order.status==='PENDING_ARRIVAL'" block plain :loading="busy" @click="action('exception')">记录到店异常</Button><Button v-if="order.status==='ARRIVAL_EXCEPTION'" block plain :loading="busy" @click="action('continue')">继续等待</Button><Button v-if="['PENDING_ARRIVAL','ARRIVAL_EXCEPTION'].includes(order.status)" block type="primary" :loading="busy" @click="action('arrive')">确认车辆到店</Button></section>
+      <section v-else class="surface-section"><h2>{{ isShop?'下一步处理':'案件说明' }}</h2><p>{{ isShop?'从上方分区进入报价授权、材料上传、维修进度或结算；页面只开放当前状态允许的操作。':'可从上方查看维修进度、服务端允许的照片、收车评价与投诉。' }}</p><Button v-if="actionFor(order.status,isShop?'REPAIR_SHOP':'OWNER').section!=='overview'" block type="primary" @click="goSection(actionFor(order.status,isShop?'REPAIR_SHOP':'OWNER').section)">{{ actionFor(order.status,isShop?'REPAIR_SHOP':'OWNER').label }}</Button></section>
+    </section>
+
+    <QuotationPanel v-if="isShop&&activeSection==='quotation'" :case-id="id" :refresh-token="materialRevision" @changed="materialRevision++;load()"/>
+    <MaterialsPanel v-if="activeSection==='materials'||activeSection==='photos'" @changed="materialRevision++;load()" :case-id="id" :status="order.status" :assignment-version="order.currentAssignment?.assignmentVersion"/>
+    <RepairPanel v-if="activeSection==='repair'||activeSection==='progress'||activeSection==='receipt'" :case-id="id" :refresh-token="materialRevision" @changed="materialRevision++;load()"/>
+    <FundsPanel v-if="isShop&&activeSection==='settlement'" :case-id="id" :refresh-token="materialRevision"/>
+    <ComplaintPanel v-if="activeSection==='complaint'" :case-id="id" :status="order.status" :refresh-token="materialRevision"/>
+    <section v-if="activeSection==='history'" class="surface-section history-panel"><div class="section-title"><h2>状态历史</h2><span>共 {{ historyTotal }} 条</span></div><CellGroup><Cell v-for="item in history" :key="item.id" :title="statusLabels[item.toStatus as keyof typeof statusLabels]||item.toStatus"><template #label><div class="history-action">{{ item.reason||item.action }}</div><time :datetime="item.occurredAt">{{ new Date(item.occurredAt).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false}) }}</time></template></Cell></CellGroup><p v-if="historyTotal>20">这里只显示最近 20 条，更多记录按服务端分页读取。</p></section>
+  </template></div></template>
+
+<style scoped>
+.detail-skeleton{padding:24px 20px}.case-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px 12px;padding:22px 20px;background:#fff}.case-head h1{margin:5px 0 4px;font-size:22px;line-height:1.3}.case-head .mono{margin:0;color:var(--color-text-secondary);font-size:12px}.next-action{grid-column:1/-1;margin:6px 0 0;padding-top:10px;border-top:1px solid var(--color-border);color:var(--color-accent);font-size:13px;font-weight:600}.overview-panel{padding-top:10px}.action-panel .van-button{margin-top:10px;min-height:48px}.history-panel{background:#fff}.section-title{display:flex;align-items:center;justify-content:space-between}.section-title h2{margin:0}.section-title span{color:var(--color-text-secondary);font-size:12px}.history-action{overflow-wrap:anywhere}time{display:block;margin-top:4px;color:var(--color-text-secondary);font-variant-numeric:tabular-nums}
+</style>
