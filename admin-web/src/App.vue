@@ -6,6 +6,10 @@ const route = useRoute()
 </script>
 
 <template>
-  <AppShell v-if="currentUser && route.path !== '/login'"><RouterView :key="route.path" /></AppShell>
-  <RouterView v-else :key="route.path" />
+  <RouterView v-slot="{ Component }">
+    <AppShell v-if="currentUser && route.path !== '/login'">
+      <Transition name="page-shift" mode="out-in"><component :is="Component" :key="route.path" /></Transition>
+    </AppShell>
+    <Transition v-else name="page-shift" mode="out-in"><component :is="Component" :key="route.path" /></Transition>
+  </RouterView>
 </template>

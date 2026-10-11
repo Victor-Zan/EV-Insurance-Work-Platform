@@ -28,7 +28,7 @@ public class SecurityConfiguration {
     @Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(12); }
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http,ObjectMapper json,JwtService jwt,UserMapper users,
-        @Value("${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174}") String origins) throws Exception {
+        @Value("${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,http://localhost:5175}") String origins) throws Exception {
         var cors=new CorsConfiguration(); cors.setAllowedOrigins(List.of(origins.split(",")));
         cors.setAllowedMethods(List.of("GET","POST","PUT","PATCH","DELETE","OPTIONS"));
         cors.setAllowedHeaders(List.of("Authorization","Content-Type","X-Request-Id","Idempotency-Key")); cors.setExposedHeaders(List.of("X-Request-Id"));

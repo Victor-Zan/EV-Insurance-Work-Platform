@@ -4,7 +4,7 @@ $repo=Split-Path -Parent $PSScriptRoot
 $stage=Split-Path -Parent $repo
 $resolved=(Resolve-Path -LiteralPath $EnvironmentFile).Path
 if(-not $resolved.StartsWith($stage+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){throw 'Environment file must remain in the second-stage directory'}
-Get-Content -LiteralPath $resolved|ForEach-Object {if($_ -match '^([A-Z_]+)=(.*)$'){[Environment]::SetEnvironmentVariable($matches[1],$matches[2].Trim(),'Process')}}
+Get-Content -LiteralPath $resolved|ForEach-Object {if($_ -match '^([A-Z0-9_]+)=(.*)$'){[Environment]::SetEnvironmentVariable($matches[1],$matches[2].Trim(),'Process')}}
 if(-not (Test-Path -LiteralPath (Join-Path $JavaHome 'bin/javac.exe'))){throw 'JavaHome must point to JDK21'}
 $env:JAVA_HOME=$JavaHome
 $env:MAVEN_USER_HOME=Join-Path $stage '.tool-cache/maven'

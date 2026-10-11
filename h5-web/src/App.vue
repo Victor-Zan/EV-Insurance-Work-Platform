@@ -29,8 +29,8 @@ const themeVars = {
 <template>
   <ConfigProvider :theme-vars="themeVars">
     <RouterView v-slot="{ Component }">
-      <H5Shell v-if="useShell"><component :is="Component" /></H5Shell>
-      <component :is="Component" v-else />
+      <H5Shell v-if="useShell"><Transition name="mobile-page-shift" mode="out-in"><component :is="Component" :key="route.path" /></Transition></H5Shell>
+      <Transition v-else name="mobile-page-shift" mode="out-in"><component :is="Component" :key="route.path" /></Transition>
     </RouterView>
   </ConfigProvider>
 </template>

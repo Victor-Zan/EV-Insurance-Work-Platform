@@ -9,10 +9,13 @@ import { useRoute, useRouter } from 'vue-router'
 import { Button, Cell, CellGroup, Field, NavBar, Skeleton, showSuccessToast, showToast, Tag } from 'vant'
 import { currentUser, httpClient } from '@/shared/http/client'
 import { actionFor, statusLabels, workOrderApi, type History, type WorkOrder } from './work-orders'
+import shopHero from '@/assets/repair-shop-service-hero.webp'
+import ownerHero from '@/assets/owner-progress-hero.webp'
 
 const materialRevision=ref(0),route=useRoute(),router=useRouter(),id=String(route.params.id),api=workOrderApi(httpClient)
 const order=ref<WorkOrder>(),history=ref<History[]>([]),historyTotal=ref(0),reason=ref(''),busy=ref(false),loading=ref(false),error=ref('')
 const isShop=computed(()=>currentUser.value?.roles.includes('REPAIR_SHOP')===true)
+const roleHero=computed(()=>isShop.value?shopHero:ownerHero)
 const assignmentVersion=computed(()=>order.value?.currentAssignment?.assignmentVersion)
 const sections=computed(()=>isShop.value
   ? [{key:'overview',label:'概览与动作'},{key:'quotation',label:'报价授权'},{key:'materials',label:'上传反馈'},{key:'repair',label:'维修进度'},{key:'settlement',label:'结算'},{key:'complaint',label:'投诉'},{key:'history',label:'历史'}]
@@ -38,7 +41,7 @@ onMounted(load)
 </script>
 
 <template><div class="mobile-page"><NavBar :title="order?.businessNo||'案件详情'" left-arrow @click-left="router.push('/work-orders')"/><Skeleton v-if="loading&&!order" title :row="8" class="detail-skeleton"/><p v-if="error" class="inline-error" role="alert">{{ error }} <Button size="small" @click="load">重试</Button></p>
-  <template v-if="order"><header class="case-head"><div><p class="eyebrow">{{ isShop?'SHOP CASE':'OWNER CASE' }}</p><h1>{{ order.vehicleBrand||'未填写品牌' }} {{ order.vehicleModel }}</h1><p class="mono">{{ order.businessNo||'案件' }}</p></div><Tag plain type="primary" size="large">{{ statusLabels[order.status] }}</Tag><p class="next-action">当前动作：{{ actionFor(order.status,isShop?'REPAIR_SHOP':'OWNER').label }}</p></header>
+  <template v-if="order"><header class="case-head"><img class="case-role-hero" :src="roleHero" alt="" aria-hidden="true"><div><p class="eyebrow">{{ isShop?'SHOP CASE':'OWNER CASE' }}</p><h1>{{ order.vehicleBrand||'未填写品牌' }} {{ order.vehicleModel }}</h1><p class="mono">{{ order.businessNo||'案件' }}</p></div><Tag plain type="primary" size="large">{{ statusLabels[order.status] }}</Tag><p class="next-action">当前动作：{{ actionFor(order.status,isShop?'REPAIR_SHOP':'OWNER').label }}</p></header>
     <nav class="case-sections" aria-label="案件分区"><button v-for="section in sections" :key="section.key" :aria-current="activeSection===section.key?'page':undefined" @click="goSection(section.key)">{{ section.label }}</button></nav>
 
     <section v-if="activeSection==='overview'" class="overview-panel"><CellGroup inset><Cell title="当前状态" :value="statusLabels[order.status]"/><Cell v-if="isShop" title="车主" :value="order.ownerName||'未填写'"/><Cell v-if="isShop" title="联系信息" :value="order.ownerPhone||'未提供'"/><Cell title="车辆" :value="`${order.vehicleBrand||''} ${order.vehicleModel||''}`.trim()||'未填写'"/><Cell title="事故位置" :value="order.accidentAddress||'未填写详细地址'"/><Cell title="事故说明" :label="order.accidentDescription||'未填写'"/></CellGroup>
@@ -55,5 +58,6 @@ onMounted(load)
   </template></div></template>
 
 <style scoped>
-.detail-skeleton{padding:24px 20px}.case-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px 12px;padding:22px 20px;background:#fff}.case-head h1{margin:5px 0 4px;font-size:22px;line-height:1.3}.case-head .mono{margin:0;color:var(--color-text-secondary);font-size:12px}.next-action{grid-column:1/-1;margin:6px 0 0;padding-top:10px;border-top:1px solid var(--color-border);color:var(--color-accent);font-size:13px;font-weight:600}.overview-panel{padding-top:10px}.action-panel .van-button{margin-top:10px;min-height:48px}.history-panel{background:#fff}.section-title{display:flex;align-items:center;justify-content:space-between}.section-title h2{margin:0}.section-title span{color:var(--color-text-secondary);font-size:12px}.history-action{overflow-wrap:anywhere}time{display:block;margin-top:4px;color:var(--color-text-secondary);font-variant-numeric:tabular-nums}
+.detail-skeleton{padding:24px 20px}.case-head{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px 12px;min-height:164px;overflow:hidden;margin:10px 12px 0;padding:22px 20px;border:1px solid rgba(255,255,255,.94);border-radius:16px;background:linear-gradient(145deg,rgba(255,255,255,.9),rgba(239,243,243,.8));box-shadow:inset 0 1px 0 #fff,0 16px 38px rgba(82,110,110,.085);backdrop-filter:blur(14px) saturate(.8)}.case-head::before{position:absolute;inset:0;background-image:linear-gradient(rgba(82,110,110,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(82,110,110,.04) 1px,transparent 1px);background-size:20px 20px;content:'';mask-image:linear-gradient(90deg,transparent 35%,#000)}.case-head>*{position:relative}.case-role-hero{position:absolute;right:-22px;bottom:-118px;width:190px;height:285px;object-fit:cover;object-position:center 72%;filter:grayscale(.6) saturate(.4);opacity:.22;mask-image:linear-gradient(90deg,transparent,#000 35%);pointer-events:none}.case-head h1{max-width:11em;margin:5px 0 4px;font-size:22px;line-height:1.3}.case-head .mono{margin:0;color:var(--color-text-secondary);font-size:12px}.next-action{grid-column:1/-1;margin:6px 0 0;padding-top:10px;border-top:1px solid var(--color-border);color:var(--color-accent);font-size:13px;font-weight:600}.overview-panel{padding-top:10px}.action-panel .van-button{margin-top:10px;min-height:48px}.history-panel{background:#fff}.section-title{display:flex;align-items:center;justify-content:space-between}.section-title h2{margin:0}.section-title span{color:var(--color-text-secondary);font-size:12px}.history-action{overflow-wrap:anywhere}time{display:block;margin-top:4px;color:var(--color-text-secondary);font-variant-numeric:tabular-nums}
+@media(prefers-reduced-transparency:reduce){.case-head{background:#fff;backdrop-filter:none}}
 </style>

@@ -133,7 +133,7 @@ dev 配置在 Flyway 执行前将注入值转换为 BCrypt 哈希，V2.1 开发�
 
 第一位生产管理员的安全初始化属于上线加固阶段，本阶段不提供公开注册或无认证初始化 API。
 
-管理端默认 http://localhost:5173，H5 默认 http://localhost:5174；两者通过 Vite /api 代理后端。部署时配置同源反向代理或明确配置 VITE_API_BASE_URL 与 CORS_ALLOWED_ORIGINS，不能用通配 CORS 替代授权。
+管理端默认 http://localhost:5173，H5 默认 http://localhost:5174；本地端口占用时，当前开发环境也允许 H5 使用 http://localhost:5175。两端通过 Vite /api 代理后端。部署时配置同源反向代理或明确配置 VITE_API_BASE_URL 与 CORS_ALLOWED_ORIGINS，不能用通配 CORS 替代授权。
 
 API 契约详见 Swagger：POST /api/v1/auth/login 输入 username、password、portal（ADMIN 或 H5）；GET /api/v1/auth/me 读取实时身份。Token 过期、账号停用或认证版本变化返回 401。管理员用户/角色、区域、网点及服务区域、审计 API 均在 /api/v1/admin 下。密码重置只返回成功状态；退出登录清理浏览器会话状态，已签发 Token 在到期或认证版本变化前仍遵守服务端校验。
 

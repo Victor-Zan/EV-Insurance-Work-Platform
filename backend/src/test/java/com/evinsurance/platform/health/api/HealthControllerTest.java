@@ -2,6 +2,7 @@ package com.evinsurance.platform.health.api;
 
 import static org.hamcrest.Matchers.matchesPattern;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -52,5 +53,19 @@ class HealthControllerTest {
             .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
             .andExpect(jsonPath("$.message").value("Authentication is required"))
             .andExpect(jsonPath("$.traceId", matchesPattern("[a-f0-9]{32}")));
+    }
+
+    @Test
+    void allowsCurrentLocalH5OriginWithoutOpeningCorsToOtherOrigins() throws Exception {
+        mockMvc.perform(options("/api/v1/auth/login")
+                .header("Origin", "http://localhost:5175")
+                .header("Access-Control-Request-Method", "POST"))
+            .andExpect(status().isOk())
+            .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:5175"));
+
+        mockMvc.perform(options("/api/v1/auth/login")
+                .header("Origin", "http://localhost:5199")
+                .header("Access-Control-Request-Method", "POST"))
+            .andExpect(status().isForbidden());
     }
 }
