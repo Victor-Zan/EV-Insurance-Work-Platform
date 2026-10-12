@@ -13,5 +13,6 @@ public final class QuotationRows {
     public record RawItem(int lineNo,String description,int quantity,BigDecimal unitPrice,BigDecimal amount,String sourceSnapshot) {}
     public record Formal(UUID id,UUID workOrderId,int versionNo,UUID rawQuoteId,String currency,String markupMode,BigDecimal markupValue,BigDecimal originalTotal,BigDecimal markupAmount,BigDecimal total,String calculationVersion,long createdBy,Instant createdAt) {}
     public record FormalItem(int lineNo,String description,int quantity,BigDecimal originalUnitPrice,BigDecimal originalAmount,BigDecimal allocatedMarkup,BigDecimal externalUnitPrice,BigDecimal externalAmount) {}
+    public record DocumentHeader(UUID formalQuoteId,String businessNo,String claimNo,String insuranceCompany,String ownerName,String vehicleBrand,String vehicleModel,String snapshotKind) {}
     public record Assessment(UUID id,UUID workOrderId,int versionNo,UUID sourceFormalId,BigDecimal amount,String fileSnapshot,long createdBy,Instant createdAt) {}
 }

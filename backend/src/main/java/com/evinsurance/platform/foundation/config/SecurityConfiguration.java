@@ -45,6 +45,7 @@ public class SecurityConfiguration {
                 .requestMatchers(HttpMethod.POST,"/api/v1/auth/login").permitAll()
                 .requestMatchers("/api/v1/auth/me").authenticated()
                 .requestMatchers("/api/v1/funds/**").hasAnyRole("ADMIN","CUSTOMER_SERVICE","REPAIR_SHOP")
+                .requestMatchers("/api/v1/historical-cases/**").hasAnyRole("ADMIN","CUSTOMER_SERVICE")
                 .requestMatchers("/api/v1/notifications/**").hasAnyRole("ADMIN","CUSTOMER_SERVICE","REPAIR_SHOP","OWNER")
                 .requestMatchers("/api/v1/materials/**").hasAnyRole("ADMIN","CUSTOMER_SERVICE","REPAIR_SHOP","OWNER")
                 .requestMatchers("/api/v1/complaints/**").hasAnyRole("ADMIN","CUSTOMER_SERVICE","REPAIR_SHOP","OWNER")

@@ -9,7 +9,7 @@
   <if test="scope != 'STAFF'">AND state='ACTIVE'
    <choose>
     <when test="scope == 'OWNER'">AND category IN ('ARRIVAL_PHOTO','PROGRESS_PHOTO','COMPLETION_PHOTO')</when>
-    <otherwise>AND category IN ('SHOP_QUOTE','ARRIVAL_PHOTO','PROGRESS_PHOTO','COMPLETION_PHOTO') AND shop_id=#{shopId} AND assignment_version=#{assignmentVersion}</otherwise>
+    <otherwise>AND category IN ('SHOP_QUOTE','ASSESSMENT','ARRIVAL_PHOTO','PROGRESS_PHOTO','COMPLETION_PHOTO') AND shop_id=#{shopId} AND assignment_version=#{assignmentVersion}</otherwise>
    </choose>
   </if>
  </sql>

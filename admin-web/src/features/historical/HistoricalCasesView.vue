@@ -1,0 +1,44 @@
+<script setup lang="ts">
+import { onMounted, ref } from 'vue'
+import { ElButton, ElInput, ElMessage, ElMessageBox, ElTag } from 'element-plus'
+import { httpClient } from '@/shared/http/client'
+
+interface Batch { id:string;fileName:string;totalRows:number;ready_count:number;invalid_count:number;duplicate_count:number;imported_count:number;failed_count:number }
+interface PreviewRow { rowNumber:number;status:string;values:Record<string,string>;error:string|null;warning:string|null;archiveId:string|null }
+interface Archive { id:string;claim_no:string|null;owner_name:string;owner_phone:string;brand:string;model:string;assessment_amount:string|null;repair_date:string|null;shop_name:string|null;legacy_status:string|null;created_at:string }
+const file=ref<File>(),busy=ref(false),message=ref(''),batches=ref<Batch[]>([]),batchPage=ref(1),batchTotal=ref(0),selected=ref<Batch>(),rows=ref<PreviewRow[]>([]),rowPage=ref(1)
+const query=ref(''),archives=ref<Archive[]>([]),archivePage=ref(1),archiveTotal=ref(0),detail=ref<Record<string,unknown>>()
+const detailFields=[['claim_no','报案号'],['owner_name','车主姓名'],['owner_phone','车主电话'],['vehicle_plate','车牌号'],['brand','品牌'],['model','车型'],['accident_address','事故地址'],['fault_description','故障描述'],['latitude','纬度'],['longitude','经度'],['assessment_amount','定损金额'],['repair_date','维修日期'],['shop_name','维修网点'],['legacy_status','原状态'],['fault_type','故障类型'],['source_name','来源'],['note','备注']] as const
+async function run(action:()=>Promise<void>){busy.value=true;message.value='';try{await action()}catch(error){message.value=error instanceof Error?error.message:'操作失败'}finally{busy.value=false}}
+async function loadBatches(){const page=(await httpClient.get<{data:{records:Batch[];total:number}}>('/historical-cases/imports',{params:{page:batchPage.value,size:20}})).data.data;batches.value=page.records;batchTotal.value=page.total}
+async function loadRows(){if(!selected.value)return;rows.value=(await httpClient.get<{data:{records:PreviewRow[]}}>(`/historical-cases/imports/${selected.value.id}/rows`,{params:{page:rowPage.value,size:20}})).data.data.records}
+async function select(batch:Batch){selected.value=batch;rowPage.value=1;await loadRows()}
+async function preview(){if(!file.value)throw Error('请先选择历史订单 XLSX');const body=new FormData();body.append('file',file.value);selected.value=(await httpClient.post<{data:Batch}>('/historical-cases/imports',body,{timeout:120_000})).data.data;rowPage.value=1;await Promise.all([loadBatches(),loadRows()]);message.value='预览完成，尚未归档；请检查示例行和异常行后再确认'}
+async function confirm(){if(!selected.value)return;await ElMessageBox.confirm('仅有效且未重复的行会归档；归档后不可修改。确认继续？','确认历史归档');selected.value=(await httpClient.post<{data:Batch}>(`/historical-cases/imports/${selected.value.id}/confirm`,{},{timeout:120_000})).data.data;await Promise.all([loadBatches(),loadRows(),loadArchives()]);ElMessage.success('逐行归档完成，请核对结果')}
+async function source(){if(!selected.value)return;const blob=(await httpClient.get<Blob>(`/historical-cases/imports/${selected.value.id}/source`,{responseType:'blob'})).data;const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=selected.value.fileName;link.click();URL.revokeObjectURL(url)}
+async function loadArchives(){const page=(await httpClient.get<{data:{records:Archive[];total:number}}>('/historical-cases',{params:{page:archivePage.value,size:20,query:query.value.trim()||undefined}})).data.data;archives.value=page.records;archiveTotal.value=page.total}
+async function openArchive(id:string){detail.value=(await httpClient.get<{data:Record<string,unknown>}>(`/historical-cases/${id}`)).data.data}
+function choose(event:Event){file.value=(event.target as HTMLInputElement).files?.[0]}
+onMounted(()=>run(async()=>{await Promise.all([loadBatches(),loadArchives()])}))
+</script>
+
+<template>
+  <div class="work-page historical-page">
+    <header class="module-page-head"><p>CASES / 历史档案</p><h1>历史案件归档</h1><span>历史记录独立只读；不会创建新工单或进入派单、报价与资金流程。</span></header>
+    <section class="archive-panel"><h2>导入与预览</h2><p>使用“历史订单／字段说明”双工作表模板，最多 10 MiB、2000 行。模板中的示例行也会进入预览，请确认后再归档。</p>
+      <input type="file" accept=".xlsx" aria-label="选择历史订单 Excel" @change="choose"><ElButton :loading="busy" type="primary" @click="run(preview)">上传并预览</ElButton>
+      <p role="status">{{ message }}</p>
+      <div class="batch-list"><h3>导入批次</h3><ElButton :disabled="busy" text @click="run(loadBatches)">刷新</ElButton><button v-for="batch in batches" :key="batch.id" type="button" :class="{active:selected?.id===batch.id}" @click="run(()=>select(batch))">{{ batch.fileName }} · {{ batch.totalRows }} 行</button><p v-if="!batches.length">暂无导入批次。</p><div class="pager"><ElButton :disabled="busy||batchPage<=1" @click="batchPage--;run(loadBatches)">上一页</ElButton><span>{{ batchPage }} / {{ Math.max(1,Math.ceil(batchTotal/20)) }}</span><ElButton :disabled="busy||batchPage*20>=batchTotal" @click="batchPage++;run(loadBatches)">下一页</ElButton></div></div>
+      <div v-if="selected" class="preview"><h3>第 {{ rowPage }} 页预览</h3><p>待归档 {{ selected.ready_count }} · 已归档 {{ selected.imported_count }} · 重复跳过 {{ selected.duplicate_count }} · 无效 {{ selected.invalid_count }} · 失败 {{ selected.failed_count }}</p><ElButton :disabled="busy||!selected.ready_count" type="primary" @click="run(confirm)">确认归档有效行</ElButton><ElButton :disabled="busy" @click="run(source)">下载原文件</ElButton>
+        <article v-for="row in rows" :key="row.rowNumber" class="preview-row"><div><strong>Excel 第 {{ row.rowNumber }} 行</strong><ElTag>{{ row.status }}</ElTag><span>{{ row.values['车主姓名'] }} · {{ row.values['报案号']||'无报案号' }}</span></div><p v-if="row.error" class="error">{{ row.error }}</p><p v-if="row.warning">报案号与其他历史记录相同，但整行内容不同；此行仍可归档。</p><details><summary>查看原始 17 列</summary><dl><template v-for="(value,key) in row.values" :key="key"><dt>{{ key }}</dt><dd>{{ value||'—' }}</dd></template></dl></details></article>
+        <div class="pager"><ElButton :disabled="busy||rowPage<=1" @click="rowPage--;run(loadRows)">上一页</ElButton><span>{{ rowPage }} / {{ Math.max(1,Math.ceil(selected.totalRows/20)) }}</span><ElButton :disabled="busy||rowPage*20>=selected.totalRows" @click="rowPage++;run(loadRows)">下一页</ElButton></div>
+      </div>
+    </section>
+    <section class="archive-panel"><h2>只读历史档案</h2><form class="search" @submit.prevent="archivePage=1;run(loadArchives)"><ElInput v-model="query" clearable placeholder="报案号、车主、电话或车牌" aria-label="搜索历史档案"><template #append><ElButton native-type="submit">搜索</ElButton></template></ElInput></form><p>共 {{ archiveTotal }} 条</p>
+      <div v-if="!archives.length">暂无历史档案。</div><button v-for="item in archives" :key="item.id" class="archive-row" type="button" @click="run(()=>openArchive(item.id))"><strong>{{ item.claim_no||'无报案号' }}</strong><span>{{ item.owner_name }} · {{ item.brand }} {{ item.model }}</span><small>{{ item.repair_date||'无维修日期' }} · {{ item.shop_name||'未填维修网点' }}</small></button>
+      <div class="pager"><ElButton :disabled="busy||archivePage<=1" @click="archivePage--;run(loadArchives)">上一页</ElButton><span>{{ archivePage }} / {{ Math.max(1,Math.ceil(archiveTotal/20)) }}</span><ElButton :disabled="busy||archivePage*20>=archiveTotal" @click="archivePage++;run(loadArchives)">下一页</ElButton></div>
+      <div v-if="detail" class="detail"><h3>历史档案详情（只读）</h3><dl><template v-for="[key,label] in detailFields" :key="key"><dt>{{ label }}</dt><dd>{{ detail[key]??'—' }}</dd></template></dl></div>
+    </section>
+  </div>
+</template>
+<style scoped>.historical-page{max-width:1160px}.archive-panel{margin:20px 0;padding:22px;border:1px solid var(--color-border);border-radius:12px;background:#fff}.archive-panel h2{margin:0 0 10px;font-size:19px}.archive-panel h3{font-size:15px}.archive-panel p{color:var(--color-text-secondary)}.batch-list{margin-top:18px}.batch-list button:not(.el-button),.archive-row{display:block;width:100%;padding:10px;border:0;border-bottom:1px solid var(--color-border);background:transparent;text-align:left;cursor:pointer}.batch-list button.active,.archive-row:hover{background:var(--color-accent-soft)}.preview{margin-top:18px}.preview-row{padding:12px 0;border-bottom:1px solid var(--color-border)}.preview-row>div{display:flex;flex-wrap:wrap;gap:12px;align-items:center}.preview-row .error{color:#a42f2f}.pager{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-top:16px}.search{max-width:540px}.archive-row span,.archive-row small{display:block;margin-top:4px}.archive-row small{color:var(--color-text-secondary)}dl{display:grid;grid-template-columns:minmax(90px,150px) minmax(0,1fr);gap:5px 12px;overflow-wrap:anywhere}dt{color:var(--color-text-secondary)}dd{margin:0}.detail{margin-top:20px;padding:16px;background:var(--color-canvas)}@media(max-width:640px){.archive-panel{padding:15px}dl{grid-template-columns:1fr}dd{margin-bottom:8px}}</style>

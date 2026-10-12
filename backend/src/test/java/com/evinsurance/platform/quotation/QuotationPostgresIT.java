@@ -217,12 +217,84 @@ class QuotationPostgresIT {
         assertThat(db.queryForObject("select total from quote_formal where id=?::uuid",java.math.BigDecimal.class,fixedId)).isEqualByComparingTo("110.00");
         assertThat(db.queryForObject("select unit_price from quote_raw_item where raw_quote_id=?::uuid and line_no=1",java.math.BigDecimal.class,context(shop,id).path("rawQuote").path("id").asText())).isEqualByComparingTo("30.00");
         String csv=mvc.perform(get("/api/v1/quotations/cases/{id}/formal-quotes/{quote}/export",id,fixedId).header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();assertThat(csv).contains("66.00","44.00","110.00","\"'=SUM(1,2)\\n合成配件\"".replace("\\n","\n")).doesNotContain("markup","original","30.00");
+        byte[] pdf=mvc.perform(get("/api/v1/quotations/cases/{id}/formal-quotes/{quote}/pdf",id,fixedId).header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();
+        try(var document=org.apache.pdfbox.Loader.loadPDF(pdf)){String rendered=new org.apache.pdfbox.text.PDFTextStripper().getText(document);assertThat(rendered).contains("平台正式报价单","110.00").doesNotContain("原始合计","加价","平台利润");}
         for(String token:List.of(shop,owner))mvc.perform(get("/api/v1/quotations/cases/{id}/formal-quotes/{quote}/export",id,fixedId).header("Authorization","Bearer "+token)).andExpect(status().isForbidden());
+        for(String token:List.of(shop,owner))mvc.perform(get("/api/v1/quotations/cases/{id}/formal-quotes/{quote}/pdf",id,fixedId).header("Authorization","Bearer "+token)).andExpect(status().isForbidden());
         mvc.perform(get("/api/v1/quotations/cases/{id}",id).header("Authorization","Bearer "+owner)).andExpect(status().isForbidden());
         var shopView=context(shop,id);assertThat(shopView.has("formalQuote")).isFalse();assertThat(shopView.has("assessment")).isFalse();assertThat(shopView.toString()).doesNotContain("markup","originalUnitPrice","externalUnitPrice");
         mvc.perform(get("/api/v1/quotations/cases/{id}/history?type=FORMAL",id).header("Authorization","Bearer "+shop)).andExpect(status().isForbidden());
         org.junit.jupiter.api.Assertions.assertThrows(org.springframework.dao.DataAccessException.class,()->db.update("update quote_formal set total=total+1 where id=?::uuid",fixedId));
         flyway.validate();
+    }
+    @Test void currentRepairShopMayProvideAssessmentDocumentButOwnerMayNot() throws Exception {
+        String id=arrived();int assignment=context(shop,id).path("assignmentVersion").asInt();
+        var request=org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/v1/materials/cases/{id}",id)
+            .file(new org.springframework.mock.web.MockMultipartFile("file","assessment.pdf","application/pdf","%PDF-1.7\nSYNTHETIC\n%%EOF".getBytes()))
+            .param("category","ASSESSMENT").param("assignmentVersion",String.valueOf(assignment))
+            .header("Authorization","Bearer "+shop).header("Idempotency-Key",UUID.randomUUID().toString());
+        String body=mvc.perform(request).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String fileId=json.readTree(body).path("data").path("id").asText();
+        mvc.perform(get("/api/v1/materials/cases/{id}",id).header("Authorization","Bearer "+shop)).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.records[0].category").value("ASSESSMENT"));
+        mvc.perform(get("/api/v1/materials/{id}/download",fileId).header("Authorization","Bearer "+owner)).andExpect(status().isForbidden());
+    }
+    @Test void reconciliationExportIsPagedScopedAndStaffOnly() throws Exception {
+        String id=arrived();String businessNo=db.queryForObject("select business_no from work_order where id=?::uuid",String.class,id);
+        byte[] file=mvc.perform(get("/api/v1/funds/reconciliation/export").header("Authorization","Bearer "+customerService)
+            .param("query",businessNo).param("page","1").param("size","1"))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();
+        try(var book=new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(file))) {
+            var row=book.getSheet("工单资金对账").getRow(1);
+            assertThat(row.getCell(0).getStringCellValue()).isEqualTo(businessNo);
+            assertThat(row.getCell(1).getStringCellValue()).isNotBlank();
+            assertThat((Object)book.getSheetAt(0).getRow(2)).isNull();
+        }
+        for(String token:List.of(shop,owner))mvc.perform(get("/api/v1/funds/reconciliation/export")
+            .header("Authorization","Bearer "+token).param("query",businessNo)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/v1/funds/reconciliation/export").header("Authorization","Bearer "+admin)
+            .param("from","2026-10-12").param("to","2026-10-11")).andExpect(status().isBadRequest());
+    }
+    @Test void historicalWorkbookArchivesReadOnlyRowsWithoutCreatingCurrentWorkOrders() throws Exception {
+        byte[] source;
+        try(var book=new org.apache.poi.xssf.usermodel.XSSFWorkbook();var output=new java.io.ByteArrayOutputStream()) {
+            var sheet=book.createSheet("历史订单");book.createSheet("字段说明");
+            var header=sheet.createRow(0);for(int column=0;column<com.evinsurance.platform.historical.application.HistoricalCaseFileParser.FIELDS.size();column++)
+                header.createCell(column).setCellValue(com.evinsurance.platform.historical.application.HistoricalCaseFileParser.FIELDS.get(column));
+            String[][] values={
+                {"","张三","13800000001","粤B12345","雅迪","冠能","深圳市宝安区","无法充电","22.571000","113.883000","350.00","2026-07-01","老网点","completed","battery","旧系统","第一条"},
+                {"HIST-100","李四","13800000002","","雅迪","冠能","深圳市南山区","碰撞","22.530000","113.930000","100.00","","","closed","accident","旧系统",""},
+                {"HIST-100","李四","13800000002","","雅迪","冠能","深圳市南山区","碰撞","22.530000","113.930000","120.00","","","closed","accident","旧系统",""},
+                {"HIST-100","李四","13800000002","","雅迪","冠能","深圳市南山区","碰撞","22.530000","113.930000","120.00","","","closed","accident","旧系统",""},
+                {"HIST-101","王五","123","","雅迪","冠能","深圳市南山区","碰撞","22.530000","113.930000","120.00","","","closed","accident","旧系统",""},
+                {"HIST-102","赵六","13800000003","","雅迪","冠能","深圳市南山区","碰撞","22.530000","113.930000","120.00","","","closed","accident","旧系统",""}
+            };
+            for(int index=0;index<values.length;index++){var row=sheet.createRow(index+1);for(int column=0;column<17;column++)row.createCell(column).setCellValue(values[index][column]);}
+            sheet.getRow(6).getCell(16).setCellFormula("1+1");
+            book.write(output);source=output.toByteArray();
+        }
+        long before=db.queryForObject("select count(*) from work_order",Long.class);
+        var upload=org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/v1/historical-cases/imports")
+            .file(new org.springframework.mock.web.MockMultipartFile("file","history.xlsx","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",source))
+            .header("Authorization","Bearer "+customerService);
+        var batch=json.readTree(mvc.perform(upload).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data");
+        String batchId=batch.path("id").asText();assertThat(batch.path("ready_count").asInt()).isEqualTo(3);assertThat(batch.path("duplicate_count").asInt()).isEqualTo(1);assertThat(batch.path("invalid_count").asInt()).isEqualTo(2);
+        var preview=json.readTree(mvc.perform(get("/api/v1/historical-cases/imports/{id}/rows",batchId).header("Authorization","Bearer "+customerService))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data").path("records");
+        assertThat(preview.get(0).path("values").path("报案号").asText()).isEmpty();
+        assertThat(preview.get(2).path("warning").asText()).isEqualTo("CLAIM_NO_REUSED");
+        var confirmed=json.readTree(mvc.perform(post("/api/v1/historical-cases/imports/{id}/confirm",batchId)
+            .header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data");
+        assertThat(confirmed.path("imported_count").asInt()).isEqualTo(3);
+        assertThat(db.queryForObject("select count(*) from work_order",Long.class)).isEqualTo(before);
+        assertThat(db.queryForObject("select count(*) from historical_case where import_id=?::uuid",Long.class,batchId)).isEqualTo(3);
+        var repeated=json.readTree(mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/v1/historical-cases/imports")
+            .file(new org.springframework.mock.web.MockMultipartFile("file","history.xlsx","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",source))
+            .header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data");
+        assertThat(repeated.path("duplicate_count").asInt()).isEqualTo(4);assertThat(repeated.path("invalid_count").asInt()).isEqualTo(2);
+        for(String token:List.of(shop,owner))mvc.perform(get("/api/v1/historical-cases").header("Authorization","Bearer "+token)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/v1/historical-cases").header("Authorization","Bearer "+admin).param("query","HIST-100"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(2));
     }
     @Test void allFourIndividualMissingConditionsAreRejectedAndNothingElseIsAdded() throws Exception {
         for(int omitted=0;omitted<4;omitted++) {

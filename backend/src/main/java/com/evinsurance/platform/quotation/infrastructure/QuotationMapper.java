@@ -16,6 +16,8 @@ public interface QuotationMapper {
     void insertRawItem(@Param("id") UUID id,@Param("line") int line,@Param("description") String description,@Param("quantity") int quantity,@Param("unit") BigDecimal unit,@Param("amount") BigDecimal amount,@Param("snapshot") String snapshot);
     Formal formal(UUID id);
     List<FormalItem> formalItems(UUID id);
+    DocumentHeader documentHeader(UUID id);
+    void insertDocumentHeader(@Param("quoteId") UUID quoteId,@Param("order") com.evinsurance.platform.workorder.infrastructure.WorkOrderEntity order);
     void insertFormal(@Param("id") UUID id,@Param("caseId") UUID caseId,@Param("version") int version,@Param("raw") UUID raw,@Param("mode") String mode,@Param("value") BigDecimal value,@Param("original") BigDecimal original,@Param("markup") BigDecimal markup,@Param("total") BigDecimal total,@Param("actor") long actor);
     void insertFormalItem(@Param("id") UUID id,@Param("line") AllocatedLine line);
     Assessment assessment(UUID id);

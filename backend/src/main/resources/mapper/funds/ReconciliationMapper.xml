@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.evinsurance.platform.funds.infrastructure.ReconciliationMapper">
+  <select id="page" resultType="com.evinsurance.platform.funds.infrastructure.ReconciliationMapper$Row">
+    WITH selected AS (
+      SELECT w.id,w.business_no,w.claim_no,w.insurance_company,w.shop_id,w.status,w.created_at,w.updated_at
+      FROM work_order w
+      WHERE w.status&lt;&gt;'DRAFT'
+      <if test="status != null and status != ''">AND w.status=#{status}</if>
+      <if test="query != null and query != ''">
+        AND (lower(w.business_no) LIKE lower('%'||#{query}||'%') OR lower(w.claim_no) LIKE lower('%'||#{query}||'%'))
+      </if>
+      <if test="insuranceCompany != null and insuranceCompany != ''">AND lower(w.insurance_company) LIKE lower('%'||#{insuranceCompany}||'%')</if>
+      <if test="shopId != null">AND w.shop_id=#{shopId}</if>
+      <if test="from != null">AND w.created_at&gt;=#{from}</if>
+      <if test="until != null">AND w.created_at&lt;#{until}</if>
+      ORDER BY w.updated_at DESC,w.id DESC LIMIT #{size} OFFSET #{offset}
+    )
+    SELECT w.id,w.business_no,w.claim_no,w.insurance_company,s.name shop_name,w.status,w.created_at,
+      receivable.amount receivable_target,received.net received_net,
+      payable.amount payable_target,paid.net paid_net
+    FROM selected w
+    LEFT JOIN repair_shop s ON s.id=w.shop_id
+    LEFT JOIN LATERAL (SELECT amount FROM funds_target WHERE work_order_id=w.id AND direction='RECEIVE' ORDER BY id DESC LIMIT 1) receivable ON true
+    LEFT JOIN LATERAL (SELECT amount FROM funds_target WHERE work_order_id=w.id AND direction='PAY' ORDER BY id DESC LIMIT 1) payable ON true
+    LEFT JOIN LATERAL (SELECT coalesce(sum(e.amount),0) net FROM funds_entry e WHERE e.work_order_id=w.id AND e.direction='RECEIVE' AND NOT EXISTS(SELECT 1 FROM funds_reversal r WHERE r.entry_id=e.id)) received ON true
+    LEFT JOIN LATERAL (SELECT coalesce(sum(e.amount),0) net FROM funds_entry e WHERE e.work_order_id=w.id AND e.direction='PAY' AND NOT EXISTS(SELECT 1 FROM funds_reversal r WHERE r.entry_id=e.id)) paid ON true
+    ORDER BY w.updated_at DESC,w.id DESC
+  </select>
+</mapper>

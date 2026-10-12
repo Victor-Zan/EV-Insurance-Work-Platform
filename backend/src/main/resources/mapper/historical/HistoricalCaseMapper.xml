@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.evinsurance.platform.historical.infrastructure.HistoricalCaseMapper">
+ <insert id="insertBatch">INSERT INTO historical_case_import(id,actor_id,file_name,sha256,object_key,total_rows) VALUES(#{id},#{actor},#{name},#{hash},#{key},#{total})</insert>
+ <insert id="insertRows">INSERT INTO historical_case_import_row(import_id,row_number,raw_json,row_hash,status,error_code,warning_code) VALUES
+  <foreach collection="rows" item="r" separator=",">(#{id},#{r.rowNumber},#{r.rawJson},#{r.rowHash},#{r.status},#{r.errorCode},#{r.warningCode})</foreach>
+ </insert>
+ <select id="batch" resultType="map">SELECT * FROM historical_case_import WHERE id=#{id}</select>
+ <select id="batchStatus" resultType="map">SELECT count(*) FILTER(WHERE status='READY') ready_count,count(*) FILTER(WHERE status='INVALID') invalid_count,count(*) FILTER(WHERE status='DUPLICATE') duplicate_count,count(*) FILTER(WHERE status='IMPORTED') imported_count,count(*) FILTER(WHERE status='FAILED') failed_count FROM historical_case_import_row WHERE import_id=#{id}</select>
+ <select id="batchCount" resultType="long">SELECT count(*) FROM historical_case_import</select>
+ <select id="batches" resultType="map">SELECT * FROM historical_case_import ORDER BY created_at DESC,id DESC LIMIT #{size} OFFSET #{offset}</select>
+ <select id="rows" resultType="map">SELECT * FROM historical_case_import_row WHERE import_id=#{id} ORDER BY row_number LIMIT #{size} OFFSET #{offset}</select>
+ <select id="pending" resultType="int">SELECT row_number FROM historical_case_import_row WHERE import_id=#{id} AND status='READY' ORDER BY row_number LIMIT 2000</select>
+ <select id="lockRow" resultType="map">SELECT * FROM historical_case_import_row WHERE import_id=#{id} AND row_number=#{number} FOR UPDATE</select>
+ <update id="setResult">UPDATE historical_case_import_row SET status=#{status},error_code=#{error},archive_id=#{archiveId,jdbcType=OTHER} WHERE import_id=#{id} AND row_number=#{number}</update>
+ <select id="existingHashes" resultType="string">SELECT row_hash FROM historical_case WHERE row_hash IN <foreach collection="hashes" item="hash" open="(" separator="," close=")">#{hash}</foreach></select>
+ <select id="existingClaims" resultType="string">SELECT DISTINCT claim_no FROM historical_case WHERE claim_no IN <foreach collection="claims" item="claim" open="(" separator="," close=")">#{claim}</foreach></select>
+ <insert id="insertArchive">INSERT INTO historical_case(id,import_id,source_row,row_hash,claim_no,owner_name,owner_phone,vehicle_plate,brand,model,accident_address,fault_description,latitude,longitude,assessment_amount,repair_date,shop_name,legacy_status,fault_type,source_name,note)
+  VALUES(#{id},#{batch},#{number},#{hash},#{item.claimNo},#{item.ownerName},#{item.ownerPhone},#{item.vehiclePlate},#{item.brand},#{item.model},#{item.accidentAddress},#{item.faultDescription},#{item.latitude},#{item.longitude},#{item.assessmentAmount},#{item.repairDate},#{item.shopName},#{item.legacyStatus},#{item.faultType},#{item.sourceName},#{item.note}) ON CONFLICT(row_hash) DO NOTHING</insert>
+ <select id="archiveByHash" resultType="map">SELECT id FROM historical_case WHERE row_hash=#{hash}</select>
+ <sql id="archiveFilter"><if test="query != null and query != ''">WHERE lower(coalesce(claim_no,'')||' '||owner_name||' '||owner_phone||' '||coalesce(vehicle_plate,'')) LIKE lower('%'||#{query}||'%')</if></sql>
+ <select id="archiveCount" resultType="long">SELECT count(*) FROM historical_case <include refid="archiveFilter"/></select>
+ <select id="archives" resultType="map">SELECT id,claim_no,owner_name,owner_phone,vehicle_plate,brand,model,assessment_amount,repair_date,shop_name,legacy_status,source_name,created_at FROM historical_case <include refid="archiveFilter"/> ORDER BY created_at DESC,id DESC LIMIT #{size} OFFSET #{offset}</select>
+ <select id="archive" resultType="map">SELECT id,claim_no,owner_name,owner_phone,vehicle_plate,brand,model,accident_address,fault_description,latitude,longitude,assessment_amount,repair_date,shop_name,legacy_status,fault_type,source_name,note,created_at FROM historical_case WHERE id=#{id}</select>
+</mapper>

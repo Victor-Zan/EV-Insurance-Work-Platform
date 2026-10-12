@@ -78,6 +78,7 @@ export function workOrderApi(client: AxiosInstance) {
   const data = async <T>(request: Promise<{ data: ApiResponse<T> }>) => (await request).data.data
   return {
     list: (page=1,status='',query='') => data<Page<WorkOrder>>(client.get('/work-orders',{ params:{ page,size:20,status:status||undefined,query:query||undefined } })),
+    reconciliation: (page=1,status='',query='') => client.get<Blob>('/funds/reconciliation/export',{params:{page,size:20,status:status||undefined,query:query||undefined},responseType:'blob'}).then(response=>response.data),
     regions: () => data<Page<RegionOption>>(client.get('/pricing/regions',{ params:{ size:100 } })),
     create: (form: DraftForm) => data<WorkOrder>(client.post('/work-orders/drafts',draftPayload(form))),
     update: (id: string,form: DraftForm) => data<WorkOrder>(client.put(`/work-orders/${id}/draft`,draftPayload(form))),

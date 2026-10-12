@@ -25,12 +25,12 @@ const modules = computed(() => [
   { id: 'notices' as Module, label: '通知', path: '/notifications', glyph: 'bell' },
   ...(isAdmin.value ? [{ id: 'admin' as Module, label: '管理', path: '/admin/users', glyph: 'admin' }] : []),
 ])
-const active = computed<Module>(() => route.path.startsWith('/work-orders') ? 'cases' : route.path.startsWith('/pricing') ? 'pricing' : route.path.startsWith('/funds') ? 'funds' : route.path.startsWith('/notifications') ? 'notices' : route.path.startsWith('/admin') || route.path === '/users' ? 'admin' : 'home')
+const active = computed<Module>(() => route.path.startsWith('/work-orders') || route.path.startsWith('/historical-cases') ? 'cases' : route.path.startsWith('/pricing') ? 'pricing' : route.path.startsWith('/funds') ? 'funds' : route.path.startsWith('/notifications') ? 'notices' : route.path.startsWith('/admin') || route.path === '/users' ? 'admin' : 'home')
 const visible = computed(() => preview.value ?? opened.value)
 const links = computed(() => {
   switch (visible.value) {
     case 'home': return [{ label: '工作台', to: '/' }, { label: '我的待办', to: '/notifications?tab=todos' }]
-    case 'cases': return [{ label: '全部案件', to: '/work-orders' }, { label: '我的待办', to: '/notifications?tab=todos' }, { label: '案件草稿', to: '/work-orders?status=DRAFT' }]
+    case 'cases': return [{ label: '全部案件', to: '/work-orders' }, { label: '历史档案导入', to: '/historical-cases' }, { label: '我的待办', to: '/notifications?tab=todos' }, { label: '案件草稿', to: '/work-orders?status=DRAFT' }]
     case 'pricing': return [{ label: '价格候选', to: '/pricing' }, { label: '品牌资料', to: '/pricing/catalogue/brands' }, { label: '车型资料', to: '/pricing/catalogue/models' }, { label: '配件资料', to: '/pricing/catalogue/parts' }, { label: '适配关系', to: '/pricing/part-models' }, ...(isAdmin.value ? [{ label: '价格导入', to: '/pricing/import' }] : [])]
     case 'funds': return [{ label: '资金导入', to: '/funds/imports' }, { label: '案件资金记录', to: '/work-orders' }]
     case 'notices': return [{ label: '我的待办', to: '/notifications?tab=todos' }, { label: '站内通知', to: '/notifications?tab=notices' }]

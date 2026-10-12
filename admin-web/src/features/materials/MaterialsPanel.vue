@@ -10,7 +10,7 @@ const cs=computed(()=>currentUser.value?.roles.includes('CUSTOMER_SERVICE'))
 const staff=computed(()=>cs.value||currentUser.value?.roles.includes('ADMIN'))
 const shop=computed(()=>currentUser.value?.roles.includes('REPAIR_SHOP'))
 const writable=computed(()=>!['COMPLETED','CANCELLED'].includes(props.status))
-const categories=computed(()=>Object.keys(labels).filter(x=>cs.value||(shop.value&&(x==='SHOP_QUOTE'||x.endsWith('_PHOTO')))))
+const categories=computed(()=>Object.keys(labels).filter(x=>cs.value||(shop.value&&(x==='SHOP_QUOTE'||x==='ASSESSMENT'||x.endsWith('_PHOTO')))))
 const rows=ref<Attachment[]>([]),page=ref(1),total=ref(0),category=ref(cs.value?'NOTICE':'ARRIVAL_PHOTO'),selected=ref<File>(),replacement=ref(''),message=ref(''),busy=ref(false),reason=ref(''),notice=ref<{noticePresent:boolean;missingReason:string}>(),job=ref<Job>(),candidate=ref(''),history=ref(''),simulateFailure=ref(false),jobId=ref('')
 async function call<T>(method:'get'|'post',url:string,data?:unknown,headers?:Record<string,string>){return (await httpClient.request<{data:T}>({method,url,data,headers})).data.data}
 async function load(){const data=await call<{records:Attachment[];total:number}>('get',`/materials/cases/${props.caseId}?page=${page.value}&size=20`);rows.value=data.records;total.value=data.total;if(staff.value)notice.value=await call('get',`/materials/cases/${props.caseId}/notice-status`)}

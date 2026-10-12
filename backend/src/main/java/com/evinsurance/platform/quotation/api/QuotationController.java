@@ -23,4 +23,6 @@ public class QuotationController {
     @GetMapping("/history") public ApiResponse<PageResponse<Map<String,Object>>> history(@PathVariable UUID id,@RequestParam(defaultValue="EVENT") String type,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size){return ApiResponse.success(service.history(id,type,page,size));}
     @GetMapping("/formal-quotes/{quote}/export") @Operation(summary="客服/管理员导出对外CSV数据，移除内部原价与加价；非正式模板")
     public ResponseEntity<String> export(@PathVariable UUID id,@PathVariable UUID quote){return ResponseEntity.ok().contentType(MediaType.parseMediaType("text/csv;charset=UTF-8")).header(HttpHeaders.CONTENT_DISPOSITION,"attachment; filename=quote-"+quote+".csv").header(HttpHeaders.CACHE_CONTROL,"no-store").header("X-Content-Type-Options","nosniff").body(service.export(id,quote));}
+    @GetMapping("/formal-quotes/{quote}/pdf") @Operation(summary="客服/管理员下载正式报价PDF；仅含对外价格与必要案件信息，保留报价版本并记录审计")
+    public ResponseEntity<byte[]> pdf(@PathVariable UUID id,@PathVariable UUID quote){return ResponseEntity.ok().contentType(MediaType.APPLICATION_PDF).header(HttpHeaders.CONTENT_DISPOSITION,"attachment; filename=quote-"+quote+".pdf").header(HttpHeaders.CACHE_CONTROL,"no-store").header("X-Content-Type-Options","nosniff").body(service.pdf(id,quote));}
 }

@@ -17,6 +17,7 @@ const PriceHistoryView = () => import('@/features/pricing/PriceHistoryView.vue')
 const ImportView = () => import('@/features/pricing/ImportView.vue')
 const BatchesView = () => import('@/features/pricing/BatchesView.vue')
 const WorkOrdersView = () => import('@/features/workorders/WorkOrdersView.vue')
+const HistoricalCasesView = () => import('@/features/historical/HistoricalCasesView.vue')
 const WorkOrderDetailView = () => import('@/features/workorders/WorkOrderDetailView.vue')
 import { PRICE_READ_ROLES, PRICE_WRITE_ROLES } from '@/features/pricing/prices'
 import { authSession, api } from '@/shared/http/client'
@@ -37,6 +38,7 @@ const router = createRouter({
     { path: '/notifications', component: NotificationsView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
     { path: '/funds/imports', component: FundsImportsView, meta: { roles: ['CUSTOMER_SERVICE'] } },
     { path: '/work-orders', component: WorkOrdersView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
+    { path: '/historical-cases', component: HistoricalCasesView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
     { path: '/work-orders/:id', component: WorkOrderDetailView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
     { path: '/pricing/catalogue/:kind(brands|models|parts|aliases|sources)', component: CatalogueView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
     { path: '/pricing/part-models', component: PartModelsView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
