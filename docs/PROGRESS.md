@@ -29,7 +29,7 @@
 
 验证中修复了两张 JPEG 带合法应用尾部却被误报损坏的问题：完整解码并检查告警/结束标记，原字节及摘要保留，不裁剪或静默截断。第一次真实识别暴露标签/表格映射缺口后，只从私有原文重整，不重复外呼；更新程序时将剩余进程预算降为1，累计两次用完即停止真实进程。后续复核实例未注入百度凭据，Worker关闭；安全计数保存在仓库外。凭据仅从用户指定的本机私密文件加载至后端内存，文件已Git忽略且不提交；凭据、Token、真实图片和识别全文不作为交付文件。
 
-尚未验收：复杂手写布局的整体准确率、PDF逐页识别（本版百度模式明确拒绝PDF）、物理手机、生产部署及Docker启动。缺少明确标签/可靠坐标时保留原文待人工补充，不宣称所有资料自动填满。B 的十二项业务决策等待确认，确认后需先更新需求和决策再实施。没有进入后续阶段或部署生产。Git 提交与 Draft PR 交付信息在完成安全检查后补记。
+尚未验收：复杂手写布局的整体准确率、PDF逐页识别（本版百度模式明确拒绝PDF）、物理手机、生产部署及Docker启动。缺少明确标签/可靠坐标时保留原文待人工补充，不宣称所有资料自动填满。B 的十二项业务决策等待确认，确认后需先更新需求和决策再实施。没有进入后续阶段或部署生产。实现提交为 `7d7331e7ba25cf5edc45dd0237f8a69c48fb696c`（`feat(ocr): add Baidu handwriting and reviewed pre-case draft intake`），分支已正常推送至 origin。37个暂存文件与本任务运行日志的受保护值扫描通过，未发现凭据/样本姓名，未暂存敏感二进制，用户凭据文档未跟踪。GitHub 集成创建指向 main 的 Draft PR 时返回 `403 Resource not accessible by integration`；没有绕过权限或尝试合并。请在 [手动创建 PR](https://github.com/Victor-Zan/EV-Insurance-Work-Platform/compare/main...feature/sherr-phase13-baidu-ocr?expand=1) 页面选择 Draft，标题建议 `feat(ocr): add Baidu handwriting and pre-case draft prefill`。本文交付补记单独提交，不改写实现提交。
 
 ## 2026-10-12 提示词 12 补充验收：JDK 21、四角色浏览器与部署冒烟
 
