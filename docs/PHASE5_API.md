@@ -2,6 +2,21 @@
 
 所有路径前缀/api/v1，需有效Bearer且实时账号启用。JSON沿用ApiResponse，列表page从1开始，size上限100；字段及在线协议见/v3/api-docs。
 
+## D-045 百度与建单前补充
+
+| 方法/路径 | 语义 |
+| --- | --- |
+| GET ocr/configuration | 当前供应商/API/适配版本与开发模拟开关，不含凭据 |
+| POST ocr/intake | 客服 multipart JPEG/PNG，Idempotency-Key；私有上传并建任务，不需要案件/fileId，不创建案件 |
+| GET ocr/{id}/image | 授权原图流，no-store；客服仅自己的建单前来源、管理员只读 |
+| GET ocr/{id}/raw | 授权原始响应，text 保留原始 JSON、logId 字符串，客户端不得将大整数转 Number |
+| GET ocr/{id}/program | 最新不可变程序候选（初始 revision=0 及后续历史保留），字段含文字行及坐标证据；人工版本不能冒充程序来源 |
+| POST ocr/{id}/reextract | 客服以 expectedVersion、Idempotency-Key 从已存原文追加程序候选版本，不再调用百度；初始与人工版本均保留 |
+| POST ocr/{id}/draft | expectedVersion + draft；只允许建单前任务，须与已确认表单一致；调用原草稿服务，每任务一个关联，重复返回同草稿；不正式提交 |
+
+GET ocr/{id} 增加 intakeId、providerApi、providerVersion、retryable；失败只返回安全代码。旧 fileId 任务兼容，供应商与来源不可修改。review 接口仍保存有界对象，但管理端使用字段/明细编辑而非 JSON 编辑；建单前表单保存至 candidate.draft，服务端对已确认值规范化比对。确认仍只保存快照；创建草稿是明确独立动作。管理员不能创建、重试、修正、确认或从 OCR 创建草稿，网点/车主全部禁止。
+
+
 | 方法/路径 | 语义 |
 | --- | --- |
 | GET materials/cases/{id}?page&size | 按案件、角色、当前派单、分类、版本过滤 |
