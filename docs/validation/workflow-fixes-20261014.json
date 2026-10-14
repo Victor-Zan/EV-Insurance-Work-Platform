@@ -1,0 +1,226 @@
+{
+  "verifiedDate": "2026-10-14",
+  "baseline": "2000f6191db270f22b1d8b175f6224cb8bfdb09e",
+  "backendGates": [
+    {
+      "check": "compose-config",
+      "status": "PASS",
+      "exitCode": 0
+    },
+    {
+      "check": "backend-verify",
+      "status": "PASS",
+      "exitCode": 0
+    }
+  ],
+  "backendTests": {
+    "skipped": 0,
+    "failures": 0,
+    "errors": 0,
+    "unit": 22,
+    "postgresqlIntegration": 69
+  },
+  "frontendGates": [
+    {
+      "check": "admin-web-lint",
+      "status": "PASS",
+      "exitCode": 0
+    },
+    {
+      "check": "admin-web-typecheck",
+      "status": "PASS",
+      "exitCode": 0
+    },
+    {
+      "check": "admin-web-test",
+      "status": "PASS",
+      "exitCode": 0
+    },
+    {
+      "check": "admin-web-build",
+      "status": "PASS",
+      "exitCode": 0
+    },
+    {
+      "check": "h5-web-lint",
+      "status": "PASS",
+      "exitCode": 0
+    },
+    {
+      "check": "h5-web-typecheck",
+      "status": "PASS",
+      "exitCode": 0
+    },
+    {
+      "check": "h5-web-test",
+      "status": "PASS",
+      "exitCode": 0
+    },
+    {
+      "check": "h5-web-build",
+      "status": "PASS",
+      "exitCode": 0
+    }
+  ],
+  "frontendTests": {
+    "adminWeb": 35,
+    "h5Web": 20
+  },
+  "httpChecks": [
+    {
+      "check": "raw_fixed_percentage_immutable_snapshots",
+      "status": "PASS"
+    },
+    {
+      "check": "role_field_and_external_export_isolation",
+      "status": "PASS"
+    },
+    {
+      "check": "four_gate_invalidation_reconfirm_start_and_freeze",
+      "status": "PASS"
+    },
+    {
+      "check": "repair_progress_idempotency_completion_evidence_freeze_owner_download",
+      "status": "PASS"
+    },
+    {
+      "check": "cs_receipt_withdraw_owner_rereceipt_review_original_and_correction",
+      "status": "PASS"
+    },
+    {
+      "check": "complaint_completed_case_idempotency_history_public_internal_isolation",
+      "status": "PASS"
+    },
+    {
+      "check": "partial_receipt_replay_and_insurer_settlement_gate",
+      "status": "PASS"
+    },
+    {
+      "check": "manual_optional_deadline_history_and_overdue_label_only",
+      "status": "PASS"
+    },
+    {
+      "check": "private_import_row_results_manual_matching_and_no_double_accounting",
+      "status": "PASS"
+    },
+    {
+      "check": "payment_reversal_history_and_scoped_export",
+      "status": "PASS"
+    },
+    {
+      "check": "station_notification_scope_read_dedup_and_disabled_automation",
+      "status": "PASS"
+    },
+    {
+      "check": "station_notice_read_and_deadline_history_restart",
+      "status": "PASS"
+    },
+    {
+      "check": "funds_and_private_import_restart_persistence",
+      "status": "PASS"
+    },
+    {
+      "check": "jar_restart_persists_repair_evidence_receipts_reviews_complaints_and_amounts",
+      "status": "PASS"
+    },
+    {
+      "check": "owner_onboarding_late_binding_and_account_isolation_real_http",
+      "status": "PASS"
+    },
+    {
+      "check": "cancellation_notices_selected_recipients_readable_after_cancel",
+      "status": "PASS"
+    },
+    {
+      "check": "funds_and_complaint_workbenches_permissions_and_target_history",
+      "status": "PASS"
+    }
+  ],
+  "lifecycleChecks": [
+    {
+      "check": "services_survive_start_command_exit",
+      "status": "PASS"
+    },
+    {
+      "check": "single_stop_process_identity",
+      "status": "PASS"
+    },
+    {
+      "check": "one_frontend_exit_does_not_stop_backend_or_h5",
+      "status": "PASS"
+    },
+    {
+      "check": "missing_frontend_restart_and_no_duplicate_other_services",
+      "status": "PASS"
+    },
+    {
+      "check": "registered_stop_stops_all_three_services",
+      "status": "PASS"
+    },
+    {
+      "check": "website_stop_preserves_postgresql_minio_containers",
+      "status": "PASS"
+    },
+    {
+      "check": "full_restart_health_and_both_proxies",
+      "status": "PASS"
+    }
+  ],
+  "localLoginChecks": [
+    {
+      "account": "dev_admin",
+      "status": "PASS"
+    },
+    {
+      "account": "dev_customer_service",
+      "status": "PASS"
+    },
+    {
+      "account": "dev_repair_shop",
+      "status": "PASS"
+    },
+    {
+      "account": "dev_owner",
+      "status": "PASS"
+    }
+  ],
+  "localHealthChecks": [
+    {
+      "url": "http://localhost:8080/api/v1/health",
+      "http": 200
+    },
+    {
+      "url": "http://localhost:5173",
+      "http": 200
+    },
+    {
+      "url": "http://localhost:5174",
+      "http": 200
+    },
+    {
+      "url": "http://localhost:5173/api/v1/health",
+      "http": 200
+    },
+    {
+      "url": "http://localhost:5174/api/v1/health",
+      "http": 200
+    },
+    {
+      "url": "http://localhost:19000/minio/health/live",
+      "http": 200
+    }
+  ],
+  "notExecuted": [
+    "Physical phone acceptance",
+    "All state UI acceptance",
+    "Production deployment"
+  ],
+  "retainedFailures": [
+    "Initial concurrent owner binding deadlock; fixed and assertions retained",
+    "Windows PowerShell5 backend runner stderr handling; rerun with PowerShell7 passed",
+    "Initial HTTP absolute JAR path joining; fixed and rerun passed",
+    "Startup registry array compatibility and capture-pipe inheritance; fixed",
+    "Initial worker log redirection syntax; corrected",
+    "Initial frontend startup timeout; measured bootstrap time and adjusted runtime setting"
+  ]
+}

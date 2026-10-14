@@ -43,6 +43,21 @@ public class FundsService {
         Long shop=null;Integer assignment=null;if(!access.staff(actor)){var current=orders.activeAssignment(id);shop=actor.shopId();assignment=current.getAssignmentVersion();if(payable!=null&&(!Objects.equals(shop,((Number)payable.get("shop_id")).longValue())||!Objects.equals(assignment,((Number)payable.get("assignment_version")).intValue())))amount=null;}
         out.set("payable",directionView(amount,mapper.net(id,"PAY",shop,assignment).setScale(2)));return out;
     }
+    private String filter(String value) {if(value==null||value.isBlank())return null;if(value.length()>120)throw ApiException.invalid("Filter is too long");return value.trim();}
+    private String fundsStatus(String value) {value=filter(value);if(value!=null&&!Set.of("UNSET","UNPAID","PARTIAL","SETTLED").contains(value))throw ApiException.invalid("Unknown funds status");return value;}
+    public PageResponse<JsonNode> workbench(int page,int size,String query,String status,String receive,String pay) {
+        if(!access.staff(CurrentUser.require()))throw ApiException.denied();int offset=PageResponse.offset(page,size);
+        query=filter(query);status=filter(status);receive=fundsStatus(receive);pay=fundsStatus(pay);
+        if(status!=null){try{com.evinsurance.platform.workorder.domain.WorkOrderStatus.valueOf(status);}catch(IllegalArgumentException invalid){throw ApiException.invalid("Unknown work order status");}}
+        var rows=mapper.workbench(query,status,receive,pay,offset,size).stream().map(row->{
+            var n=json.createObjectNode().put("caseId",row.get("id").toString()).put("businessNo",(String)row.get("business_no")).put("claimNo",(String)row.get("claim_no")).put("status",(String)row.get("status"));
+            for(String dir:List.of("receive","pay")) {
+                var amount=(BigDecimal)row.get(dir+"_target");var balance=json.createObjectNode().put("net",((BigDecimal)row.get(dir+"_net")).setScale(2).toPlainString()).put("status",(String)row.get(dir+"_status"));
+                if(amount==null)balance.putNull("target");else balance.put("target",amount.setScale(2).toPlainString());n.set(dir.equals("receive")?"receivable":"payable",balance);
+            }return (JsonNode)n;
+        }).toList();
+        return new PageResponse<>(page,size,mapper.workbenchCount(query,status,receive,pay),rows);
+    }
     public JsonNode get(UUID id){return view(visible(id,false));}
     private JsonNode command(UUID id,String op,String key,Object body,Supplier<JsonNode> action){
         FileService.checkKey(key);var actor=CurrentUser.require();String hash=FileService.hash((id+":"+json.writeValueAsString(body)).getBytes(StandardCharsets.UTF_8));mapper.commandLock("funds-command:"+actor.id()+":"+op+":"+key);
@@ -90,6 +105,6 @@ public class FundsService {
         if(staff){out.put("transactionNo",(String)row.get("transaction_no")).put("note",(String)row.get("note"));out.set("reversalReason",json.valueToTree(row.get("reversal_reason")));}return out;
     }
     public PageResponse<JsonNode> history(UUID id,int page,int size){visible(id,false);int offset=PageResponse.offset(page,size);boolean staff=access.staff(CurrentUser.require());Long shop=staff?null:CurrentUser.require().shopId();Integer assignment=staff?null:orders.activeAssignment(id).getAssignmentVersion();return new PageResponse<>(page,size,mapper.count(id,shop,assignment),mapper.entries(id,shop,assignment,offset,size).stream().map(x->entryView(x,staff)).toList());}
-    public PageResponse<JsonNode> targetHistory(UUID id,int page,int size){visible(id,false);if(!access.staff(CurrentUser.require()))throw ApiException.denied();int offset=PageResponse.offset(page,size);return new PageResponse<>(page,size,mapper.targetCount(id),mapper.targets(id,offset,size).stream().map(x->{var n=json.createObjectNode().put("id",((Number)x.get("id")).longValue()).put("direction",(String)x.get("direction")).put("reason",(String)x.get("reason")).put("createdAt",x.get("created_at").toString());n.set("amount",x.get("amount")==null?json.nullNode():json.valueToTree(((BigDecimal)x.get("amount")).toPlainString()));return (JsonNode)n;}).toList());}
+    public PageResponse<JsonNode> targetHistory(UUID id,int page,int size){visible(id,false);if(!access.staff(CurrentUser.require()))throw ApiException.denied();int offset=PageResponse.offset(page,size);return new PageResponse<>(page,size,mapper.targetCount(id),mapper.targets(id,offset,size).stream().map(x->{var n=json.createObjectNode().put("id",((Number)x.get("id")).longValue()).put("direction",(String)x.get("direction")).put("reason",(String)x.get("reason")).put("actorId",((Number)x.get("actor_id")).longValue()).put("createdAt",x.get("created_at").toString());n.set("amount",x.get("amount")==null?json.nullNode():json.valueToTree(((BigDecimal)x.get("amount")).toPlainString()));return (JsonNode)n;}).toList());}
     public String export(UUID id,int page,int size){var rows=history(id,page,size);boolean staff=access.staff(CurrentUser.require());StringBuilder csv=new StringBuilder("id,direction,amount,occurredAt,reversed"+(staff?",transactionNo":"")+"\r\n");for(var row:rows.records()){for(String field:staff?List.of("id","direction","amount","occurredAt","reversed","transactionNo"):List.of("id","direction","amount","occurredAt","reversed")){String value=row.path(field).asText();if(value.matches("^[=+@-].*"))value="'"+value;csv.append('"').append(value.replace("\"","\"\"")).append("\",");}csv.setLength(csv.length()-1);csv.append("\r\n");}audit.record(CurrentUser.require(),AuditService.Action.FUNDS_EXPORT,"WORK_ORDER",id,"Scoped paginated ledger export; rows="+rows.records().size());return csv.toString();}
 }

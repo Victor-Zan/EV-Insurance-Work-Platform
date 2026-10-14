@@ -11,6 +11,8 @@ public interface ComplaintMapper {
     int advance(@Param("id") UUID id,@Param("version") int version,@Param("status") String status);
     @Insert("INSERT INTO complaint_event(complaint_id,kind,public_note,internal_note,actor_id) VALUES(#{id},#{kind},#{note},#{internal},#{actor})")
     void event(@Param("id") UUID id,@Param("kind") String kind,@Param("note") String note,@Param("internal") String internal,@Param("actor") long actor);
+    long workbenchCount(@Param("status") String status,@Param("query") String query);
+    List<Map<String,Object>> workbench(@Param("status") String status,@Param("query") String query,@Param("offset") int offset,@Param("size") int size);
     long count(@Param("caseId") UUID caseId,@Param("shop") Long shop,@Param("assignment") Integer assignment);
     List<Map<String,Object>> list(@Param("caseId") UUID caseId,@Param("shop") Long shop,@Param("assignment") Integer assignment,@Param("offset") int offset,@Param("size") int size);
     @Select("SELECT count(*) FROM complaint_event WHERE complaint_id=#{id}") long historyCount(UUID id);

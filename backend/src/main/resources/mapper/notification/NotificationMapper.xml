@@ -12,16 +12,17 @@
  </select>
  <sql id="notificationFrom">
   FROM in_app_notification n JOIN notification_event e ON e.audit_id=n.event_id JOIN work_order w ON w.id=e.work_order_id
+  LEFT JOIN work_order_cancellation cancellation ON cancellation.work_order_id=w.id AND e.kind='CASE_CANCELLED'
   LEFT JOIN notification_read nr ON nr.notification_id=n.id AND nr.user_id=#{user}
   <include refid="assignment"/>
   WHERE n.recipient_id=#{user} AND w.status&lt;&gt;'DRAFT'
    AND EXISTS(SELECT 1 FROM app_user u JOIN user_role ur ON ur.user_id=u.id JOIN app_role r ON r.id=ur.role_id WHERE u.id=#{user} AND u.enabled AND r.code=n.recipient_role)
    AND (n.recipient_role IN ('ADMIN','CUSTOMER_SERVICE') OR (n.recipient_role='OWNER' AND w.owner_user_id=#{user})
-    OR (n.recipient_role='REPAIR_SHOP' AND a.assignment_version=e.assignment_version AND a.shop_id=e.shop_id AND w.shop_id=e.shop_id AND EXISTS(SELECT 1 FROM shop_account sa WHERE sa.user_id=#{user} AND sa.shop_id=e.shop_id)))
+    OR (n.recipient_role='REPAIR_SHOP' AND ((e.kind='CASE_CANCELLED' AND cancellation.notify_shop AND cancellation.shop_id=e.shop_id AND cancellation.assignment_version=e.assignment_version) OR (e.kind&lt;&gt;'CASE_CANCELLED' AND a.assignment_version=e.assignment_version AND a.shop_id=e.shop_id AND w.shop_id=e.shop_id)) AND EXISTS(SELECT 1 FROM shop_account sa WHERE sa.user_id=#{user} AND sa.shop_id=e.shop_id)))
  </sql>
  <select id="count" resultType="long">SELECT count(*) <include refid="notificationFrom"/></select>
- <select id="inbox" resultType="map">SELECT n.id,e.work_order_id,e.kind,n.created_at,nr.read_at <include refid="notificationFrom"/> ORDER BY n.id DESC LIMIT #{size} OFFSET #{offset}</select>
- <select id="visible" resultType="map">SELECT n.id,e.work_order_id,e.kind,n.created_at,nr.read_at <include refid="notificationFrom"/> AND n.id=#{id}</select>
+ <select id="inbox" resultType="map">SELECT n.id,e.work_order_id,e.kind,n.created_at,nr.read_at,CASE WHEN e.kind='CASE_CANCELLED' THEN w.business_no ELSE NULL END business_no,cancellation.public_reason cancellation_reason <include refid="notificationFrom"/> ORDER BY n.id DESC LIMIT #{size} OFFSET #{offset}</select>
+ <select id="visible" resultType="map">SELECT n.id,e.work_order_id,e.kind,n.created_at,nr.read_at,CASE WHEN e.kind='CASE_CANCELLED' THEN w.business_no ELSE NULL END business_no,cancellation.public_reason cancellation_reason <include refid="notificationFrom"/> AND n.id=#{id}</select>
  <sql id="tasks">
   WITH states AS (
    SELECT w.*,a.assignment_version,

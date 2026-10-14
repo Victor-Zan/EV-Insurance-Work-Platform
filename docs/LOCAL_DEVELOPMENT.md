@@ -1,5 +1,13 @@
 # 本地开发与启动
 
+## 当前 Windows 工作区的便捷入口
+
+对于已配置第二阶段 `local-validation/.env` 与 `.env.phase5` 的本机，从第二阶段目录执行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\启动本地网站.ps1`。启动器调用本仓库 `scripts/Manage-Website.ps1`，复用既有 `ev-insurance-phase5-audit` PostgreSQL/MinIO，以 `phase5_local` 启动网站。管理端5173、H5 5174、后端8080。
+
+后端与两端前端分别在独立隐藏控制台后台运行，启动完成可关闭终端；重复启动复用健康服务、补启动缺失服务。`检查本地网站.ps1` 检查健康，`停止本地网站.ps1` 只停止登记且核验路径/启动时间的网站进程树，保留 Docker 和数据。各服务自行将日志写到仓库外 `local-validation`，不继承启动器的输出捕获管道；进程登记也保存在该目录。没有开机自启或自动重启，故障恢复时重新运行启动器；未知进程占用端口时不自动杀进程。
+
+完整恢复说明在第二阶段 `本地网站使用说明.md`，验证见 [WORKFLOW_FIXES.md](WORKFLOW_FIXES.md)。以下是新环境或手动分别启动时的基础步骤。
+
 ## 1. 环境要求
 
 - Git 2.40+

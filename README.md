@@ -20,6 +20,7 @@
 ## 快速入口
 
 - [本地启动说明](docs/LOCAL_DEVELOPMENT.md)
+- [现有Windows网站启动、停止与恢复](docs/本地网站使用说明.md)
 - [需求基线](docs/REQUIREMENTS.md)
 - [业务流程与状态流](docs/WORKFLOW.md)
 - [数据字典](docs/DATA_DICTIONARY.md)
@@ -34,6 +35,7 @@
 - [第7阶段验证](docs/PHASE7_VERIFICATION.md)
 - [第8阶段验证](docs/PHASE8_VERIFICATION.md)
 - [可用性修复与新版视觉复查](docs/USABILITY_VISUAL_RECHECK.md)
+- [功能全流程修复与验证](docs/WORKFLOW_FIXES.md)
 - [阶段8验证辅助脚本](scripts/validation/README.md)
 
 ## 当前范围

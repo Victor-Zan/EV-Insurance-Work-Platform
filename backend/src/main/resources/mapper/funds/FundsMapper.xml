@@ -5,4 +5,30 @@
  <select id="net" resultType="java.math.BigDecimal">SELECT coalesce(sum(e.amount),0) FROM funds_entry e WHERE <include refid="scope"/> AND e.direction=#{direction} AND NOT EXISTS(SELECT 1 FROM funds_reversal r WHERE r.entry_id=e.id)</select>
  <select id="count" resultType="long">SELECT count(*) FROM funds_entry e WHERE <include refid="scope"/></select>
  <select id="entries" resultType="map">SELECT e.*,r.id reversal_id,r.reason reversal_reason,r.created_at reversed_at FROM funds_entry e LEFT JOIN funds_reversal r ON r.entry_id=e.id WHERE <include refid="scope"/> ORDER BY e.created_at DESC,e.id DESC LIMIT #{size} OFFSET #{offset}</select>
+ <sql id="workbenchRows">
+  WITH net AS (
+   SELECT e.work_order_id,coalesce(sum(e.amount) FILTER(WHERE e.direction='RECEIVE'),0) receive_net,
+    coalesce(sum(e.amount) FILTER(WHERE e.direction='PAY'),0) pay_net
+   FROM funds_entry e WHERE NOT EXISTS(SELECT 1 FROM funds_reversal fr WHERE fr.entry_id=e.id) GROUP BY e.work_order_id
+  ), balances AS (
+   SELECT w.id,w.business_no,w.claim_no,w.status,w.created_at,r.amount receive_target,p.amount pay_target,
+    coalesce(n.receive_net,0) receive_net,coalesce(n.pay_net,0) pay_net
+   FROM work_order w LEFT JOIN net n ON n.work_order_id=w.id
+   LEFT JOIN LATERAL(SELECT amount FROM funds_target WHERE work_order_id=w.id AND direction='RECEIVE' ORDER BY id DESC LIMIT 1) r ON true
+   LEFT JOIN LATERAL(SELECT amount FROM funds_target WHERE work_order_id=w.id AND direction='PAY' ORDER BY id DESC LIMIT 1) p ON true
+   WHERE w.status&lt;&gt;'DRAFT'
+  ), rows AS (
+   SELECT *,CASE WHEN receive_target IS NULL THEN 'UNSET' WHEN receive_target=receive_net THEN 'SETTLED' WHEN receive_net=0 THEN 'UNPAID' ELSE 'PARTIAL' END receive_status,
+    CASE WHEN pay_target IS NULL THEN 'UNSET' WHEN pay_target=pay_net THEN 'SETTLED' WHEN pay_net=0 THEN 'UNPAID' ELSE 'PARTIAL' END pay_status FROM balances
+  )
+ </sql>
+ <sql id="workbenchFilter">
+  FROM rows WHERE true
+  <if test="query != null">AND (business_no ILIKE '%'||#{query}||'%' OR claim_no ILIKE '%'||#{query}||'%')</if>
+  <if test="status != null">AND status=#{status}</if>
+  <if test="receivableStatus != null">AND receive_status=#{receivableStatus}</if>
+  <if test="payableStatus != null">AND pay_status=#{payableStatus}</if>
+ </sql>
+ <select id="workbenchCount" resultType="long"><include refid="workbenchRows"/> SELECT count(*) <include refid="workbenchFilter"/></select>
+ <select id="workbench" resultType="map"><include refid="workbenchRows"/> SELECT * <include refid="workbenchFilter"/> ORDER BY created_at DESC,id DESC LIMIT #{size} OFFSET #{offset}</select>
 </mapper>

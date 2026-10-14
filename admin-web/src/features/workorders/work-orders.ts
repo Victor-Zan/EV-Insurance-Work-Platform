@@ -59,6 +59,12 @@ export const statusLabels: Record<WorkOrderStatus, string> = {
   WAITING_SHOP_SETTLEMENT: '待网点结算', COMPLETED: '已完成', CANCELLED: '已取消', CLOSED: '已关闭',
 }
 export function idempotencyKey(operation: string) { return `${operation}-${crypto.randomUUID()}` }
+export function localDateTimeInput(value?: string) {
+  if (!value) return ''
+  const date = new Date(value)
+  const pad = (number: number) => String(number).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${String(date.getMilliseconds()).padStart(3, '0')}`
+}
 export function draftPayload(form: DraftForm) {
   const instant = (value: string) => value ? new Date(value).toISOString() : null
   const optional = (value: string) => value.trim() || null
@@ -79,15 +85,16 @@ export function workOrderApi(client: AxiosInstance) {
   return {
     list: (page=1,status='',query='') => data<Page<WorkOrder>>(client.get('/work-orders',{ params:{ page,size:20,status:status||undefined,query:query||undefined } })),
     reconciliation: (page=1,status='',query='') => client.get<Blob>('/funds/reconciliation/export',{params:{page,size:20,status:status||undefined,query:query||undefined},responseType:'blob'}).then(response=>response.data),
-    regions: () => data<Page<RegionOption>>(client.get('/pricing/regions',{ params:{ size:100 } })),
+    regions: (page=1) => data<Page<RegionOption>>(client.get('/pricing/regions',{ params:{ page,size:20 } })),
     create: (form: DraftForm) => data<WorkOrder>(client.post('/work-orders/drafts',draftPayload(form))),
     update: (id: string,form: DraftForm) => data<WorkOrder>(client.put(`/work-orders/${id}/draft`,draftPayload(form))),
     deleteDraft: (id: string) => data<void>(client.delete(`/work-orders/${id}/draft`)),
     detail: (id: string) => data<WorkOrder>(client.get(`/work-orders/${id}`)),
     submit: (id: string,confirmPossibleDuplicate=false,duplicateReason: string|null=null,key=idempotencyKey('submit')) =>
       data<WorkOrder>(client.post(`/work-orders/${id}/submit`,{ confirmPossibleDuplicate,duplicateReason },{ headers:{ 'Idempotency-Key':key } })),
+    bindOwner: (id:string,expectedVersion:number,reason:string,key=idempotencyKey('owner-bind')) => data<WorkOrder>(client.post(`/work-orders/${id}/owner-binding`,{expectedVersion,reason},{headers:{'Idempotency-Key':key}})),
     critical: (id: string,value: CriticalForm) => data<WorkOrder>(client.put(`/work-orders/${id}/critical-fields`,value)),
-    shops: (id: string) => data<Page<ShopOption>>(client.get(`/work-orders/${id}/eligible-shops`,{ params:{ size:100 } })),
+    shops: (id: string,page=1) => data<Page<ShopOption>>(client.get(`/work-orders/${id}/eligible-shops`,{ params:{ page,size:20 } })),
     dispatch: (id: string,shopId: number,confirmPossibleDuplicate=false,duplicateReason: string|null=null) =>
       data<WorkOrder>(client.post(`/work-orders/${id}/dispatch`,{ shopId,confirmPossibleDuplicate,duplicateReason },{ headers:{ 'Idempotency-Key':idempotencyKey('dispatch') } })),
     reassign: (id: string,value: { shopId:number; assignmentVersion:number; reason:string; vehicleNotArrivedConfirmed:boolean; transferDescription:string|null; confirmPossibleDuplicate:boolean }) =>
@@ -100,7 +107,7 @@ export function workOrderApi(client: AxiosInstance) {
       data<WorkOrder>(client.post(`/work-orders/${id}/continue-waiting`,{assignmentVersion,reason},{headers:{'Idempotency-Key':idempotencyKey('continue-waiting')}})),
     cancelWorkOrder: (id:string,value:{reason:string;description:string;notifyOwner:boolean;notifyShop:boolean}) =>
       data<WorkOrder>(client.post(`/work-orders/${id}/cancel`,value,{headers:{'Idempotency-Key':idempotencyKey('cancel-work-order')}})),
-    history: (id: string) => data<Page<History>>(client.get(`/work-orders/${id}/history`,{ params:{ size:100 } })),
+    history: (id: string,page=1) => data<Page<History>>(client.get(`/work-orders/${id}/history`,{ params:{ page,size:20 } })),
     configuration: () => data<DuplicateConfiguration>(client.get('/work-orders/configuration')),
     updateConfiguration: (possibleDuplicateDays:number,reason:string) => data<DuplicateConfiguration>(
       client.put('/work-orders/configuration',{possibleDuplicateDays,reason})),

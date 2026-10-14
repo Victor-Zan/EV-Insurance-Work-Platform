@@ -36,6 +36,13 @@ public interface WorkOrderMapper {
     int transition(@Param("id") UUID id,@Param("version") long version,@Param("fromStatus") String fromStatus,
         @Param("toStatus") String toStatus,@Param("shopId") Long shopId,@Param("clearShop") boolean clearShop,
         @Param("actorId") long actorId,@Param("now") Instant now);
+    @org.apache.ibatis.annotations.Update("UPDATE work_order SET owner_user_id=#{owner},owner_binding_status='BOUND',version=version+1,updated_by=#{actor},updated_at=#{now} WHERE id=#{id} AND version=#{version} AND owner_binding_status='PENDING' AND status NOT IN ('DRAFT','CANCELLED','COMPLETED','CLOSED')")
+    int bindOwner(@Param("id") UUID id,@Param("version") long version,@Param("owner") long owner,@Param("actor") long actor,@Param("now") Instant now);
+    @org.apache.ibatis.annotations.Insert("INSERT INTO work_order_cancellation(work_order_id,owner_id,shop_id,assignment_version,notify_owner,notify_shop,public_reason,cancelled_at) VALUES(#{id},#{owner},#{shop},#{assignment},#{notifyOwner},#{notifyShop},#{reason},#{now})")
+    void cancellation(@Param("id") UUID id,@Param("owner") Long owner,@Param("shop") Long shop,@Param("assignment") Integer assignment,@Param("notifyOwner") boolean notifyOwner,@Param("notifyShop") boolean notifyShop,@Param("reason") String reason,@Param("now") Instant now);
+    @org.apache.ibatis.annotations.Select("SELECT 1 FROM pg_advisory_xact_lock(hashtextextended(#{key},0))") int lockOwnerBindingCommand(String key);
+    @org.apache.ibatis.annotations.Select("SELECT request_hash FROM work_order_command WHERE actor_id=#{actor} AND operation='OWNER_BIND' AND idempotency_key=#{key}") String bindingCommandHash(@Param("actor") long actor,@Param("key") String key);
+    @org.apache.ibatis.annotations.Update("UPDATE work_order_command SET request_hash=#{hash} WHERE actor_id=#{actor} AND operation='OWNER_BIND' AND idempotency_key=#{key}") void bindingCommandHashSave(@Param("actor") long actor,@Param("key") String key,@Param("hash") String hash);
     List<Long> ownersByPhone(@Param("phone") String phone);
     long regionEnabled(@Param("id") long id);
     long shopEligible(@Param("shopId") long shopId,@Param("regionId") long regionId);

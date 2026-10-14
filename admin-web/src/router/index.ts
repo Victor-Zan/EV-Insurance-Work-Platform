@@ -8,6 +8,8 @@ const ShopsView = () => import('@/views/ShopsView.vue')
 const AuditView = () => import('@/views/AuditView.vue')
 const WorkOrderSettingsView = () => import('@/views/WorkOrderSettingsView.vue')
 const NotificationsView = () => import('@/features/notification/NotificationPanel.vue')
+const FundsWorkbenchView = () => import('@/views/FundsWorkbenchView.vue')
+const ComplaintsWorkbenchView = () => import('@/views/ComplaintsWorkbenchView.vue')
 const FundsImportsView = () => import('@/views/FundsImportsView.vue')
 const CatalogueView = () => import('@/features/pricing/CatalogueView.vue')
 const PartModelsView = () => import('@/features/pricing/PartModelsView.vue')
@@ -36,6 +38,8 @@ const router = createRouter({
     { path: '/admin/audit-logs', component: AuditView, meta: { roles: ['ADMIN'] } },
     { path: '/admin/settings/work-orders', component: WorkOrderSettingsView, meta: { roles: ['ADMIN'] } },
     { path: '/notifications', component: NotificationsView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
+    { path: '/funds/workbench', component: FundsWorkbenchView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
+    { path: '/complaints', component: ComplaintsWorkbenchView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
     { path: '/funds/imports', component: FundsImportsView, meta: { roles: ['CUSTOMER_SERVICE'] } },
     { path: '/work-orders', component: WorkOrdersView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
     { path: '/historical-cases', component: HistoricalCasesView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
