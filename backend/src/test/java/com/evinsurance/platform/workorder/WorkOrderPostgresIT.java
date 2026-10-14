@@ -178,6 +178,88 @@ class WorkOrderPostgresIT {
         return submit(token,id,false,null,"submit-"+UUID.randomUUID(),200).path("data");
     }
 
+    private JsonNode api(String token,String method,String path,Object body,String key,int code) throws Exception {
+        var request=switch(method){case "POST"->post(path);case "PUT"->put(path);default->get(path);};
+        request.header("Authorization","Bearer "+token);if(key!=null)request.header("Idempotency-Key",key);
+        if(body!=null)request.contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body));
+        return json.readTree(mvc.perform(request).andExpect(status().is(code)).andReturn().getResponse().getContentAsString()).path("data");
+    }
+    private String uniquePhone(){return "139"+String.format("%08d",Math.abs(UUID.randomUUID().getMostSignificantBits()%100000000));}
+    @Test void ownerContactAndPendingBindingUseRealApisAndNeverTransferOwnership() throws Exception {
+        String phone=uniquePhone(),suffix=UUID.randomUUID().toString();
+        var pending=formal(customerService,"BIND-"+suffix,phone,"VIN-"+suffix,Instant.now().minus(100,ChronoUnit.DAYS));
+        String id=pending.path("id").asText();assertThat(pending.path("ownerBindingStatus").asText()).isEqualTo("PENDING");
+        var account=createUser("OWNER",null);long userId=account.path("id").asLong();String newOwner=login(account.path("username").asText(),"H5");
+        api(newOwner,"GET","/api/v1/work-orders/"+id,null,null,403);
+        api(customerService,"PUT","/api/v1/admin/users/"+userId+"/owner-contact",Map.of("phone",phone,"reason","核对车主资料"),null,403);
+        api(admin,"PUT","/api/v1/admin/users/"+userId+"/owner-contact",Map.of("phone",phone,"reason","核对车主资料"),null,200);
+        var body=Map.of("expectedVersion",pending.path("version").asLong(),"reason","补齐车主账号后重新核对");String key="bind-"+suffix;
+        var bound=api(customerService,"POST","/api/v1/work-orders/"+id+"/owner-binding",body,key,200);
+        assertThat(bound.path("ownerBindingStatus").asText()).isEqualTo("BOUND");
+        var repeated=api(customerService,"POST","/api/v1/work-orders/"+id+"/owner-binding",body,key,200);
+        assertThat(repeated.path("version").asLong()).isEqualTo(bound.path("version").asLong());
+        api(customerService,"POST","/api/v1/work-orders/"+id+"/owner-binding",Map.of("expectedVersion",pending.path("version").asLong(),"reason","different"),key,409);
+        api(newOwner,"GET","/api/v1/work-orders/"+id,null,null,200);api(owner,"GET","/api/v1/work-orders/"+id,null,null,403);
+        api(newOwner,"POST","/api/v1/work-orders/"+id+"/owner-binding",body,"owner-denied",403);
+        api(customerService,"POST","/api/v1/work-orders/"+id+"/owner-binding",Map.of("expectedVersion",bound.path("version").asLong(),"reason","不得转移"),"second-"+suffix,409);
+        api(admin,"PUT","/api/v1/admin/users/"+userId+"/owner-contact",Map.of("phone",uniquePhone(),"reason","资料修正"),null,200);
+        api(newOwner,"GET","/api/v1/work-orders/"+id,null,null,200);
+        assertThat(db.queryForObject("select owner_user_id from work_order where id=?",Long.class,UUID.fromString(id))).isEqualTo(userId);
+        assertThat(db.queryForObject("select count(*) from work_order_status_history where work_order_id=? and action='OWNER_BIND'",Long.class,UUID.fromString(id))).isEqualTo(1L);
+        assertThat(db.queryForObject("select count(*) from audit_log where action='OWNER_CONTACT_UPDATE' and summary like ?",Long.class,"%"+phone+"%")).isZero();
+        var automatic=api(admin,"POST","/api/v1/admin/users",Map.of("username","phone_"+UUID.randomUUID().toString().replace("-",""),"displayName","新车主","password",PASSWORD,"roles",List.of("OWNER"),"ownerPhone",phone),null,200);
+        var next=formal(customerService,"AUTO-"+suffix,phone,"AUTO-VIN-"+suffix,Instant.now().minus(200,ChronoUnit.DAYS));
+        assertThat(db.queryForObject("select owner_user_id from work_order where id=?",Long.class,UUID.fromString(next.path("id").asText()))).isEqualTo(automatic.path("id").asLong());
+    }
+    @Test void ambiguousOwnerRemainsPendingAndConcurrentMatchingBindsOnlyOnce() throws Exception {
+        String phone=uniquePhone(),suffix=UUID.randomUUID().toString();
+        var one=createUser("OWNER",null);var two=createUser("OWNER",null);
+        for(var account:List.of(one,two))api(admin,"PUT","/api/v1/admin/users/"+account.path("id").asLong()+"/owner-contact",Map.of("phone",phone,"reason","核对资料"),null,200);
+        var pending=formal(customerService,"MULTI-"+suffix,phone,"MULTI-VIN-"+suffix,Instant.now().minus(300,ChronoUnit.DAYS));String id=pending.path("id").asText();
+        var body=Map.of("expectedVersion",pending.path("version").asLong(),"reason","待匹配核对");
+        var matched=api(customerService,"POST","/api/v1/work-orders/"+id+"/owner-binding",body,"multi-"+suffix,200);
+        assertThat(matched.path("ownerBindingStatus").asText()).isEqualTo("PENDING");
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/v1/admin/users/{id}/enabled",two.path("id").asLong()).header("Authorization","Bearer "+admin).contentType(MediaType.APPLICATION_JSON).content("{\"enabled\":false}")).andExpect(status().isOk());
+        List<Callable<Integer>> calls=new ArrayList<>();
+        for(int i=0;i<2;i++){String key="concurrent-bind-"+suffix+"-"+i;calls.add(()->mvc.perform(post("/api/v1/work-orders/"+id+"/owner-binding").header("Authorization","Bearer "+customerService).header("Idempotency-Key",key).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body))).andReturn().getResponse().getStatus());}
+        try(var pool=Executors.newFixedThreadPool(2)){var result=pool.invokeAll(calls);assertThat(List.of(result.get(0).get(),result.get(1).get())).containsExactlyInAnyOrder(200,409);}
+        api(admin,"POST","/api/v1/work-orders/"+id+"/cancel",Map.of("reason","取消测试","description","取消测试说明","notifyOwner",false,"notifyShop",false),"cancel-bind-"+suffix,200);
+        api(customerService,"POST","/api/v1/work-orders/"+id+"/owner-binding",body,"cancelled-bind-"+suffix,409);
+    }
+    @Test void cancellationNoticesRemainReadableOnlyForSelectedBoundOwnerAndOriginalShop() throws Exception {
+        String suffix=UUID.randomUUID().toString();var order=formal(customerService,"NOTICE-"+suffix,OWNER_PHONE,"NOTICE-VIN-"+suffix,Instant.now().minus(400,ChronoUnit.DAYS));String id=order.path("id").asText();
+        dispatch(customerService,id,shopId,false,null,"notice-dispatch-"+suffix,200);
+        var cancel=Map.of("reason","客户取消预约","description","仅内部取消说明","notifyOwner",true,"notifyShop",true);String key="notice-cancel-"+suffix;
+        api(customerService,"POST","/api/v1/work-orders/"+id+"/cancel",cancel,key,200);api(customerService,"POST","/api/v1/work-orders/"+id+"/cancel",cancel,key,200);
+        long notices=db.queryForObject("select count(*) from in_app_notification n join notification_event e on e.audit_id=n.event_id where e.work_order_id=? and e.kind='CASE_CANCELLED'",Long.class,UUID.fromString(id));assertThat(notices).isEqualTo(2L);
+        for(String token:List.of(owner,shop)){
+            var inbox=api(token,"GET","/api/v1/notifications?size=100",null,null,200);
+            JsonNode notice=null;for(var row:inbox.path("records"))if(row.path("caseId").asText().equals(id)&&row.path("kind").asText().equals("CASE_CANCELLED"))notice=row;
+            assertThat(notice).isNotNull();assertThat(notice.path("reason").asText()).isEqualTo("客户取消预约");
+            assertThat(notice.toString()).doesNotContain(OWNER_PHONE,"仅内部取消说明","amount","ownerName","storageKey");
+            api(token,"POST","/api/v1/notifications/"+notice.path("id").asLong()+"/read",Map.of(),null,200);
+            api(customerService,"POST","/api/v1/notifications/"+notice.path("id").asLong()+"/read",Map.of(),null,403);
+        }
+        var noNotice=formal(customerService,"SILENT-"+suffix,OWNER_PHONE,"SILENT-VIN-"+suffix,Instant.now().minus(500,ChronoUnit.DAYS));String silent=noNotice.path("id").asText();
+        api(customerService,"POST","/api/v1/work-orders/"+silent+"/cancel",Map.of("reason","不通知","description","测试说明","notifyOwner",false,"notifyShop",false),"silent-"+suffix,200);
+        assertThat(db.queryForObject("select count(*) from in_app_notification n join notification_event e on e.audit_id=n.event_id where e.work_order_id=? and e.kind='CASE_CANCELLED'",Long.class,UUID.fromString(silent))).isZero();
+    }
+    @Test void staffWorkbenchesFilterIndependentStatusesAndDenyExternalRoles() throws Exception {
+        String suffix=UUID.randomUUID().toString();var order=formal(customerService,"FUNDS-WB-"+suffix,OWNER_PHONE,"FUNDS-VIN-"+suffix,Instant.now().minus(600,ChronoUnit.DAYS));String id=order.path("id").asText();
+        api(customerService,"POST","/api/v1/funds/cases/"+id+"/targets",Map.of("expectedVersion",0,"direction","RECEIVE","amount","10.00","reason","人工应收"),"wb-target-"+suffix,200);
+        api(customerService,"POST","/api/v1/funds/cases/"+id+"/entries",Map.of("expectedVersion",1,"direction","RECEIVE","transactionNo","wb-"+suffix,"amount","3.25","occurredAt",Instant.now().toString()),"wb-entry-"+suffix,200);
+        var result=api(admin,"GET","/api/v1/funds/workbench?query=FUNDS-WB-"+suffix+"&status=PENDING_DISPATCH&receivableStatus=PARTIAL&payableStatus=UNSET",null,null,200);
+        assertThat(result.path("total").asLong()).isEqualTo(1);var row=result.path("records").get(0);assertThat(row.path("receivable").path("net").asText()).isEqualTo("3.25");assertThat(row.toString()).doesNotContain(OWNER_PHONE,"markup","rawTotal","storageKey");
+        var targetHistory=api(admin,"GET","/api/v1/funds/cases/"+id+"/targets",null,null,200);assertThat(targetHistory.path("records").get(0).path("actorId").asLong()).isPositive();
+        UUID complaint=UUID.randomUUID();db.update("insert into complaint(id,work_order_id,owner_id,shop_id,assignment_version,description,photo_snapshot) values(?,?,?,?,?,?,?)",complaint,UUID.fromString(id),db.queryForObject("select id from app_user where username='dev_owner'",Long.class),shopId,1,"工作台查询测试","[]");
+        var complaints=api(customerService,"GET","/api/v1/complaints?query=FUNDS-WB-"+suffix+"&status=SUBMITTED",null,null,200);assertThat(complaints.path("total").asLong()).isEqualTo(1);
+        assertThat(api(admin,"GET","/api/v1/complaints?query=FUNDS-WB-"+suffix+"&status=CLOSED",null,null,200).path("total").asLong()).isZero();
+        for(String token:List.of(owner,shop)){api(token,"GET","/api/v1/funds/workbench",null,null,403);api(token,"GET","/api/v1/complaints",null,null,403);}
+        api(admin,"GET","/api/v1/funds/workbench?receivableStatus=WRONG",null,null,400);api(admin,"GET","/api/v1/complaints?status=WRONG",null,null,400);
+        api(admin,"GET","/api/v1/funds/workbench?size=101",null,null,400);
+        flyway.validate();
+    }
+
     private int assignmentVersion(JsonNode order) {
         return order.path("currentAssignment").path("assignmentVersion").asInt();
     }

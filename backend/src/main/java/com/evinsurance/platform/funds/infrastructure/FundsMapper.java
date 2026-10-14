@@ -11,6 +11,8 @@ public interface FundsMapper {
     @Update("UPDATE funds_context SET version=version+1 WHERE work_order_id=#{id} AND version=#{version}") int advance(@Param("id") UUID id,@Param("version") int version);
     @Select("SELECT * FROM funds_target WHERE work_order_id=#{id} AND direction=#{direction} ORDER BY id DESC LIMIT 1") Map<String,Object> target(@Param("id") UUID id,@Param("direction") String direction);
     @Insert("INSERT INTO funds_target(work_order_id,direction,amount,shop_id,assignment_version,reason,actor_id) VALUES(#{id},#{direction},#{amount},#{shop},#{assignment},#{reason},#{actor})") void targetSave(@Param("id") UUID id,@Param("direction") String direction,@Param("amount") BigDecimal amount,@Param("shop") Long shop,@Param("assignment") Integer assignment,@Param("reason") String reason,@Param("actor") long actor);
+    long workbenchCount(@Param("query") String query,@Param("status") String status,@Param("receivableStatus") String receivableStatus,@Param("payableStatus") String payableStatus);
+    List<Map<String,Object>> workbench(@Param("query") String query,@Param("status") String status,@Param("receivableStatus") String receivableStatus,@Param("payableStatus") String payableStatus,@Param("offset") int offset,@Param("size") int size);
     BigDecimal net(@Param("id") UUID id,@Param("direction") String direction,@Param("shop") Long shop,@Param("assignment") Integer assignment);
     @Select("SELECT * FROM funds_entry WHERE direction=#{direction} AND transaction_no=#{number}") Map<String,Object> transaction(@Param("direction") String direction,@Param("number") String number);
     @Select("SELECT * FROM funds_entry WHERE id=#{id}") Map<String,Object> entry(UUID id);

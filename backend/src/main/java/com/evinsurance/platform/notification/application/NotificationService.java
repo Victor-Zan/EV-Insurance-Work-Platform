@@ -17,7 +17,7 @@ public class NotificationService {
     public NotificationService(NotificationMapper mapper,NotificationProjector projector,FileAccess access,ComplaintMapper complaints,AuditService audit,ObjectMapper json){this.mapper=mapper;this.projector=projector;this.access=access;this.complaints=complaints;this.audit=audit;this.json=json;}
     private String time(Object value){if(value==null)return null;if(value instanceof java.sql.Timestamp stamp)return stamp.toInstant().toString();if(value instanceof OffsetDateTime offset)return offset.toInstant().toString();return value.toString();}
     private String title(String kind){return switch(kind){
-        case "DISPATCHED","ACCEPT_SHOP"->"新派单待接单";case "ARRIVED"->"车辆已到店";case "ARRIVE_SHOP"->"待确认车辆到店";
+        case "CASE_CANCELLED"->"工单已取消";case "DISPATCHED","ACCEPT_SHOP"->"新派单待接单";case "ARRIVED"->"车辆已到店";case "ARRIVE_SHOP"->"待确认车辆到店";
         case "QUOTE_REVIEW","REVIEW_QUOTE"->"原始报价待客服审核";case "QUOTE_SHOP"->"待提交网点原始报价";
         case "ASSESSMENT_CONFIRM","CONFIRM_ASSESSMENT"->"核损待客服处理/确认";case "START_REPAIR_SHOP"->"授权已满足，待网点开修";case "REPAIR_SHOP"->"维修进度待更新/完工";
         case "OWNER_RECEIPT","RECEIVE_OWNER"->"维修完工待确认收车";case "OWNER_RECEIVED"->"已确认收车";case "RECEIPT_WITHDRAWN"->"收车确认已撤回";
@@ -25,7 +25,7 @@ public class NotificationService {
         case "SET_RECEIVABLE"->"应收目标待录入";case "COLLECT_FUNDS"->"保险回款待登记";case "SET_PAYABLE"->"网点应付金额待确认";case "PAY_SHOP"->"网点实付待登记";
         case "FUNDS_UPDATED","PAY_UPDATED"->"资金记录已更新";default->"案件事件";
     };}
-    private JsonNode notice(Map<String,Object> row){return json.createObjectNode().put("id",((Number)row.get("id")).longValue()).put("caseId",row.get("work_order_id").toString()).put("kind",(String)row.get("kind")).put("title",title((String)row.get("kind"))).put("createdAt",time(row.get("created_at"))).put("read",row.get("read_at")!=null);}
+    private JsonNode notice(Map<String,Object> row){var out=json.createObjectNode().put("id",((Number)row.get("id")).longValue()).put("caseId",row.get("work_order_id").toString()).put("kind",(String)row.get("kind")).put("title",title((String)row.get("kind"))).put("createdAt",time(row.get("created_at"))).put("read",row.get("read_at")!=null);if("CASE_CANCELLED".equals(row.get("kind"))){out.put("businessNo",(String)row.get("business_no")).put("reason",(String)row.get("cancellation_reason"));}return out;}
     public PageResponse<JsonNode> inbox(int page,int size){int offset=PageResponse.offset(page,size);long user=CurrentUser.require().id();projector.project();return new PageResponse<>(page,size,mapper.count(user),mapper.inbox(user,offset,size).stream().map(this::notice).toList());}
     @Transactional public JsonNode read(long id){long user=CurrentUser.require().id();var row=mapper.visible(user,id);if(row==null)throw ApiException.denied();if(mapper.read(id,user)==1)audit.record(CurrentUser.require(),AuditService.Action.NOTIFICATION_READ,"NOTIFICATION",id,"Station notification read by its recipient");row.put("read_at",Instant.now());return notice(row);}
     private JsonNode task(Map<String,Object> row){String deadline=time(row.get("deadline"));var out=json.createObjectNode().put("taskKey",(String)row.get("task_key")).put("caseId",row.get("work_order_id").toString()).put("kind",(String)row.get("kind")).put("title",title((String)row.get("kind"))).put("version",((Number)row.get("version")).intValue()).put("overdue",deadline!=null&&Instant.parse(deadline).isBefore(Instant.now()));if(deadline==null)out.putNull("deadline");else out.put("deadline",deadline);return out;}

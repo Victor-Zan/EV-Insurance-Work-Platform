@@ -4,7 +4,8 @@
   <sql id="accessSelect">
     SELECT u.id,u.username,u.display_name,u.password_hash,u.enabled,u.auth_version,
       (SELECT string_agg(r.code,',' ORDER BY r.code) FROM user_role ur JOIN app_role r ON r.id=ur.role_id WHERE ur.user_id=u.id) AS role_codes,
-      (SELECT sa.shop_id FROM shop_account sa WHERE sa.user_id=u.id) AS shop_id
+      (SELECT sa.shop_id FROM shop_account sa WHERE sa.user_id=u.id) AS shop_id,
+      (SELECT op.contact_phone FROM owner_profile op WHERE op.user_id=u.id) AS owner_phone
     FROM app_user u
   </sql>
   <select id="accessById" resultType="com.evinsurance.platform.identity.infrastructure.AccessRow"><include refid="accessSelect"/> WHERE u.id=#{id}</select>

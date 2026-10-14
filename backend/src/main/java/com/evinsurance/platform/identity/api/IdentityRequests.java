@@ -12,7 +12,8 @@ public final class IdentityRequests {
     public record CreateUser(@NotBlank @Pattern(regexp="[A-Za-z0-9_.-]{3,64}") String username,
         @NotBlank @Size(max=100) String displayName,
         @NotBlank @Size(max=72) @JsonProperty(access=JsonProperty.Access.WRITE_ONLY) String password,
-        @NotEmpty @Size(max=4) Set<@NotNull Role> roles, @Positive Long shopId) {}
+        @NotEmpty @Size(max=4) Set<@NotNull Role> roles, @Positive Long shopId, @Size(max=32) String ownerPhone) {}
+    public record OwnerContact(@NotBlank @Size(max=32) String phone, @NotBlank @Size(max=2000) String reason) {}
     public record Enabled(@NotNull Boolean enabled) {}
     public record PasswordReset(@NotBlank @Size(max=72) @JsonProperty(access=JsonProperty.Access.WRITE_ONLY) String password) {}
     public record Assignment(@NotEmpty @Size(max=4) Set<@NotNull Role> roles, @Positive Long shopId) {}

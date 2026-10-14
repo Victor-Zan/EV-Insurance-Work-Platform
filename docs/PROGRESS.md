@@ -1,5 +1,27 @@
 # 项目进度
 
+## 2026-10-14 PR #4 合并冲突与OCR V16重编号验收
+
+当前目标仅解决PR #4与main的集成冲突，并执行用户明确批准的“仅将OCR迁移重编号为V16，保留旧数据库”。在新隔离工作区从77a2971合并main c6c9820，保持原运行工作区、现有功能分支和旧库不切换、不重置、不清理；没有rebase、强推、修改远程main或自动合并PR。
+
+三处文本冲突已人工合并：WorkOrdersView同时保留OCR建单前预填/手填冲突选择/原业务提交和main的区域分页；LOCAL_DEVELOPMENT保留百度配置与main启动器说明；PROGRESS保留两侧完整历史。独立OCR复核页同步适配main分页API，可继续加载后续区域。main的工作流D-044保留，OCR决策改为唯一D-045，业务规则不变；旧进度记录原编号作为历史保留，现行引用以D-045为准。
+
+main V15__owner_contact_cancellation_notifications.sql内容保持不变。OCR文件仅从V15重编号为V16__baidu_ocr_and_pre_case_intake.sql，Git判定100%相同内容，旧新Git blob均为6247b5c6fe4baa56ffbbae62cacada54417e5ee0；main V15 blob仍为1a88f366544fbcdbd13cbe94ae880f09481f83db。数据库使用分支与旧库限制见PR4_MERGE_NOTES.md。只读核实原phase13_baidu_live_20261014与phase13_form_20261014仍存在，旧OCR V15成功记录及真实任务保留，没有改Flyway历史或执行repair。
+
+| 本轮实际运行 | 结果 |
+| --- | --- |
+| backend：Java21 `./mvnw.cmd -Ppostgres-it verify` | 最终通过，38项单元、76项真实PostgreSQL/私有MinIO集成测试，0失败/错误/跳过；Flyway18份校验、空库至V16、Maven打包通过。新增main V15→V16升级测试验证V15 checksum不变、原车主表保留及OCR表追加。 |
+| admin-web：锁文件离线安装，`npm run lint`、`npm run typecheck`、`npm test`、`npm run build` | 最终全通过，46项测试，包含双方已有测试。 |
+| h5-web：锁文件离线安装及上述四项门禁 | 全通过，20项测试；main通知修复保留。 |
+| 浏览器：新隔离Mock实例，合成图片/区域/案件 | 28个区域可分页加载并选中第一页以外区域；同一表单保留手填姓名、OCR冲突阻止提交、明确选择后经原服务创建合成正式案件。恢复后再次验证列表→详情正常跳转，main“重新匹配车主”入口可见，原OCR页面不操作。 |
+| 原数据库与真实调用 | 旧schema、V15历史和材料保留；本轮不新增百度请求、不重启原真实进程、不把旧Mock改成百度。 |
+| 暂存隐私与冲突检查 | 68个暂存文件（包括中文文件名）全部可读；凭据/当前真实样本姓名及运行日志扫描0命中，无敏感二进制，凭据文档未跟踪；无冲突标记或未解决条目。 |
+| Compose | 本机缺少Docker CLI，本轮未验证；不借用main另一台电脑的历史通过结论。 |
+
+首轮后端失败仅为原IdentityPostgresIT显式迁移清单仍截止V15；保留containsExactly断言并追加实际V16，完整重跑取得最终38+76通过，不跳过或放宽测试。首轮日志保留为pr4-backend-validation.log，最终为pr4-backend-validation-final.log，管理端最终结果为pr4-admin-validation-final.log（均仓库外）。浏览器曾遇到本地AccessView模块请求超时/失败，服务恢复为200后重新登录并重验导航成功；未将首次尝试写成通过。
+
+提交主题：`merge: resolve PR #4 conflicts and assign OCR migration V16`。以正常merge提交保留双方历史，再推送到feature/sherr-phase13-baidu-ocr更新已有PR #4；不创建重复PR、不自动合并。当前运行目录继续使用旧包/旧OCR库；合并版仅使用新隔离schema验证。旧OCR V15环境的带数据升级若以后需要，必须先单独确认方案，禁止直接启动新迁移集或repair。
+
 ## 2026-10-14 D-044 实际启用百度：用户追加1次真实识别
 
 用户明确确认“切换百度，允许新增1次真实识别”。当前5185管理端所连接的18084隔离后端已切到 BAIDU_HANDWRITING_V1，凭据仅从用户指定本机私密文档注入后端内存；本次进程硬上限1次OCR、关闭Token重发、任务最多1次。切换前核实没有其他百度待执行任务或正在处理任务，只停止本任务原Mock进程。旧Mock任务及用户已有表单保留，另开空白创建表单上传与用户当前图片摘要一致的已授权原样本。
@@ -71,6 +93,24 @@
 验证中修复了两张 JPEG 带合法应用尾部却被误报损坏的问题：完整解码并检查告警/结束标记，原字节及摘要保留，不裁剪或静默截断。第一次真实识别暴露标签/表格映射缺口后，只从私有原文重整，不重复外呼；更新程序时将剩余进程预算降为1，累计两次用完即停止真实进程。后续复核实例未注入百度凭据，Worker关闭；安全计数保存在仓库外。凭据仅从用户指定的本机私密文件加载至后端内存，文件已Git忽略且不提交；凭据、Token、真实图片和识别全文不作为交付文件。
 
 尚未验收：复杂手写布局的整体准确率、PDF逐页识别（本版百度模式明确拒绝PDF）、物理手机、生产部署及Docker启动。缺少明确标签/可靠坐标时保留原文待人工补充，不宣称所有资料自动填满。B 的十二项业务决策等待确认，确认后需先更新需求和决策再实施。没有进入后续阶段或部署生产。实现提交为 `7d7331e7ba25cf5edc45dd0237f8a69c48fb696c`（`feat(ocr): add Baidu handwriting and reviewed pre-case draft intake`），分支已正常推送至 origin。37个暂存文件与本任务运行日志的受保护值扫描通过，未发现凭据/样本姓名，未暂存敏感二进制，用户凭据文档未跟踪。GitHub 集成创建指向 main 的 Draft PR 时返回 `403 Resource not accessible by integration`；没有绕过权限或尝试合并。请在 [手动创建 PR](https://github.com/Victor-Zan/EV-Insurance-Work-Platform/compare/main...feature/sherr-phase13-baidu-ocr?expand=1) 页面选择 Draft，标题建议 `feat(ocr): add Baidu handwriting and pre-case draft prefill`。本文交付补记单独提交，不改写实现提交。
+
+## 2026-10-14 功能修复GitHub交付
+
+用户明确授权提交到 `Victor-Zan/EV-Insurance-Work-Platform`。本轮61个文件以实现提交 `38dca0d684a9841e8fccc6d50027b393f9305a37` 普通推送到 `main`，远端由 `2000f61` 前进到该提交，`git ls-remote origin refs/heads/main` 核验一致。包括八项业务修复、V15迁移、测试、API/业务文档、独立后台启动器、三个快捷入口、网站使用说明及可公开验证摘要。源码检查及既有验收结果见下方修复记录；本次仅补交付文档与快捷脚本副本，没有新增业务改动或重跑完整业务测试。
+
+本机真实环境凭据、数据库/MinIO数据、构建产物和运行日志未上传。快捷脚本副本与上级已验证文件哈希一致，解析及暂存 whitespace 检查通过；未创建PR、强推、部署或进入第13阶段。远端新出现的其他功能分支未合并。本条交付记录单独提交并同步，最终分支提交以Git历史为准。
+
+## 2026-10-13 功能全流程修复
+
+按用户“把前面发现的问题逐个修复”及补充确认 D-044，完成车主手机号维护与待绑定工单补匹配、草稿事故时间正确回填、区域/网点加载更多、资金目标与状态历史分页、取消站内通知，以及跨案件资金和投诉查询。补绑定保留行锁、版本、内容哈希幂等与审计，禁止转移已有绑定；取消通知按勾选和取消前派单快照生成，取消后仍可读且只返回公开原因等允许字段。原四项开修门禁、报价/资金/维修权限不变。新增 V15，未改旧迁移或清空数据。
+
+最终 Maven `verify -Ppostgres-it` 在 Java21 下成功退出0：22单元+69真实 PostgreSQL 集成测试，0失败/错误/跳过，Flyway及JAR构建通过。两端 `npm run lint/typecheck/test/build` 全过，管理端35/H5 20测试；Compose校验通过。17项真实 HTTP 业务链路在独立合成 schema、私有 MinIO 通过，包含重启保留、角色隔离、金额/幂等及新增功能。首轮补绑定死锁已修复并保留断言重跑；PowerShell5 runner把标准错误警告误作异常的失败原样保留，最终用明确要求 PowerShell7 的 runner 取得真实成功退出码。未跳过或放宽测试。
+
+管理员浏览器代表性验证包括真实登录、手机号表单与必填拒绝、资金/投诉筛选和空态。未做全部状态、多浏览器或物理手机验收。另将本地启动器改为三个独立后台进程，并新增状态/停止入口及恢复说明；生命周期测试覆盖启动命令退出后存活、单端停止不联动、补启动不重复、完整重启及数据库/MinIO保留。Windows PowerShell5的登记数组读取差异已修复，按用户实际入口重新核验。
+
+本机报告分别为 `local-validation/workflow-fixes-20261013-222854`（后端）、`workflow-fixes-20261013-221841`（前端）、`workflow-http-20261013-222401`（HTTP）和 `website-lifecycle-verified-20261014-095121`（最终进程检查，先前记录仍保留）。详细逐项结果、失败记录及限制见 [WORKFLOW_FIXES.md](WORKFLOW_FIXES.md)，接口见 [WORKFLOW_FIXES_API.md](WORKFLOW_FIXES_API.md)。需求/决策/流程/数据字典/待确认项同步更新。仍为本地未提交修改，未推送、PR或部署，不进入第13阶段。
+
+2026-10-14收尾复验：最终启动器7项生命周期检查全部通过、命令退出0。保留前端工作进程启动超时失败证据，以实际启动时间修正运行工具的可配置等待；未修改业务测试断言。网站已留下正常运行，启动、停止、检查说明同步到第二阶段使用说明。
 
 ## 2026-10-12 提示词 12 补充验收：JDK 21、四角色浏览器与部署冒烟
 

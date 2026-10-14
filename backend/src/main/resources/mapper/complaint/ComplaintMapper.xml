@@ -4,4 +4,11 @@
  <sql id="scope">work_order_id=#{caseId}<if test="shop != null"> AND shop_id=#{shop} AND assignment_version=#{assignment}</if></sql>
  <select id="count" resultType="long">SELECT count(*) FROM complaint WHERE <include refid="scope"/></select>
  <select id="list" resultType="map">SELECT * FROM complaint WHERE <include refid="scope"/> ORDER BY created_at DESC,id DESC LIMIT #{size} OFFSET #{offset}</select>
+ <sql id="workbenchFilter">
+  FROM complaint c JOIN work_order w ON w.id=c.work_order_id WHERE true
+  <if test="status != null">AND c.status=#{status}</if>
+  <if test="query != null">AND (w.business_no ILIKE '%'||#{query}||'%' OR w.claim_no ILIKE '%'||#{query}||'%')</if>
+ </sql>
+ <select id="workbenchCount" resultType="long">SELECT count(*) <include refid="workbenchFilter"/></select>
+ <select id="workbench" resultType="map">SELECT c.*,w.business_no,w.claim_no <include refid="workbenchFilter"/> ORDER BY c.created_at DESC,c.id DESC LIMIT #{size} OFFSET #{offset}</select>
 </mapper>

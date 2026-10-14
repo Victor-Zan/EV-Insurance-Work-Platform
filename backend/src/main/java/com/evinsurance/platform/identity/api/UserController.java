@@ -26,6 +26,8 @@ public class UserController {
     public ApiResponse<Void> reset(@PathVariable long id,@Valid @RequestBody IdentityRequests.PasswordReset request) { service.resetPassword(id,request.password()); return ApiResponse.success(null); }
     @PutMapping("/users/{id}/assignment") @Operation(summary="管理员更改角色与单网点归属，原 Token 失效并审计")
     public ApiResponse<UserView> assignment(@PathVariable long id,@Valid @RequestBody IdentityRequests.Assignment request) { return ApiResponse.success(service.assignment(id,request)); }
+    @PutMapping("/users/{id}/owner-contact") @Operation(summary="管理员维护车主手机号及原因；不改变历史案件绑定")
+    public ApiResponse<UserView> ownerContact(@PathVariable long id,@Valid @RequestBody IdentityRequests.OwnerContact request) { return ApiResponse.success(service.ownerContact(id,request)); }
     @GetMapping("/roles") @Operation(summary="分页读取四个固定角色；不允许新增角色类型")
     public ApiResponse<PageResponse<Role>> roles(@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size) {
         int offset=PageResponse.offset(page,size);

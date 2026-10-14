@@ -90,6 +90,11 @@ public class WorkOrderController {
         return ApiResponse.success(service.updateCriticalFields(id,request));
     }
 
+    @PostMapping("/{id}/owner-binding")
+    @PreAuthorize("hasAnyRole('ADMIN','CUSTOMER_SERVICE')")
+    @Operation(summary="人工触发待绑定案件的唯一手机号匹配；不转移已有绑定")
+    public ApiResponse<WorkOrderViews.WorkOrder> ownerBinding(@PathVariable UUID id,@Valid @RequestBody WorkOrderRequests.OwnerBinding request,@RequestHeader("Idempotency-Key") String key) { return ApiResponse.success(service.bindOwner(id,request,key)); }
+
     @GetMapping("/{id}/eligible-shops")
     @PreAuthorize("hasAnyRole('ADMIN','CUSTOMER_SERVICE')")
     public ApiResponse<PageResponse<WorkOrderRows.ShopOption>> eligibleShops(@PathVariable UUID id,

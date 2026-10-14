@@ -367,11 +367,38 @@ public class WorkOrderService {
             if(mapper.transition(id,row.getVersion(),row.getStatus(),WorkOrderStatus.CANCELLED.name(),row.getShopId(),false,actor.id(),now)!=1) {
                 throw state("Work order changed concurrently");
             }
+            mapper.cancellation(id,row.getOwnerUserId(),assignment==null?null:assignment.getShopId(),assignment==null?null:assignment.getAssignmentVersion(),request.notifyOwner(),request.notifyShop(),request.reason().trim(),now);
             String reason=request.reason().trim()+"; description="+request.description().trim()+"; notifyOwner="+request.notifyOwner()+"; notifyShop="+request.notifyShop();
             history(id,row.getStatus(),WorkOrderStatus.CANCELLED.name(),"CANCEL_WORK_ORDER",reason,actor,
                 assignment==null?null:assignment.getAssignmentVersion(),now);
             audit.record(actor,Action.WORK_ORDER_CANCEL,"WORK_ORDER",id,
                 "Status "+row.getStatus()+" -> CANCELLED; "+reason);
+            return mapper.find(id);
+        });
+    }
+
+    @Transactional
+    public WorkOrderViews.WorkOrder bindOwner(UUID id,WorkOrderRequests.OwnerBinding request,String key) {
+        var actor=requireStaff();
+        validateKey(key);
+        String hash=com.evinsurance.platform.document.application.FileService.hash((id+":"+json.writeValueAsString(request)).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        mapper.lockOwnerBindingCommand("owner-bind:"+actor.id()+":"+key);
+        if(mapper.command(actor.id(),"OWNER_BIND",key)!=null&&!Objects.equals(hash,mapper.bindingCommandHash(actor.id(),key))) throw ApiException.conflict("IDEMPOTENCY_CONFLICT","Owner binding key belongs to another request");
+        // Lock before inserting the command FK: concurrent keys must not both hold
+        // a parent KEY SHARE lock and then attempt to upgrade it to FOR UPDATE.
+        requireVisibleRow(lock(id),actor);
+        return command(actor,"OWNER_BIND",key,id,null,()->{
+            mapper.bindingCommandHashSave(actor.id(),key,hash);
+            var row=lock(id); requireVisibleRow(row,actor);
+            if(Set.of("DRAFT","CANCELLED","COMPLETED","CLOSED").contains(row.getStatus())) throw state("This case cannot be bound now");
+            if(!"PENDING".equals(row.getOwnerBindingStatus())||row.getOwnerUserId()!=null) throw ApiException.conflict("OWNER_ALREADY_BOUND","Existing owner binding cannot be transferred");
+            if(!Objects.equals(row.getVersion(),request.expectedVersion())) throw state("Work order changed; refresh before binding");
+            mapper.lockSubmissionGuard(); Long owner=matchOwner(row.getOwnerPhone()); var now=Instant.now();
+            if(owner!=null) {
+                if(mapper.bindOwner(id,row.getVersion(),owner,actor.id(),now)!=1) throw state("Owner binding changed concurrently");
+                history(id,row.getStatus(),row.getStatus(),"OWNER_BIND",request.reason().trim(),actor,null,now);
+            }
+            audit.record(actor,Action.WORK_ORDER_OWNER_BIND,"WORK_ORDER",id,"Owner matching result="+(owner==null?"PENDING":"BOUND")+"; reason="+request.reason().trim().replaceAll("[0-9]{7,}","[REDACTED]"));
             return mapper.find(id);
         });
     }

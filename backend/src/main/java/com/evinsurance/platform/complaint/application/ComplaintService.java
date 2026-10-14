@@ -34,6 +34,14 @@ public class ComplaintService {
         var out=json.createObjectNode().put("id",row.get("id").toString()).put("caseId",row.get("work_order_id").toString()).put("status",(String)row.get("status")).put("version",((Number)row.get("version")).intValue()).put("description",(String)row.get("description")).put("assignmentVersion",((Number)row.get("assignment_version")).intValue()).put("createdAt",row.get("created_at").toString());
         out.set("photos",json.readTree((String)row.get("photo_snapshot")));return out;
     }
+    public PageResponse<JsonNode> workbench(int page,int size,String status,String query) {
+        if(!access.staff(CurrentUser.require()))throw ApiException.denied();int offset=PageResponse.offset(page,size);
+        status=status==null||status.isBlank()?null:status.trim();query=query==null||query.isBlank()?null:query.trim();
+        if(status!=null&&!Set.of("SUBMITTED","PROCESSING","RESOLVED","CLOSED").contains(status))throw ApiException.invalid("Unknown complaint status");
+        if(query!=null&&query.length()>120)throw ApiException.invalid("Query is too long");
+        var rows=mapper.workbench(status,query,offset,size).stream().map(row->{var n=(tools.jackson.databind.node.ObjectNode)view(row);n.put("businessNo",(String)row.get("business_no")).put("claimNo",(String)row.get("claim_no"));return (JsonNode)n;}).toList();
+        return new PageResponse<>(page,size,mapper.workbenchCount(status,query),rows);
+    }
     public JsonNode get(UUID id){return view(visible(id,false));}
     public PageResponse<JsonNode> list(UUID caseId,int page,int size){
         var order=access.order(caseId,false);if("DRAFT".equals(order.getStatus()))throw ApiException.denied();int offset=PageResponse.offset(page,size);var a=CurrentUser.require();Long shop=null;Integer assignment=null;

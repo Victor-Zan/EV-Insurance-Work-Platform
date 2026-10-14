@@ -10,6 +10,7 @@ import java.time.Instant;
 public final class WorkOrderRequests {
     private WorkOrderRequests() {}
 
+    public record OwnerBinding(@NotNull Long expectedVersion,@NotBlank @Size(max=2000) String reason) {}
     public record Draft(
         @Size(max=120) String insuranceCompany,
         @Size(max=100) String claimNo,

@@ -1,9 +1,11 @@
 #requires -Version 7.0
-param([string]$JavaHome='C:\Program Files\Android\Android Studio\jbr',[Parameter(Mandatory=$true)][string]$TestEnvironmentFile,[Parameter(Mandatory=$true)][string]$DockerExe,[string]$JarPath='..\local-validation\phase8-delivery-build\backend-0.0.1-SNAPSHOT.jar')
+param([string]$JavaHome='C:\Program Files\Android\Android Studio\jbr',[Parameter(Mandatory=$true)][string]$TestEnvironmentFile,[Parameter(Mandatory=$true)][string]$DockerExe,[string]$JarPath='..\local-validation\phase8-delivery-build\backend-0.0.1-SNAPSHOT.jar',[string]$ReportDirectory)
 $ErrorActionPreference='Stop'
 $repo=Split-Path -Parent $PSScriptRoot
 $stage=Split-Path -Parent $repo
-$report=Join-Path $stage 'local-validation'
+$report=if($ReportDirectory){[IO.Path]::GetFullPath((Join-Path $repo $ReportDirectory))}else{Join-Path $stage 'local-validation'}
+if(-not $report.StartsWith((Join-Path $stage 'local-validation'),[StringComparison]::OrdinalIgnoreCase)){throw 'Report must remain in local-validation'}
+New-Item -ItemType Directory -Path $report -Force | Out-Null
 $resolvedEnv=(Resolve-Path -LiteralPath $TestEnvironmentFile).Path
 if(-not $resolvedEnv.StartsWith($stage+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){throw 'Environment file must remain in second-stage directory'}
 $config=@{}
@@ -18,7 +20,7 @@ $base='http://127.0.0.1:18080/api/v1'
 $results=[Collections.Generic.List[object]]::new()
 $process=$null
 function Start-Backend {
-  $script:process=Start-Process -FilePath (Join-Path $JavaHome 'bin/java.exe') -ArgumentList '-jar',('"'+(Join-Path $repo $JarPath)+'"') -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $report 'phase8-http-runtime.log') -RedirectStandardError (Join-Path $report 'phase8-http-runtime-error.log')
+  $script:process=Start-Process -FilePath (Join-Path $JavaHome 'bin/java.exe') -ArgumentList '-jar',('"'+$resolvedJar+'"') -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $report 'phase8-http-runtime.log') -RedirectStandardError (Join-Path $report 'phase8-http-runtime-error.log')
   for($i=0;$i -lt 60;$i++){if($script:process.HasExited){throw 'Backend exited; inspect runtime logs'};try {if((Invoke-RestMethod "$base/health").data.status -eq 'UP'){return}}catch{};Start-Sleep -Seconds 1};throw 'Backend readiness timeout'
 }
 function Login([string]$username,[string]$portal){(Invoke-RestMethod "$base/auth/login" -Method Post -ContentType 'application/json' -Body (@{username=$username;password=$devPassword;portal=$portal}|ConvertTo-Json)).data.accessToken}
@@ -36,16 +38,13 @@ function Upload-Photo([string]$token,[string]$id,[int]$assignment){
 }
 function Confirm-Both([string]$cs,[string]$id){foreach($kind in @('INSURER','CUSTOMER_SERVICE')){$c=Quote $cs $id;$null=Post-Token $cs "quotations/cases/$id/confirmations/$kind" @{expectedVersion=$c.version}}}
 try {
-  $resolvedJar=[IO.Path]::GetFullPath((Join-Path $repo $JarPath));if(-not $resolvedJar.StartsWith($stage+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){throw 'JAR must stay in second-stage directory'}
+  $resolvedJar=if([IO.Path]::IsPathRooted($JarPath)){[IO.Path]::GetFullPath($JarPath)}else{[IO.Path]::GetFullPath((Join-Path $repo $JarPath))};if(-not $resolvedJar.StartsWith($stage+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){throw 'JAR must stay in second-stage directory'}
   Start-Backend
   $cs=Login 'dev_customer_service' 'ADMIN';$shop=Login 'dev_repair_shop' 'H5';$owner=Login 'dev_owner' 'H5';$admin=Login 'dev_admin' 'ADMIN'
   $schema=$env:DB_URL.Split('=')[-1];if($schema -notmatch '^phase8_http_[a-f0-9]{32}$'){throw 'Unexpected isolated schema'}
-  $dockerStart=[Diagnostics.ProcessStartInfo]::new($DockerExe);$dockerStart.UseShellExecute=$false;$dockerStart.CreateNoWindow=$true;$dockerStart.RedirectStandardOutput=$true;$dockerStart.RedirectStandardError=$true
-  $sql="UPDATE ${schema}.owner_profile SET contact_phone='13800001234' WHERE user_id=(SELECT id FROM ${schema}.app_user WHERE username='dev_owner')"
-  foreach($argument in @('compose','--project-name','ev-insurance-phase5-audit','--env-file',$resolvedEnv,'-f',(Join-Path $repo 'infra/docker-compose.yml'),'exec','-T','postgres','psql','-U','phase5_audit','-d','ev_insurance_test','-v','ON_ERROR_STOP=1','-c',$sql)){$dockerStart.ArgumentList.Add($argument)}
-  $bindingProcess=[Diagnostics.Process]::Start($dockerStart);$bindingOutput=$bindingProcess.StandardOutput.ReadToEnd();$bindingError=$bindingProcess.StandardError.ReadToEnd();$bindingProcess.WaitForExit()
-  ($bindingOutput+$bindingError)|Set-Content -LiteralPath (Join-Path $report 'phase8-http-owner-binding.log') -Encoding utf8
-  if($bindingProcess.ExitCode -ne 0){throw 'Isolated synthetic owner setup failed; inspect binding log'}
+  # Exercise the actual administrative contact API; no SQL pre-binding of owner accounts.
+  $ownerId=(Invoke-RestMethod "$base/auth/me" -Headers @{Authorization='Bearer '+$owner}).data.id
+  $null=Invoke-RestMethod "$base/admin/users/$ownerId/owner-contact" -Method Put -Headers @{Authorization='Bearer '+$admin} -ContentType 'application/json' -Body (@{phone='13800001234';reason='合成验收车主联系方式'}|ConvertTo-Json)
   $region=((Invoke-RestMethod "$base/pricing/regions?page=1&size=100" -Headers @{Authorization='Bearer '+$cs}).data.records|Where-Object code -eq 'DEV-DISTRICT'|Select-Object -First 1).id
   $draft=Post-Token $cs 'work-orders/drafts' @{insuranceCompany='合成阶段8保司';claimNo='HTTP8-'+[guid]::NewGuid();ownerName='合成车主';ownerPhone='13800001234';vehicleBrand='合成品牌';vehicleModel='测试型号';vehicleVin='VIN8-'+[guid]::NewGuid();accidentAt=[DateTimeOffset]::UtcNow.ToString('o');accidentRegionId=$region;accidentDescription='阶段8合成API验收'};$id=$draft.id
   $null=Post-Token $cs "work-orders/$id/submit" @{confirmPossibleDuplicate=$false}
@@ -156,6 +155,39 @@ try {
   $results.Add(@{check='station_notice_read_and_deadline_history_restart';status='PASS'})
   $results.Add(@{check='funds_and_private_import_restart_persistence';status='PASS';caseId=$id;batchId=$batchId})
   $results.Add(@{check='jar_restart_persists_repair_evidence_receipts_reviews_complaints_and_amounts';status='PASS';schema=$env:DB_URL.Split('=')[-1]})
+  $admin=Login 'dev_admin' 'ADMIN';$shop=Login 'dev_repair_shop' 'H5'
+  $pendingPhone='13987654321'
+  $pendingDraft=Post-Token $cs 'work-orders/drafts' @{insuranceCompany='合成功能复查';claimNo='BINDHTTP-'+[guid]::NewGuid();ownerName='合成待绑定车主';ownerPhone=$pendingPhone;vehicleBrand='合成品牌';vehicleModel='测试型号';vehicleVin='BINDFLOW-'+[guid]::NewGuid();accidentAt=[DateTimeOffset]::UtcNow.AddDays(-40).ToString('o');accidentRegionId=$region;accidentDescription='功能修复合成验收'}
+  $pendingCase=Post-Token $cs "work-orders/$($pendingDraft.id)/submit" @{confirmPossibleDuplicate=$false}
+  if($pendingCase.ownerBindingStatus -ne 'PENDING'){throw 'Missing owner should remain pending'}
+  $newUsername='workflow_owner_'+[guid]::NewGuid().ToString('N')
+  $newUser=Post-Token $admin 'admin/users' @{username=$newUsername;displayName='合成验收车主';password=$devPassword;roles=@('OWNER');ownerPhone=$pendingPhone}
+  $newOwner=Login $newUsername 'H5'
+  Assert-Status $newOwner "work-orders/$($pendingCase.id)" 403
+  $bound=Post-Token $cs "work-orders/$($pendingCase.id)/owner-binding" @{expectedVersion=$pendingCase.version;reason='车主注册后重新匹配'}
+  if($bound.ownerBindingStatus -ne 'BOUND'){throw 'Pending owner was not bound'}
+  Assert-Status $newOwner "work-orders/$($pendingCase.id)" 200
+  Assert-Status $owner "work-orders/$($pendingCase.id)" 403
+  $null=Post-Token $cs "work-orders/$($pendingCase.id)/dispatch" @{shopId=$shopId;confirmPossibleDuplicate=$false}
+  $cancelBody=@{reason='合成预约取消';description='内部说明不出现在通知';notifyOwner=$true;notifyShop=$true}
+  $null=Post-Token $cs "work-orders/$($pendingCase.id)/cancel" $cancelBody
+  foreach($token in @($newOwner,$shop)){
+    $cancelNotice=(Invoke-RestMethod "$base/notifications?size=100" -Headers @{Authorization='Bearer '+$token}).data.records|Where-Object {$_.caseId -eq $pendingCase.id -and $_.kind -eq 'CASE_CANCELLED'}|Select-Object -First 1
+    if(-not $cancelNotice -or $cancelNotice.reason -ne '合成预约取消'){throw 'Cancellation recipient or public reason missing'}
+    if(($cancelNotice|ConvertTo-Json) -match '13987654321|内部说明不出现在通知|amount|storageKey'){throw 'Cancellation notification leaked internal fields'}
+    $null=Post-Token $token "notifications/$($cancelNotice.id)/read" @{}
+  }
+  $workbench=(Invoke-RestMethod "$base/funds/workbench?receivableStatus=SETTLED&payableStatus=SETTLED&status=COMPLETED" -Headers @{Authorization='Bearer '+$cs}).data
+  if($workbench.records.caseId -notcontains $id){throw 'Completed settled case missing from independent funds workbench'}
+  $complaintsWorkbench=(Invoke-RestMethod "$base/complaints?status=CLOSED" -Headers @{Authorization='Bearer '+$admin}).data
+  if($complaintsWorkbench.records.id -notcontains $complaintId){throw 'Closed complaint missing from tracking workbench'}
+  foreach($token in @($newOwner,$shop)){Assert-Status $token 'funds/workbench' 403;Assert-Status $token 'complaints' 403}
+  $targets=(Invoke-RestMethod "$base/funds/cases/$id/targets" -Headers @{Authorization='Bearer '+$cs}).data
+  if($targets.total -lt 2 -or -not $targets.records[0].actorId){throw 'Target version traceability missing'}
+  $results.Add(@{check='owner_onboarding_late_binding_and_account_isolation_real_http';status='PASS'})
+  $results.Add(@{check='cancellation_notices_selected_recipients_readable_after_cancel';status='PASS'})
+  $results.Add(@{check='funds_and_complaint_workbenches_permissions_and_target_history';status='PASS'})
+
 } catch {$results.Add(@{check='phase8_http_chain';status='FAIL';reason=$_.Exception.Message});throw}
 finally {if($process -and -not $process.HasExited){Stop-Process -Id $process.Id};$results|ConvertTo-Json -Depth 8|Set-Content (Join-Path $report 'phase8-http-results.json') -Encoding utf8;foreach($name in @('DB_PASSWORD','MINIO_SECRET_KEY','JWT_SECRET_BASE64','DEV_ADMIN_PASSWORD','DEV_CUSTOMER_SERVICE_PASSWORD','DEV_REPAIR_SHOP_PASSWORD','DEV_OWNER_PASSWORD')){Remove-Item "Env:$name" -ErrorAction SilentlyContinue}}
 $results|ForEach-Object {Write-Output ($_.check+': '+$_.status)}

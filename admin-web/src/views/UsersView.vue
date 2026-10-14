@@ -5,7 +5,10 @@ import { httpClient } from '@/shared/http/client'
 import type { ApiResponse, Page } from '@/shared/http/create-client'
 import type { Role, User } from '@/shared/auth/session'
 const users = ref<User[]>([]), total = ref(0), page = ref(1), error = ref(''), message = ref(''), busy = ref(false)
-const create = reactive({ username: '', displayName: '', password: '', role: 'CUSTOMER_SERVICE' as Role, shopId: '' })
+const create = reactive({ username: '', displayName: '', password: '', role: 'CUSTOMER_SERVICE' as Role, shopId: '', ownerPhone: '' })
+const contactOpen=ref(false),contactId=ref(0),contactPhone=ref(''),contactReason=ref('')
+function openContact(user:User){contactId.value=user.id;contactPhone.value=user.ownerPhone??'';contactReason.value='';contactOpen.value=true}
+async function saveContact(){await run(async()=>{await httpClient.put(`/admin/users/${contactId.value}/owner-contact`,{phone:contactPhone.value.trim(),reason:contactReason.value.trim()});contactOpen.value=false;message.value='手机号已维护，历史绑定未改变';await load()})}
 const resetId = ref(''), resetPassword = ref('')
 const assignmentOpen=ref(false),assignmentId=ref(0),assignmentRoles=ref<Role[]>([]),assignmentShopId=ref('')
 const roleOptions:Role[]=['ADMIN','CUSTOMER_SERVICE','REPAIR_SHOP','OWNER']
@@ -25,7 +28,7 @@ async function submitCreate() {
   await run(async () => {
     try {
       await httpClient.post('/admin/users', { username: create.username, displayName: create.displayName, password: create.password,
-        roles: [create.role], shopId: create.role === 'REPAIR_SHOP' ? Number(create.shopId) : null })
+        ownerPhone:create.role==='OWNER'?create.ownerPhone.trim()||null:null, roles: [create.role], shopId: create.role === 'REPAIR_SHOP' ? Number(create.shopId) : null })
       message.value = '账号已创建'; await load()
     } finally { create.password = '' }
   })
@@ -48,16 +51,18 @@ onMounted(() => { void run(load) })
       <label>初始密码<ElInput v-model="create.password" type="password" autocomplete="new-password" /></label>
       <label>角色<ElSelect v-model="create.role"><ElOption v-for="role in ['ADMIN','CUSTOMER_SERVICE','REPAIR_SHOP','OWNER']" :key="role" :label="role" :value="role" /></ElSelect></label>
       <label v-if="create.role === 'REPAIR_SHOP'">网点 ID<ElInput v-model="create.shopId" inputmode="numeric" /></label>
+      <label v-if="create.role === 'OWNER'">车主手机号（用于工单精确匹配）<ElInput v-model="create.ownerPhone" maxlength="32" /></label>
       <ElButton type="primary" native-type="submit" :disabled="busy">创建</ElButton>
     </form></ElCard>
     <section class="admin-surface"><h2>账号列表</h2><ElTable :data="users"><ElTableColumn prop="id" label="ID" /><ElTableColumn prop="username" label="账号" />
       <ElTableColumn prop="displayName" label="显示名" /><ElTableColumn label="角色"><template #default="scope">{{ scope.row.roles.join('、') }}</template></ElTableColumn>
       <ElTableColumn label="状态"><template #default="scope">{{ scope.row.enabled ? '启用' : '停用' }}</template></ElTableColumn>
-      <ElTableColumn label="操作" min-width="180"><template #default="scope"><ElButton :disabled="busy" @click="toggle(scope.row as User)">{{ scope.row.enabled ? '停用' : '启用' }}</ElButton><ElButton :disabled="busy" @click="openAssignment(scope.row as User)">角色与归属</ElButton></template></ElTableColumn>
+      <ElTableColumn label="操作" min-width="180"><template #default="scope"><ElButton :disabled="busy" @click="toggle(scope.row as User)">{{ scope.row.enabled ? '停用' : '启用' }}</ElButton><ElButton :disabled="busy" @click="openAssignment(scope.row as User)">角色与归属</ElButton><ElButton v-if="scope.row.roles.includes('OWNER')" :disabled="busy" @click="openContact(scope.row as User)">车主手机号</ElButton></template></ElTableColumn>
     </ElTable><ElPagination v-model:current-page="page" :page-size="20" :total="total" layout="prev,pager,next" @current-change="run(load)" /></section>
     <ElCard shadow="never"><h2>重置密码</h2><form @submit.prevent="reset"><label>用户 ID<ElInput v-model="resetId" inputmode="numeric" /></label>
       <label>新密码<ElInput v-model="resetPassword" type="password" autocomplete="new-password" /></label><ElButton native-type="submit" :disabled="busy">重置</ElButton>
     </form></ElCard>
+    <ElDialog v-model="contactOpen" title="维护车主手机号"><p>仅影响后续精确匹配；不转移已有案件绑定。</p><label>手机号<ElInput v-model="contactPhone" maxlength="32"/></label><label>变更原因<ElInput v-model="contactReason" type="textarea" maxlength="2000"/></label><ElAlert v-if="error" :title="error" type="error" :closable="false"/><template #footer><ElButton @click="contactOpen=false">取消</ElButton><ElButton type="primary" :loading="busy" @click="saveContact">保存并审计</ElButton></template></ElDialog>
     <ElDialog v-model="assignmentOpen" title="调整角色与网点归属" width="min(520px,calc(100vw - 32px))"><p>更改后该用户原有会话失效；角色范围仍仅限现有四类。</p><ElCheckboxGroup v-model="assignmentRoles"><ElCheckbox v-for="role in roleOptions" :key="role" :value="role">{{ role }}</ElCheckbox></ElCheckboxGroup><label v-if="assignmentRoles.includes('REPAIR_SHOP')">所属网点 ID<ElInput v-model="assignmentShopId" inputmode="numeric"/></label><ElAlert v-if="error" :title="error" type="error" :closable="false"/><template #footer><ElButton @click="assignmentOpen=false">取消</ElButton><ElButton type="primary" :loading="busy" @click="saveAssignment">保存并审计</ElButton></template></ElDialog>
   </main>
 </template>

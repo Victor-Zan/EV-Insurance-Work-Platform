@@ -2,6 +2,14 @@
 
 百度 OCR 与建单前表单配置/验收见 BAIDU_OCR.md。默认 OCR_PROVIDER=MOCK_V1，不发送真实请求；改为 BAIDU_HANDWRITING_V1 前注入重置后的后端环境变量，不能配置前端 VITE 密钥。scripts/Start-Local.ps1 的 EnvironmentFile 加载所有大写变量，不回显值，因此可读取 BAIDU_OCR_API_KEY / BAIDU_OCR_SECRET_KEY；私密文件须留在仓库外或被忽略的 .env。启动须提供本机真实 JDK 路径，不照搬他人绝对路径。真实任务建议 OCR_LEASE_SECONDS=180；缺凭据显式启动失败，不回退 Mock。不要把已有待执行任务改供应商；任务来源与供应商已不可变。
 
+## 当前 Windows 工作区的便捷入口
+
+对于已配置第二阶段 `local-validation/.env` 与 `.env.phase5` 的本机，从第二阶段目录执行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\启动本地网站.ps1`。启动器调用本仓库 `scripts/Manage-Website.ps1`，复用既有 `ev-insurance-phase5-audit` PostgreSQL/MinIO，以 `phase5_local` 启动网站。管理端5173、H5 5174、后端8080。
+
+后端与两端前端分别在独立隐藏控制台后台运行，启动完成可关闭终端；重复启动复用健康服务、补启动缺失服务。`检查本地网站.ps1` 检查健康，`停止本地网站.ps1` 只停止登记且核验路径/启动时间的网站进程树，保留 Docker 和数据。各服务自行将日志写到仓库外 `local-validation`，不继承启动器的输出捕获管道；进程登记也保存在该目录。没有开机自启或自动重启，故障恢复时重新运行启动器；未知进程占用端口时不自动杀进程。
+
+完整恢复说明在第二阶段 `本地网站使用说明.md`，验证见 [WORKFLOW_FIXES.md](WORKFLOW_FIXES.md)。以下是新环境或手动分别启动时的基础步骤。
+
 ## 1. 环境要求
 
 - Git 2.40+

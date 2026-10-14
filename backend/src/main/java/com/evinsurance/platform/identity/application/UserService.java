@@ -31,11 +31,14 @@ public class UserService {
     public UserView create(IdentityRequests.CreateUser request) {
         var actor=CurrentUser.require(); actor.requireAdmin();
         validateAssignment(request.roles(),request.shopId());
+        if(request.ownerPhone()!=null&&!request.roles().contains(Role.OWNER)) throw ApiException.invalid("Only OWNER accounts have an owner phone");
+        users.lockOwnerMatching();
         var user=new UserEntity(); user.setUsername(request.username()); user.setDisplayName(request.displayName());
         user.setPasswordHash(hash(request.password())); user.setEnabled(true); user.setAuthVersion(0L);
         user.setCreatedAt(Instant.now()); user.setUpdatedAt(user.getCreatedAt()); user.setCreatedBy(actor.id()); user.setUpdatedBy(actor.id());
         users.insert(user);
         assign(user,request.roles(),request.shopId(),actor.id());
+        if(request.ownerPhone()!=null) saveContact(user.getId(),request.ownerPhone(),"Contact registered when creating owner account",actor);
         audit.record(actor,Action.USER_CREATE,"USER",user.getId(),"Enabled: true; roles: " + roleNames(request.roles()));
         audit.record(actor,Action.ROLE_CHANGE,"USER",user.getId(),"Roles: [] -> " + roleNames(request.roles()));
         if (request.shopId()!=null) audit.record(actor,Action.SHOP_ACCOUNT_CHANGE,"USER",user.getId(),"Shop: null -> " + request.shopId());
@@ -43,19 +46,19 @@ public class UserService {
     }
     @Transactional
     public void setEnabled(long id,boolean enabled) {
-        var actor=CurrentUser.require(); actor.requireAdmin(); var user=lock(id);
+        var actor=CurrentUser.require(); actor.requireAdmin(); users.lockOwnerMatching(); var user=lock(id);
         boolean before=user.getEnabled(); user.setEnabled(enabled); touch(user,actor.id()); users.updateById(user);
         audit.record(actor,enabled ? Action.USER_ENABLE : Action.USER_DISABLE,"USER",id,"Enabled: " + before + " -> " + enabled);
     }
     @Transactional
     public void resetPassword(long id,String password) {
-        var actor=CurrentUser.require(); actor.requireAdmin(); var user=lock(id);
+        var actor=CurrentUser.require(); actor.requireAdmin(); users.lockOwnerMatching(); var user=lock(id);
         user.setPasswordHash(hash(password)); touch(user,actor.id()); users.updateById(user);
         audit.record(actor,Action.PASSWORD_RESET,"USER",id,"Password reset; existing sessions invalidated");
     }
     @Transactional
     public UserView assignment(long id,IdentityRequests.Assignment request) {
-        var actor=CurrentUser.require(); actor.requireAdmin(); var user=lock(id);
+        var actor=CurrentUser.require(); actor.requireAdmin(); users.lockOwnerMatching(); var user=lock(id);
         var before=users.accessById(id); validateAssignment(request.roles(),request.shopId());
         assign(user,request.roles(),request.shopId(),actor.id()); touch(user,actor.id()); users.updateById(user);
         audit.record(actor,Action.ROLE_CHANGE,"USER",id,"Roles: " + roleNames(before.roles()) + " -> " + roleNames(request.roles()));
@@ -63,6 +66,19 @@ public class UserService {
             audit.record(actor,Action.SHOP_ACCOUNT_CHANGE,"USER",id,"Shop: " + before.shopId() + " -> " + request.shopId());
         }
         return UserView.from(users.accessById(id));
+    }
+    @Transactional
+    public UserView ownerContact(long id,IdentityRequests.OwnerContact request) {
+        var actor=CurrentUser.require(); actor.requireAdmin(); users.lockOwnerMatching(); lock(id);
+        if(!users.accessById(id).roles().contains(Role.OWNER)) throw ApiException.invalid("Account is not OWNER");
+        saveContact(id,request.phone(),request.reason(),actor);
+        return UserView.from(users.accessById(id));
+    }
+    private void saveContact(long id,String phone,String reason,CurrentUser actor) {
+        if(phone==null||phone.isBlank()||phone.trim().length()>32||reason==null||reason.isBlank()||reason.length()>2000) throw ApiException.invalid("Phone and contact change reason are required");
+        if(users.ownerContact(id,phone.trim())!=1) throw ApiException.missing("Owner profile");
+        users.contactEvent(id,reason.trim(),actor.id());
+        audit.record(actor,Action.OWNER_CONTACT_UPDATE,"USER",id,"Owner contact updated; reason: "+reason.trim().replaceAll("[0-9]{7,}","[REDACTED]"));
     }
     private void assign(UserEntity user,Set<Role> roles,Long shopId,long actorId) {
         users.replaceRolesDelete(user.getId());

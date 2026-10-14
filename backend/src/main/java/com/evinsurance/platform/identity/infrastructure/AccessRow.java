@@ -7,7 +7,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public record AccessRow(long id, String username, String displayName, String passwordHash, boolean enabled,
-                        long authVersion, String roleCodes, Long shopId) {
+                        long authVersion, String roleCodes, Long shopId, String ownerPhone) {
     public Set<Role> roles() {
         return roleCodes == null ? Set.of() : Arrays.stream(roleCodes.split(",")).map(Role::valueOf).collect(Collectors.toUnmodifiableSet());
     }

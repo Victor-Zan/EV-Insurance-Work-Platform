@@ -9,6 +9,8 @@ import org.springframework.web.bind.annotation.*;
 @RestController @RequestMapping("/api/v1/complaints") @SecurityRequirement(name="bearerAuth")
 public class ComplaintController {
     private final ComplaintService service;public ComplaintController(ComplaintService service){this.service=service;}
+    @GetMapping @Operation(summary="管理员/客服按处理状态与工单/报案号分页跟踪投诉；不改变处理权限")
+    public ApiResponse<PageResponse<JsonNode>> workbench(@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size,@RequestParam(required=false) String status,@RequestParam(required=false) String query){return ApiResponse.success(service.workbench(page,size,status,query));}
     @GetMapping("/cases/{caseId}") public ApiResponse<PageResponse<JsonNode>> list(@PathVariable UUID caseId,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size){return ApiResponse.success(service.list(caseId,page,size));}
     @PostMapping("/cases/{caseId}") @Operation(summary="绑定车主开修后创建独立投诉；完成可提交，取消拒绝；不改变维修状态或评分")
     public ApiResponse<JsonNode> create(@PathVariable UUID caseId,@RequestHeader("Idempotency-Key") String key,@RequestBody ComplaintRequests.Create body){return ApiResponse.success(service.create(caseId,body,key));}

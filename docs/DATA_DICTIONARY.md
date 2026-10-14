@@ -180,3 +180,16 @@ V1—V8不修改。上述追加表均由触发器拒绝更新/删除；照片对
 资金净额=未被冲销流水总额，状态UNSET/UNPAID/PARTIAL/SETTLED分别计算两方向，不写维修状态。待办为业务状态实时查询，不另设可漂移的“已完成任务”表。通知不存价格/金额或审计内部原文。历史保护采用数据库触发器，业务接口不提供删除/覆盖。
 
 前端可用性补充（2026-10-10）：报价单价输入维持十进制字符串，数量经正整数校验；照片选择保存现有fileId，人工匹配保存现有caseId，列表可读名称不替代服务端ID/授权校验。deadline输入按中国时区，清空发送null。无新增存储字段。
+
+## 功能流程修复数据结构（V15，2026-10-13）
+
+| 表/字段 | 内容及约束 |
+| --- | --- |
+| owner_profile.contact_phone | 已有字段；仅管理员维护，最长32字符，与工单完整手机号精确匹配；新增(contact_phone,user_id)索引，不设唯一以保留多匹配待人工机制 |
+| owner_contact_event | id/user_id/reason/actor_id/created_at；原因必填，不可变维护记录；审计摘要不含完整手机号 |
+| work_order_command.request_hash | 新增可空VARCHAR(64)，用于OWNER_BIND请求内容哈希；旧操作行为不变 |
+| work_order.owner_user_id / owner_binding_status | 复用现有字段；补绑定CAS从PENDING到BOUND，追加状态历史及审计，不转移已绑定账号、不改变维修状态 |
+| work_order_cancellation | work_order_id主键、owner_id/shop_id/assignment_version取消前快照、notify_owner/notify_shop、public_reason、cancelled_at；不可变，不存内部取消说明 |
+| notification_event.kind=CASE_CANCELLED | 同取消事务生成；直接按快照投递勾选接收人并标记projected_at，避免异步处理时丢失已失效派单；不重复投影 |
+
+资金目标历史响应补充actorId，无金额存储变更；资金与投诉工作台复用已有表和查询，不新增资金状态或投诉状态。V1—V14均未改写。

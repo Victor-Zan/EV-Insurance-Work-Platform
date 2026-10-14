@@ -42,6 +42,25 @@ class OcrIntakePostgresIT {
     @MockitoBean(name="selectedOcrProvider") OcrProvider provider;
     @Autowired MockMvc mvc;@Autowired ObjectMapper json;@Autowired JdbcTemplate db;@Autowired Flyway flyway;@Autowired OcrTaskStore tasks;@Autowired OcrMapper jobs;@Autowired OcrSources sources;@Autowired ObjectStorageService storage;
     private String cs,admin,shop,owner;private byte[] image;
+    @Test void mainV15UpgradesToOcrV16WithoutChangingItsChecksum(){
+        String schema="ocr_upgrade_it_"+UUID.randomUUID().toString().replace("-","");
+        String url=System.getenv("TEST_DB_URL"),user=System.getenv("TEST_DB_USERNAME"),password=System.getenv("TEST_DB_PASSWORD");
+        try {
+            Flyway mainOnly=Flyway.configure().dataSource(url,user,password).schemas(schema).defaultSchema(schema)
+                .locations("classpath:db/migration").target("15").load();
+            mainOnly.migrate();mainOnly.validate();
+            assertThat(mainOnly.info().current().getVersion().toString()).isEqualTo("15");
+            Integer checksum=db.queryForObject("SELECT checksum FROM "+schema+".flyway_schema_history WHERE version='15'",Integer.class);
+            assertThat(db.queryForObject("SELECT count(*) FROM "+schema+".owner_contact_event",Long.class)).isZero();
+            assertThat(db.queryForObject("SELECT to_regclass(?) IS NULL",Boolean.class,schema+".ocr_intake_file")).isTrue();
+            Flyway integrated=Flyway.configure().dataSource(url,user,password).schemas(schema).defaultSchema(schema)
+                .locations("classpath:db/migration").load();
+            integrated.migrate();integrated.validate();
+            assertThat(integrated.info().current().getVersion().toString()).isEqualTo("16");
+            assertThat(db.queryForObject("SELECT checksum FROM "+schema+".flyway_schema_history WHERE version='15'",Integer.class)).isEqualTo(checksum);
+            assertThat(db.queryForObject("SELECT count(*) FROM "+schema+".ocr_intake_file",Long.class)).isZero();
+        } finally {db.execute("DROP SCHEMA IF EXISTS "+schema+" CASCADE");}
+    }
     private OcrWorker worker(){return new OcrWorker(tasks,sources,storage,provider,json,3,180);}
     @BeforeEach void setup() throws Exception {
         db.update("UPDATE app_user SET enabled=true WHERE username='dev_customer_service'");
