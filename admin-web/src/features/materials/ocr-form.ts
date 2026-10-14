@@ -16,6 +16,19 @@ export function prefillOcrDraft(fields:Record<string,unknown>):DraftForm{
 export function ocrDraftPayload(form:DraftForm){
   return {...form,claimReportedAt:form.claimReportedAt?new Date(form.claimReportedAt+'+08:00').toISOString():null,accidentAt:form.accidentAt?new Date(form.accidentAt+'+08:00').toISOString():null,accidentRegionId:form.accidentRegionId?Number(form.accidentRegionId):null}
 }
+export interface OcrFieldConflict { field:keyof DraftForm; incoming:string }
+// Merge against the live form when recognition finishes, including edits made while waiting.
+// Missing OCR values never clear a field. Non-empty differences always require a choice.
+export function mergeOcrDraft(current:DraftForm,fields:Record<string,unknown>){
+  const incoming=prefillOcrDraft(fields),merged={...current},conflicts:OcrFieldConflict[]=[]
+  for(const field of Object.keys(draftLabels) as (keyof DraftForm)[]){
+    const value=incoming[field]
+    if(!value.trim())continue
+    if(!current[field]?.trim())merged[field]=value
+    else if(current[field]!==value)conflicts.push({field,incoming:value})
+  }
+  return {merged,incoming,conflicts}
+}
 export function evidenceText(value:unknown):string{
   const record=(input:unknown):Record<string,unknown>|undefined=>typeof input==='object'&&input!==null&&!Array.isArray(input)?input as Record<string,unknown>:undefined
   const entries=Array.isArray(value)?value:[value]
