@@ -2,6 +2,8 @@
 .env
 .env.*
 !.env.example
+# User-provided private OCR credentials; never stage or publish this document.
+/ocr api.docx
 
 # Java / Maven
 backend/target/
