@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { prefillOcrDraft,ocrDraftPayload,blankOcrDraft,evidenceText,mergeOcrDraft } from '../src/features/materials/ocr-form.ts'
+import { prefillOcrDraft,ocrDraftPayload,blankOcrDraft,evidenceText,mergeOcrDraft,ocrErrors } from '../src/features/materials/ocr-form.ts'
 test('only existing draft fields prefill; sheet number/date/items never become claim/accident values',()=>{
   const form=prefillOcrDraft({ownerName:'合成客户',documentNo:'REPAIR-TEST',documentDate:'2026-10-13',accidentRegionText:'模拟区域',accidentRegionId:'3',quantity:'1'})
   assert.equal(form.ownerName,'合成客户');assert.equal(form.claimNo,'');assert.equal(form.accidentAt,'');assert.equal(form.accidentRegionId,'');assert.equal(Object.hasOwn(form,'quantity'),false)
@@ -38,4 +38,10 @@ test('edits made while awaiting OCR are compared at completion, not replaced by 
   assert.equal(result.merged.vehicleBrand,'合成品牌');assert.equal(result.conflicts.length,1)
   const allMissing=mergeOcrDraft(live,{ownerName:null,ownerPhone:undefined,accidentAt:'invalid'})
   assert.deepEqual(allMissing.merged,live);assert.deepEqual(allMissing.conflicts,[])
+})
+
+test('local OCR authorization budget is distinguished from supplier quota',()=>{
+  assert.match(ocrErrors.BAIDU_LOCAL_BUDGET,/本机设定/)
+  assert.match(ocrErrors.BAIDU_LOCAL_BUDGET,/不表示百度账户额度耗尽/)
+  assert.notEqual(ocrErrors.BAIDU_LOCAL_BUDGET,ocrErrors.BAIDU_QUOTA)
 })

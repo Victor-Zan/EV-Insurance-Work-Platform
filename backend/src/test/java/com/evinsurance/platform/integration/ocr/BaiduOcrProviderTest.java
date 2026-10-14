@@ -81,6 +81,24 @@ class BaiduOcrProviderTest {
         var array=(tools.jackson.databind.node.ArrayNode)unique.path("words_result");array.add(json.readTree("{\"words\":\"合成乙\",\"location\":{\"left\":155,\"top\":11,\"width\":50,\"height\":20}}"));
         var ambiguous=json.valueToTree(new HandwritingCandidates().extract(unique,"SHOP_QUOTE"));assertThat(ambiguous.path("fields").has("ownerName")).isFalse();assertThat(ambiguous.path("warnings").toString()).contains("未强行配对");
     }
+    @Test void tallFollowingRowIsNotAConflictingOwnerValue(){
+        var response=json.createObjectNode();var words=response.putArray("words_result");
+        words.add(box("客户名称",20,100,100,24));words.add(box("合成车主甲",140,87,120,50));
+        words.add(box("维修名称",20,145,100,24));words.add(box("合成维修项目",140,107,180,90));
+        var result=json.valueToTree(new HandwritingCandidates().extract(response,"SHOP_QUOTE"));
+        assertThat(result.path("fields").path("ownerName").asString()).isEqualTo("合成车主甲");
+        assertThat(result.path("evidence").path("ownerName").size()).isEqualTo(1);
+        assertThat(result.path("evidence").path("ownerName").get(0).path("line").asInt()).isEqualTo(1);
+        assertThat(result.path("ruleVersion").asString()).isEqualTo("LABELLED_COORDINATES_3");
+        assertThat(result.path("lines").get(3).path("text").asString()).isEqualTo("合成维修项目");
+    }
+    @Test void broadBoxBetweenRowsIsNotAssignedToEitherOwnerLabel(){
+        var response=json.createObjectNode();var words=response.putArray("words_result");
+        words.add(box("客户名称",20,100,100,24));words.add(box("车主姓名",20,180,100,24));
+        words.add(box("合成歧义文字",140,110,160,80));
+        var result=json.valueToTree(new HandwritingCandidates().extract(response,"NOTICE"));
+        assertThat(result.path("fields").has("ownerName")).isFalse();
+    }
     private JsonNode box(String text,int x,int y,int width,int height){return json.valueToTree(Map.of("words",text,"location",Map.of("left",x,"top",y,"width",width,"height",height)));}
     @Test void coordinateRepairRowsKeepMissingQuantityAndLetterLUnchanged(){
         var root=json.createObjectNode();var words=root.putArray("words_result");

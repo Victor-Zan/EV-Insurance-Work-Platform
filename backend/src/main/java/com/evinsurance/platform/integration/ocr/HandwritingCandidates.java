@@ -64,7 +64,8 @@ public final class HandwritingCandidates {
             for(var valueLine:lines){
                 String text=valueLine.get("text").toString().strip();if(text.isBlank()||LABELS.containsKey(text.replaceAll("[：:]$",""))||LABEL.matcher(text).find()||!(valueLine.get("location") instanceof JsonNode valueBox))continue;
                 int x=valueBox.path("left").asInt(),y=valueBox.path("top").asInt(),h=valueBox.path("height").asInt();int overlap=Math.min(top+height,y+h)-Math.max(top,y);
-                if(h>0&&x>=left+width-2&&x-left-width<=8*height&&overlap>=0.6*Math.min(height,h))neighbours.add(valueLine);
+                long centreDelta=Math.abs((2L*top+height)-(2L*y+h));
+                if(h>0&&centreDelta<=Math.min(height,h)&&x>=left+width-2&&x-left-width<=8*height&&overlap>=0.6*Math.min(height,h))neighbours.add(valueLine);
             }
             if(neighbours.size()==1){var entry=new LinkedHashMap<String,Object>(neighbours.getFirst());entry.put("value",neighbours.getFirst().get("text").toString().strip());entry.put("labelEvidence",labelLine);entry.put("origin","PROGRAM_COORDINATE_LABEL");evidence.computeIfAbsent(field,k->new ArrayList<>()).add(entry);}
             else warnings.add(field+" 的标签与文字框关系不明确，未强行配对");
@@ -91,7 +92,7 @@ public final class HandwritingCandidates {
         }
         warnings.add("候选结果，须人工核对；未识别字段不自动补齐");
         var result=new LinkedHashMap<String,Object>();result.put("mock",false);result.put("candidateOnly",true);result.put("sourceCategory",category);
-        result.put("origin","PROGRAM_LABELLED_TEXT_V2");result.put("fields",fields);result.put("evidence",evidence);result.put("lines",lines);result.put("items",items);result.put("warnings",warnings);
+        result.put("origin","PROGRAM_LABELLED_TEXT_V2");result.put("ruleVersion","LABELLED_COORDINATES_3");result.put("fields",fields);result.put("evidence",evidence);result.put("lines",lines);result.put("items",items);result.put("warnings",warnings);
         return result;
     }
     private static String money(String text,Set<String> warnings){
