@@ -33,6 +33,12 @@
 
 分支feature/sherr-amap-integration，目标main；实现提交主题 `feat(map): add Guangdong Amap driving-distance recommendations`。仅提交本任务文件，推送及Draft PR结果将按实际补记，不自动合并、不部署生产。
 
+交付补记：实现提交9d8d630067dec7d79b2fb1aa6161b89b8850fa6a已正常推送至origin/feature/sherr-amap-integration。48个暂存文本逐一读取成功，运行时私密值/高德配置值/JWT/敏感二进制检查0命中，.env.amap未跟踪，原迁移不变。再次fetch确认origin/main仍为674edf2。分支链接：https://github.com/Victor-Zan/EV-Insurance-Work-Platform/tree/feature/sherr-amap-integration 。
+
+GitHub插件create_pull_request（base=main、draft=true）本轮尝试一次，返回403 Resource not accessible by integration；未创建PR，没有改用其他渠道绕过、重复重试或合并。可手动在 https://github.com/Victor-Zan/EV-Insurance-Work-Platform/pull/new/feature/sherr-amap-integration 创建并选择Draft；也可先修复集成Pull requests写权限再明确重试。PR标题建议“feat(map): 广东合作网点高德驾车距离推荐（离线验收）”，范围与未验证项使用本节及AMAP_INTEGRATION说明。本交付补记单独提交并正常推送，不重写实现提交。
+
+本机新隔离Mock验收服务使用8080/5187与amap_browser_20261015，仅合成资料、外呼预算0、OCR Worker关闭；没有替真实网点配置车型/坐标。管理员界面已实际追加SYNTHETIC_TEST位置版本2。截图及验证日志仅在仓库外保留，未上传。已停止本阶段开发，不进入其他阶段；真实联调等待未来明确预算及地址授权。
+
 ## 2026-10-14 管理端侧栏切换空白修复
 
 范围仅为本次用户反馈的侧栏切换后页面不显示。根因：全局 `Transition mode="out-in"` 直接包裹路由组件，案件队列等多根节点页面退出时无法完成动画回调，后续路由内容停留为空；刷新绕过退出流程，因此恢复。Vue 实际渲染生命周期回归测试在修复前复现案件页切出及快速切换两项失败（页面文本为空），修复后通过。
