@@ -820,6 +820,13 @@ Docker CLI/Desktop 不可用，Compose 本次未验证且文件未改；未执�
 
 用户授权将当前全部项目成果提交到Victor-Zan/EV-Insurance-Work-Platform；当前分支feature/phase8-funds-reminders。纳入第7—8阶段源码、迁移、测试、文档、合成截图与公开验证结果，并补齐报告引用的8份前端检查日志和3个辅助脚本。环境凭据、Token、数据库/MinIO运行数据、构建产物和工具缓存不提交。验证状态及局限按USABILITY_VISUAL_RECHECK保留，无部署或主分支合并。提交成功以远端分支和提交SHA核对为准。
 
+### Git交付收尾（2026-10-15）
+
+- 实现提交：76055c4a01b53cf108c4184224b15baf92bdec20，feat(quotation): add scoped shop handwriting OCR prefill。正常推送 feature/sherr-shop-quotation-ocr 成功，远端SHA核对一致。
+- GitHub集成 github_create_pull_request（base=main、head=feature/sherr-shop-quotation-ocr、draft=true）仅尝试一次，返回HTTP403 Resource not accessible by integration。没有创建PR；没有换渠道绕过或重复尝试，无自动合并/生产部署。
+- 分支：https://github.com/Victor-Zan/EV-Insurance-Work-Platform/tree/feature/sherr-shop-quotation-ocr 。人工创建入口：https://github.com/Victor-Zan/EV-Insurance-Work-Platform/compare/main...feature/sherr-shop-quotation-ocr?expand=1 ，由有权限的协作者选择Create draft pull request，目标main。
+- 本条纯文档收尾另行提交并推送，不改已通过门禁的源码。最终本任务工作区清洁；隔离Mock预览18086/5188、合成schema与原图/截图留在本机仓库外供复核，未提交截图或私密配置。旧真实OCR预算进程、旧数据库及地图工作区未改。任务在此停止。
+
 ## 2026-10-15 网点报价OCR开始（D-047）
 
 已核对真实仓库main 674edf2；新独立工作区shop-quotation-ocr、分支feature/sherr-shop-quotation-ocr，原地图工作区及当前资料目录未修改。保留署名Sherry070719。复用百度链路，实施范围/映射/验收见SHOP_QUOTE_OCR.md；本轮不调用真实百度，不读取私密密钥。当前尚未完成，后续记录实际验证与交付。
