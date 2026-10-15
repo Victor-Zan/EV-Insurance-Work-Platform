@@ -1,5 +1,11 @@
 # 电动车保险维修案件协同平台 MVP 架构说明
 
+## 2026-10-15 网点报价OCR限定扩展（D-047）
+
+ShopQuoteOcrPolicy 校验当前本店ACCEPTED派单、QuotationLifecycle.EDITABLE和本次有效SHOP_QUOTE/ASSESSMENT；专用Controller位于quotations/cases/{id}/ocr，通用OCR角色不扩张。复用OcrService/OcrSources、原Provider/Worker/租约/私有对象，Worker调用前及写回重验网点归属/创建者启用/原件。外呼仍在业务事务外。客服/管理员对网点作用域只读，OWNER无入口；服务端为最终边界。
+
+V18仅追加不可变作用域、幂等绑定及报价行来源关联，不依赖未合并地图V17，原迁移与旧OCR库不变。原始响应和程序候选、人工修订、确认与不可变报价版本分层。QuoteOcrLineage在原submitRaw事务和案件锁内检查确认快照/作用域/内容/重复引用，然后写原报价及来源关联；计算仍由QuoteCalculator完成，不增加费用汇总或自动采价。H5原QuotationPanel嵌入QuoteOcrPanel，以最新表单逐行保护冲突，BigInt分计算仅辅助显示，金额权威仍后端BigDecimal。详细映射/API/限制见SHOP_QUOTE_OCR.md。
+
 ## 2026-10-13 OCR 扩展（D-045）
 
 沿用模块化单体与 PostgreSQL Worker，新增 V16（PR #4 解决与 main V15 的版本撞号，经用户批准由原 OCR V15 仅重编号，SQL 内容不变；既有 main 迁移不变）。ocr_job 的来源为 case_file 或 ocr_intake_file 二选一；建单前材料没有案件、仅创建者客服和管理员可读，客服写入、管理员只读。供应商/API/适配版本和来源一经创建不可更改，按配置供应商领取任务，旧 Mock 任务不会被百度执行。

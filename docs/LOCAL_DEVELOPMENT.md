@@ -1,5 +1,7 @@
 # 本地开发与启动
 
+网点报价表单OCR见[SHOP_QUOTE_OCR.md](SHOP_QUOTE_OCR.md)：启动配置与客服OCR共用，未新增供应商或前端Key变量。使用当前功能分支在新隔离schema迁移至V18；不得将本分支直接连接仍记录旧OCR V15的历史库或执行repair。V17为独立地图分支迁移，本分支不假设地图已合并。本轮验收使用MOCK_V1/模拟响应，不读取真实凭据、不增加此前真实调用预算；未来真实联调需另行确认。
+
 百度 OCR 与建单前表单配置/验收见 BAIDU_OCR.md。默认 OCR_PROVIDER=MOCK_V1，不发送真实请求；改为 BAIDU_HANDWRITING_V1 前注入重置后的后端环境变量，不能配置前端 VITE 密钥。scripts/Start-Local.ps1 的 EnvironmentFile 加载所有大写变量，不回显值，因此可读取 BAIDU_OCR_API_KEY / BAIDU_OCR_SECRET_KEY；私密文件须留在仓库外或被忽略的 .env。启动须提供本机真实 JDK 路径，不照搬他人绝对路径。真实任务建议 OCR_LEASE_SECONDS=180；缺凭据显式启动失败，不回退 Mock。不要把已有待执行任务改供应商；任务来源与供应商已不可变。
 
 ## 当前 Windows 工作区的便捷入口

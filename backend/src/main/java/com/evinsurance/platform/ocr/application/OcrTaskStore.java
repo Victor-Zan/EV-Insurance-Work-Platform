@@ -18,7 +18,7 @@ public class OcrTaskStore {
     @Transactional public boolean finishResult(OcrRow r,String candidate,String error,String rawKey,String hash,String logId,int size){
         if(!sources.eligible(r,true)){
             // Preserve legacy Mock in-flight read-only behaviour; real tasks end safely without publishing results.
-            if(r.provider().equals("MOCK_V1"))return false;
+            if(r.provider().equals("MOCK_V1")&&!sources.shopQuote(r))return false;
             candidate=null;error="SOURCE_ACCESS_CHANGED";rawKey=null;
         }
         if(jobs.finish(r.id(),r.leaseToken(),candidate,error)!=1)return false;
