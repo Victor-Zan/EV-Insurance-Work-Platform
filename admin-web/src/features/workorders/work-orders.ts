@@ -95,10 +95,10 @@ export function workOrderApi(client: AxiosInstance) {
     bindOwner: (id:string,expectedVersion:number,reason:string,key=idempotencyKey('owner-bind')) => data<WorkOrder>(client.post(`/work-orders/${id}/owner-binding`,{expectedVersion,reason},{headers:{'Idempotency-Key':key}})),
     critical: (id: string,value: CriticalForm) => data<WorkOrder>(client.put(`/work-orders/${id}/critical-fields`,value)),
     shops: (id: string,page=1) => data<Page<ShopOption>>(client.get(`/work-orders/${id}/eligible-shops`,{ params:{ page,size:20 } })),
-    dispatch: (id: string,shopId: number,confirmPossibleDuplicate=false,duplicateReason: string|null=null) =>
-      data<WorkOrder>(client.post(`/work-orders/${id}/dispatch`,{ shopId,confirmPossibleDuplicate,duplicateReason },{ headers:{ 'Idempotency-Key':idempotencyKey('dispatch') } })),
-    reassign: (id: string,value: { shopId:number; assignmentVersion:number; reason:string; vehicleNotArrivedConfirmed:boolean; transferDescription:string|null; confirmPossibleDuplicate:boolean }) =>
-      data<WorkOrder>(client.post(`/work-orders/${id}/reassign`,value,{ headers:{ 'Idempotency-Key':idempotencyKey('reassign') } })),
+    dispatch: (id: string,shopId: number,confirmPossibleDuplicate=false,duplicateReason: string|null=null,recommendationId?:string) =>
+      data<WorkOrder>(client.post(recommendationId?`/maps/recommendations/${recommendationId}/dispatch`:`/work-orders/${id}/dispatch`,{ shopId,confirmPossibleDuplicate,duplicateReason },{ headers:{ 'Idempotency-Key':idempotencyKey('dispatch') } })),
+    reassign: (id: string,value: { shopId:number; assignmentVersion:number; reason:string; vehicleNotArrivedConfirmed:boolean; transferDescription:string|null; confirmPossibleDuplicate:boolean },recommendationId?:string) =>
+      data<WorkOrder>(client.post(recommendationId?`/maps/recommendations/${recommendationId}/reassign`:`/work-orders/${id}/reassign`,value,{ headers:{ 'Idempotency-Key':idempotencyKey('reassign') } })),
     cancelAssignment: (id: string,assignmentVersion: number,reason: string) =>
       data<WorkOrder>(client.post(`/work-orders/${id}/cancel-assignment`,{ assignmentVersion,reason },{ headers:{ 'Idempotency-Key':idempotencyKey('cancel-assignment') } })),
     arrivalException: (id:string,assignmentVersion:number,reason:string) =>

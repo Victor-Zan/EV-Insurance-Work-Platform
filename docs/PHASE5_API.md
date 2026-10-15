@@ -1,5 +1,7 @@
 # 阶段5 API与权限
 
+2026-10-15 高德新增接口及旧Mock接口隔离见 [AMAP_INTEGRATION.md](AMAP_INTEGRATION.md)。本轮地址解析不等于已完成网点推荐或派单联动。
+
 所有路径前缀/api/v1，需有效Bearer且实时账号启用。JSON沿用ApiResponse，列表page从1开始，size上限100；字段及在线协议见/v3/api-docs。
 
 ## D-045 百度与建单前补充

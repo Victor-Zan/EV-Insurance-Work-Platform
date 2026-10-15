@@ -1,5 +1,20 @@
 # 本地开发与启动
 
+## 高德私密配置（2026-10-15）
+
+在当前代码仓库根目录创建 `.env.amap`（已由 `.gitignore` 的 `.env.*` 排除）；本轮独立工作区的准确路径为 `C:\Users\Sherr\Documents\Codex\amap-integration\.env.amap`。其他电脑应使用自己的仓库路径。文件初始内容：
+
+```dotenv
+MAP_PROVIDER=MOCK_V1
+AMAP_WEB_SERVICE_KEY=
+AMAP_MAX_CALLS_PER_PROCESS=0
+AMAP_REQUESTS_PER_SECOND=2
+```
+
+用户只在本机文件填写 Web服务Key，不发聊天、不放VITE。`scripts/Start-Local.ps1` 先读取既有 `-EnvironmentFile`，再自动读取仓库 `.env.amap`；也可用 `-MapEnvironmentFile` 指定私密路径。`scripts/Load-AmapEnvironment.ps1 -EnvironmentFile <本机私密文件>` 可用于手动启动前加载，只接受上述四个后端变量，不输出值。配置文件不会被 Spring 自动读取，直接启动Java/Maven时必须先加载。
+
+真实供应商必须明确设 `MAP_PROVIDER=AMAP_WEB_V1`，缺Key即启动失败；调用上限0表示关闭外呼，正整数为本进程批准预算，所有地址、逆编码、路线请求共用并发安全计数，无自动重试。计数重启会归零，不能通过重启延长已批准预算。只有另行确认真实联调预算与地址之后才设置正数。本轮仅完成实现和离线验收，不启用真实联调。客服入口为工单详情→派单与异常；管理员入口为维修网点→车型与位置。dev Mock可显式维护合成位置，真实模式禁止拿合成坐标计算道路距离。详情见 AMAP_INTEGRATION.md。
+
 百度 OCR 与建单前表单配置/验收见 BAIDU_OCR.md。默认 OCR_PROVIDER=MOCK_V1，不发送真实请求；改为 BAIDU_HANDWRITING_V1 前注入重置后的后端环境变量，不能配置前端 VITE 密钥。scripts/Start-Local.ps1 的 EnvironmentFile 加载所有大写变量，不回显值，因此可读取 BAIDU_OCR_API_KEY / BAIDU_OCR_SECRET_KEY；私密文件须留在仓库外或被忽略的 .env。启动须提供本机真实 JDK 路径，不照搬他人绝对路径。真实任务建议 OCR_LEASE_SECONDS=180；缺凭据显式启动失败，不回退 Mock。不要把已有待执行任务改供应商；任务来源与供应商已不可变。
 
 ## 当前 Windows 工作区的便捷入口
