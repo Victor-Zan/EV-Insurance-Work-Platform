@@ -20,6 +20,7 @@ public class OcrWorker {
             if(!sources.eligible(job,false)){tasks.finish(job,null,"SOURCE_ACCESS_CHANGED");return;}
             var result=provider.recognize(f.category(),data,job.simulateFailure()&&job.attempts()==1);
             tools.jackson.databind.node.ObjectNode candidate=json.valueToTree(result.candidate());
+            if(sources.shopQuote(job))candidate=new com.evinsurance.platform.integration.ocr.ShopQuoteCandidates().organize(candidate,json);
             if(provider.id().equals("MOCK_V1"))candidate.putNull("confidence");
             String text=json.writeValueAsString(candidate);if(text.length()>50000)throw new com.evinsurance.platform.integration.ocr.OcrFailure("BAIDU_RESULT_TOO_LARGE");
             if(result.raw()!=null){rawKey="ocr/raw/"+job.id()+"/"+job.attempts()+"/"+java.util.UUID.randomUUID();storage.put(rawKey,new java.io.ByteArrayInputStream(result.raw()),result.raw().length,"application/json");}
