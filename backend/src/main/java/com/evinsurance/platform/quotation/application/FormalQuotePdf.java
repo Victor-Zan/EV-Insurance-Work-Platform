@@ -35,7 +35,7 @@ public class FormalQuotePdf {
             page.detail("报案号",header.claimNo());
             page.detail("保险公司",header.insuranceCompany());
             page.detail("车主",header.ownerName());
-            page.detail("车辆",header.vehicleBrand()+" "+header.vehicleModel());
+            page.detail("车辆",(header.vehicleBrand()==null?"":header.vehicleBrand())+" "+(header.vehicleModel()==null?"":header.vehicleModel()));
             if("BACKFILL".equals(header.snapshotKind()))page.detail("历史版本", "案件抬头按迁移时记录生成");
             page.y-=14;
             page.tableHeader();

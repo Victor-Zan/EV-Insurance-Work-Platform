@@ -199,11 +199,14 @@ class WorkOrderPostgresIT {
     }
     private String uniquePhone(){return "139"+String.format("%08d",Math.abs(UUID.randomUUID().getMostSignificantBits()%100000000));}
 
-    @Test void minimalIntakeNeedsEverySpecifiedFieldAndScenePhotoButNoDispatchOrInsuranceData() throws Exception {
-        var valid=new HashMap<String,Object>();valid.put("claimNo","INTAKE-"+UUID.randomUUID());valid.put("ownerPhone",uniquePhone());valid.put("vehiclePlate","合成-"+UUID.randomUUID());valid.put("surveyorName","合成查勘");valid.put("surveyorPhone","13926018473");valid.put("vehicleColor","蓝色");valid.put("vehicleBrand","合成品牌");valid.put("vehicleModel","合成车型");
+    @Test void minimalIntakeNeedsRequiredFieldsAndScenePhotoButVehicleDescriptionsAreOptional() throws Exception {
+        var valid=new HashMap<String,Object>();valid.put("claimNo","INTAKE-"+UUID.randomUUID());valid.put("ownerPhone",uniquePhone());valid.put("vehiclePlate","粤B8Z71M");valid.put("surveyorName","合成查勘");valid.put("surveyorPhone","13926018473");
         var draft=api(customerService,"POST","/api/v1/work-orders/drafts",valid,null,200);String id=draft.path("id").asText();
         api(customerService,"POST","/api/v1/work-orders/"+id+"/submit",Map.of(),"missing-photo-"+id,409);
         String photo=scenePhoto(customerService,id);
+        var badPlate=new HashMap<>(valid);badPlate.put("vehiclePlate","无牌???");
+        api(customerService,"PUT","/api/v1/work-orders/"+id+"/draft",badPlate,null,200);
+        api(customerService,"POST","/api/v1/work-orders/"+id+"/submit",Map.of(),"bad-plate-"+id,409);
         for(String field:valid.keySet()){
             var missing=new HashMap<>(valid);missing.remove(field);
             api(customerService,"PUT","/api/v1/work-orders/"+id+"/draft",missing,null,200);
@@ -211,7 +214,8 @@ class WorkOrderPostgresIT {
         }
         api(customerService,"PUT","/api/v1/work-orders/"+id+"/draft",valid,null,200);
         var formal=api(customerService,"POST","/api/v1/work-orders/"+id+"/submit",Map.of(),"valid-"+id,200);
-        assertThat(formal.path("status").asText()).isEqualTo("PENDING_DISPATCH");assertThat(formal.path("surveyorName").asText()).isEqualTo("合成查勘");assertThat(formal.path("vehicleColor").asText()).isEqualTo("蓝色");
+        assertThat(formal.path("status").asText()).isEqualTo("PENDING_DISPATCH");assertThat(formal.path("surveyorName").asText()).isEqualTo("合成查勘");
+        for(String field:List.of("vehicleColor","vehicleBrand","vehicleModel"))assertThat(formal.hasNonNull(field)).isFalse();
         assertThat(formal.hasNonNull("insuranceCompany")).isFalse();assertThat(formal.hasNonNull("accidentRegionId")).isFalse();
         assertThat(api(customerService,"POST","/api/v1/work-orders/"+id+"/submit",Map.of(),"valid-"+id,200).path("id")).isEqualTo(formal.path("id"));
         api(customerService,"POST","/api/v1/work-orders/"+id+"/dispatch",Map.of("shopId",shopId),"no-address-"+id,409);

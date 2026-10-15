@@ -1,14 +1,17 @@
 import type { DraftForm } from './work-orders'
+import {plateCheck} from './intake-values.ts'
 
 export const intakeFields: {key:keyof DraftForm;label:string}[]=[
   {key:'claimNo',label:'案件号（保险报案号）'},{key:'ownerPhone',label:'车主手机号'},
-  {key:'vehiclePlate',label:'车辆牌照'},{key:'vehicleVin',label:'车架号 / VIN'},
-  {key:'surveyorName',label:'查勘员姓名'},{key:'surveyorPhone',label:'查勘员电话'},
-  {key:'vehicleColor',label:'车辆颜色'},{key:'vehicleBrand',label:'车辆品牌'},{key:'vehicleModel',label:'车型'},
+  {key:'vehiclePlate',label:'车牌号/车架号'},
+  {key:'surveyorName',label:'查勘员（姓名 电话）'},
+  {key:'vehicleColor',label:'车辆颜色（选填）'},{key:'vehicleBrand',label:'车辆品牌（选填）'},{key:'vehicleModel',label:'车型（选填）'},
 ]
 export function intakeMissing(form:DraftForm,photos:number){
-  const missing=intakeFields.filter(item=>!['vehiclePlate','vehicleVin'].includes(item.key)&&!form[item.key]?.trim()).map(item=>item.label)
+  const required=[...intakeFields.filter(item=>['claimNo','ownerPhone'].includes(item.key)),{key:'surveyorName' as const,label:'查勘员姓名'},{key:'surveyorPhone' as const,label:'查勘员电话'}]
+  const missing=required.filter(item=>!form[item.key]?.trim()).map(item=>item.label)
   if(!form.vehiclePlate.trim()&&!form.vehicleVin.trim())missing.push('车辆牌照或车架号')
+  if(!form.vehicleVin.trim()&&form.vehiclePlate.trim()&&!plateCheck(form.vehiclePlate).acceptable)missing.push('有效车牌号或车架号')
   if(!photos)missing.push('至少1张现场物损照片')
   return missing
 }

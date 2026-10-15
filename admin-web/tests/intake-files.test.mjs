@@ -19,9 +19,9 @@ test('two texts preserve source names and conflicts; unsupported files and over-
  assert.throws(()=>validateSceneFiles(Array.from({length:21},()=>new File(['a'],'a.jpg'))),/最多20张/)
  await assert.rejects(readChatFiles([new File([new Uint8Array([255])],'bad.txt')]),TypeError)
 })
-test('formal submission needs every specified field, one vehicle identifier and a scene photo; drafts can remain sparse',()=>{
- const form=blankOcrDraft();assert.equal(intakeMissing(form,0).length,9)
- Object.assign(form,{claimNo:'SYNTHETIC',ownerPhone:'13826379142',surveyorName:'合成查勘',surveyorPhone:'13926018473',vehicleBrand:'合成品牌',vehicleModel:'合成车型',vehicleColor:'蓝色',vehiclePlate:'合成车牌'})
+test('formal submission requires contacts, one vehicle identifier and a photo, while colour, brand and model remain optional',()=>{
+ const form=blankOcrDraft();assert.equal(intakeMissing(form,0).length,6)
+ Object.assign(form,{claimNo:'SYNTHETIC',ownerPhone:'13826379142',surveyorName:'合成查勘',surveyorPhone:'13926018473',vehiclePlate:'粤B8Z71M'})
  assert.deepEqual(intakeMissing(form,1),[]);form.vehiclePlate='';form.vehicleVin='SYNTHETIC-VIN';assert.deepEqual(intakeMissing(form,1),[])
  form.surveyorPhone='';assert.deepEqual(intakeMissing(form,1),['查勘员电话'])
 })

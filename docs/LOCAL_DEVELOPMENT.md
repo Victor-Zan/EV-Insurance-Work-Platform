@@ -1,5 +1,7 @@
 # 本地开发与启动
 
+照片上传返回`STORAGE_UNAVAILABLE`时，先核对后端进程是否加载`MINIO_ENDPOINT`、`MINIO_ACCESS_KEY`、`MINIO_SECRET_KEY`和`MINIO_BUCKET`。`MINIO_ROOT_USER/PASSWORD`仅供容器启动，不会自动映射到应用；已有`.env`不会随`.env.example`更新而自动补齐。仅本地开发可将应用访问凭据设为已创建的本地MinIO账户，禁止输出或提交真实值。修改后重启实际提供API的后端；容器healthy或`/actuator/health`为UP不能代替照片上传验证。上传失败时保留当前草稿和所选照片，配置恢复后在原页面重试，避免重复建单。
+
 百度 OCR 与建单前表单配置/验收见 BAIDU_OCR.md。默认 OCR_PROVIDER=MOCK_V1，不发送真实请求；改为 BAIDU_HANDWRITING_V1 前注入重置后的后端环境变量，不能配置前端 VITE 密钥。scripts/Start-Local.ps1 的 EnvironmentFile 加载所有大写变量，不回显值，因此可读取 BAIDU_OCR_API_KEY / BAIDU_OCR_SECRET_KEY；私密文件须留在仓库外或被忽略的 .env。启动须提供本机真实 JDK 路径，不照搬他人绝对路径。真实任务建议 OCR_LEASE_SECONDS=180；缺凭据显式启动失败，不回退 Mock。不要把已有待执行任务改供应商；任务来源与供应商已不可变。
 
 ## 当前 Windows 工作区的便捷入口

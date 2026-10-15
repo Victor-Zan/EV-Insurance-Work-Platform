@@ -56,7 +56,7 @@ class OcrIntakePostgresIT {
             Flyway integrated=Flyway.configure().dataSource(url,user,password).schemas(schema).defaultSchema(schema)
                 .locations("classpath:db/migration").load();
             integrated.migrate();integrated.validate();
-            assertThat(integrated.info().current().getVersion().toString()).isEqualTo("18");
+            assertThat(integrated.info().current().getVersion().toString()).isEqualTo("19");
             assertThat(db.queryForObject("SELECT checksum FROM "+schema+".flyway_schema_history WHERE version='15'",Integer.class)).isEqualTo(checksum);
             assertThat(db.queryForObject("SELECT count(*) FROM "+schema+".ocr_intake_file",Long.class)).isZero();
         } finally {db.execute("DROP SCHEMA IF EXISTS "+schema+" CASCADE");}

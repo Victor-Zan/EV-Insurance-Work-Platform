@@ -505,7 +505,7 @@ public class WorkOrderService {
         row.setVehicleBrand(trim(request.vehicleBrand()));
         row.setVehicleModel(trim(request.vehicleModel()));
         row.setVehicleVin(trim(request.vehicleVin()));
-        row.setVehiclePlate(trim(request.vehiclePlate()));
+        row.setVehiclePlate(trim(request.vehiclePlate())==null?null:com.evinsurance.platform.workorder.domain.VehiclePlate.check(request.vehiclePlate()).value());
         row.setVehicleOtherIdentifier(trim(request.vehicleOtherIdentifier()));
         row.setAccidentAt(request.accidentAt());
         row.setAccidentRegionId(request.accidentRegionId());
@@ -516,9 +516,10 @@ public class WorkOrderService {
 
     public List<String> formalMissing(WorkOrderEntity row) {
         var missing=new java.util.ArrayList<String>();
-        String[][] values={{row.getClaimNo(),"案件号"},{row.getOwnerPhone(),"车主手机号"},{row.getSurveyorName(),"查勘员姓名"},{row.getSurveyorPhone(),"查勘员电话"},{row.getVehicleColor(),"车辆颜色"},{row.getVehicleBrand(),"车辆品牌"},{row.getVehicleModel(),"车型"}};
+        String[][] values={{row.getClaimNo(),"案件号"},{row.getOwnerPhone(),"车主手机号"},{row.getSurveyorName(),"查勘员姓名"},{row.getSurveyorPhone(),"查勘员电话"}};
         for(var value:values)if(trim(value[0])==null)missing.add("请填写"+value[1]);
         if(trim(row.getVehiclePlate())==null&&trim(row.getVehicleVin())==null)missing.add("请填写车辆牌照或车架号");
+        if(trim(row.getVehicleVin())==null&&trim(row.getVehiclePlate())!=null&&!com.evinsurance.platform.workorder.domain.VehiclePlate.check(row.getVehiclePlate()).acceptable())missing.add("请核对车牌号格式，或填写车架号");
         if(files.activeCount(row.getId(),"SCENE_PHOTO")==0)missing.add("请上传至少1张现场物损照片");
         return List.copyOf(missing);
     }

@@ -30,5 +30,9 @@ class FormalQuotePdfTest {
             assertThat(text).contains("平台正式报价单","WO-TEST-100","CLAIM-100","测试保险公司","35.000000","70.00");
             assertThat(text).doesNotContain("30.00","60.00","10.00","加价","网点结算","markup");
         }
+        var sparseHeader=new DocumentHeader(id,"WO-TEST-100","CLAIM-100",null,null,null,null,"ISSUE");
+        try(var pdf=Loader.loadPDF(new FormalQuotePdf().render(quote,sparseHeader,List.of(item)))) {
+            assertThat(new PDFTextStripper().getText(pdf)).contains("车辆").doesNotContain("null");
+        }
     }
 }

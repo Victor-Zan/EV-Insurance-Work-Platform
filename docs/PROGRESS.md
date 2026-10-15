@@ -1,5 +1,53 @@
 # 项目进度
 
+## 2026-10-15 D-050 开发环境STORAGE_UNAVAILABLE已恢复
+
+D-049三项任务已完成后，用户报告正式建单在物损照片上传阶段返回503 STORAGE_UNAVAILABLE。本轮仅处理实际运行配置与恢复验证，不绕过文件落库/必填/权限门禁。
+
+- 定位：MinIO容器healthy、9000健康端点200，8080/18095均健康UP。使用合成资料分别创建草稿并上传同一PNG：8080返回503 STORAGE_UNAVAILABLE，18095返回200。根目录私密.env只有MINIO_ROOT_*容器配置，未提供应用MINIO_ENDPOINT/ACCESS_KEY/SECRET_KEY；应用MinioObjectStorage因此拒绝操作。
+- 修复：仅本地.env补齐现有MinIO连接、访问账户和默认私有桶配置，未输出或提交凭据；.env确认被Git忽略。更新.env.example和LOCAL_DEVELOPMENT，说明容器配置不自动映射应用配置。核验8080原Java/Maven进程身份后重启该开发后端，使用D-049已通过验证的构建和原ev_insurance数据库；先前验证的V19随启动正常应用，保留数据、对象卷和用户草稿，不重启无关服务。预览18095未改。
+- 恢复验收：`node tmp/check-storage-runtime.mjs`复现对照后，`node tmp/verify-storage-recovery.mjs`在其原8080合成草稿上重试上传200，同键重放返回同一文件ID；鉴权下载200且PNG字节完全一致；正式提交成功为PENDING_DISPATCH；通过5173代理读取附件200，文件仅一份。结果在忽略目录`tmp/storage-runtime-result.json`、`tmp/storage-recovery-result.json`；服务日志`tmp/storage-fixed-backend.stdout.log`。未代用户提交真实案件。
+- 本轮无业务源码、依赖或测试规则改动，未重复已通过的Maven/前端构建。D-049的49单元+29集成、15前端定向测试及lint/类型/构建记录继续有效；本轮补充真实开发环境的上传/下载/幂等/提交/代理验证。`git diff --check`通过，未提交/推送。
+
+原弹窗保留草稿ID、所选照片及上传键，可直接重试原提交，不应重新建单。恢复完成，本阶段停止。
+
+## 2026-10-15 D-049 仅三项建单修正完成
+
+- TXT/文件夹导入成功后自动提取并填入，包括标的车牌。用户两份原模板在本地只读解析均返回号牌，原入口只读文件未自动调用提取；已修正该入口。保留原文与其他字段冲突核对，不读取照片文字、不调用真实OCR。
+- 查勘员采用“姓名 电话”合并格式。明确姓名优先，否则采用聊天查勘昵称；直接预填、可手改，无单独姓名候选确认，已有手改姓名不覆盖。原文整体核对与其他信息冲突机制不变。
+- 颜色、品牌、车型改为选填，其他必填/照片门禁不变。V19移除工单身份约束中的品牌/车型必填，以及正式报价抬头对应NOT NULL，缺失值PDF留空。旧迁移、历史记录、报价金额/权限规则不改。
+
+| 验证 | 结果 |
+| --- | --- |
+| 管理端 `node --test tests/intake-files.test.mjs tests/intake-recovery.test.mjs tests/text-intake.test.mjs` | 15项全部通过，实际组件编译执行覆盖TXT/文件夹自动提取、姓名不确认/不覆盖手改、三项留空及其余必填。 |
+| 管理端 `npm run lint` / `npm run typecheck` / `npm run build` | 通过。日志 `tmp/workflow-stage2/intake-three-{lint,types,build}.log`。 |
+| 后端 `verify.ps1 -IntegrationTest WorkOrderPostgresIT,IdentityPostgresIT,OcrIntakePostgresIT -LogName intake-three-delivery` | 49项单元+29项集成全部通过，0失败/错误/跳过，Maven构建成功。覆盖空颜色/品牌/车型正式建单→派单→报价、逐个缺必填项拒绝、权限、PDF空值和旧迁移升级兼容；21份Flyway迁移校验通过。日志 `tmp/workflow-stage1/intake-three-delivery.log`。 |
+| 模板与浏览器 | 两份用户原TXT本地只读解析均有号牌/姓名，未输出个人信息或将原件复制入仓库。17185/18095预览已更新；浏览器上传合成TXT后未点提取按钮，号牌/昵称姓名/电话自动填入，无姓名待确认提示，手改姓名成功；三项选填标识正常。截图 `case-intake-three-final.png` 保存到本任务visualizations目录。未提交浏览器中的合成草稿。 |
+
+两次失败保留记录：首次空品牌/车型建单被V18数据库约束拒绝，新增V19；随后建单成功但正式报价抬头NOT NULL阻塞，在尚未进入共享预览前完善V19并补充PDF空值断言，最终全量上述定向回归通过。迁移清单/升级版本断言同步更新，未删除或跳过测试。预览仅重启已核对身份的本任务进程，未改变原案件状态。
+
+仍在 `codex/case-workflow-redesign`，本轮未提交/推送，无依赖安装。三项修改及验证完成，本阶段停止。
+
+## 2026-10-15 D-048 号牌、合并输入与提交恢复完成
+
+先按用户要求将此前工作流/建单实现提交为 `d22f617 feat: implement guided case workflow and intake`。本轮仍在 `codex/case-workflow-redesign`，下面修复为该提交之后的本地改动，未再次提交或推送。
+
+- 已更新REQUIREMENTS、DECISIONS、CASE_WORKFLOW_REDESIGN与接口说明。按最新答复采用“标的车牌”及无冒号写法，支持普通/新能源机动车与电动自行车号牌；规范化常见分隔符，地方特殊格式提示按原件核对，明显无效号牌不预填。标的/司机电话仍不作为车主电话，不把结构校验等同登记真实性验证。
+- 建单/草稿编辑改为七项输入，车牌号/车架号共用一格、二选一；保留自动分类和手选类型，底层字段保持兼容。查勘员姓名+电话共用一格，明确电话直接预填，缺姓名提示人工补齐。新提取车牌与手填车架号冲突必须选择，不覆盖原输入。
+- 用户指出的原案件只读查验为PENDING_DISPATCH，2张物损照片有效，未更改其数据。已确认保存成功后详情旧哈希资源失效也会被旧代码统一catch误报草稿；未将此单一路径宣称为所有服务器错误的根因。现分离草稿保存、上传、正式提交和导航错误；响应不确定先GET核对，已正式建单就使用现有结果，重试保留草稿ID和提交键；旧详情资源异常改用已保存地址重新加载。
+
+| 验证 | 实际结果 |
+| --- | --- |
+| 后端 `pwsh -File tmp/workflow-stage1/verify.ps1 -IntegrationTest WorkOrderPostgresIT -LogName intake-correction-verify -BuildDirectory tmp/workflow-stage2/backend-build` | Java21/Maven verify成功，48项单元+11项工单集成通过，0失败/错误/跳过；包含标的号牌、无冒号、电话角色、非法号牌拒绝、缺项和完整建单链路。Flyway校验20份迁移，本轮无新增或修改迁移。日志 `tmp/workflow-stage1/intake-correction-verify.log`。 |
+| 管理端 `npm run lint` / `npm run typecheck` | 通过；日志 `tmp/workflow-stage2/intake-correction-lint-final.log`、`intake-correction-types-final.log`。 |
+| 管理端 `npm test` / `npm run build` | 69项测试全部通过、生产构建成功；提交响应丢失、重复确认后响应丢失、已提交草稿重试、照片上传失败、稳定提交键、过期详情模块恢复及合并输入保护均覆盖。日志 `tmp/workflow-stage2/intake-correction-tests-verified.log`、`intake-correction-build-verified.log`。 |
+| 实际页面 | 独立Mock预览17185/18095、合成文字+1张合成PNG：无冒号标的车牌填入唯一编号框，查勘员自动显示姓名+电话；地方电动自行车示例显示人工核对提示。正式提交成功进入案件详情，平台编号EVR-20261015-000002，节点为派单到店，现场物损照片显示已上传，原文地址保留到派单确认；浏览器错误日志为空。未在浏览器故意破坏资源，过期模块/丢响应由自动化回归覆盖。 |
+| 其他范围 | H5源码、依赖、权限模型、数据库结构未改，本轮不重复无关全项目测试。`git diff --check`通过。 |
+
+验收图保存在本任务visualizations目录：`case-intake-correction-form.png`、`case-intake-correction-submitted.png`。原聊天记录/照片未复制入仓库，未调用真实OCR或地图。中途一次模板引号转义导致类型/构建失败，修正后全部检查通过；一次测试进程在鉴权用例计时器退出前被中断，最终完整测试等待退出并全部通过。浏览器验收曾因自动审批服务额度不足暂停，用户要求继续后已恢复并完成。
+
+需后续检查：真实地方特殊号牌样本的人工核对反馈；真实部署更新期间的旧页面恢复。当前实现、回归、页面验收与文档已完成，本阶段停止。
+
 ## 2026-10-15 D-047 建单调整完成
 
 六项答复已落入REQUIREMENTS、DECISIONS及最新设计。当前在 `codex/case-workflow-redesign`，本轮与此前工作流实现均仍为本地改动，未提交/推送；不改变已上传main的侧栏修复。

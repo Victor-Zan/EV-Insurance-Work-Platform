@@ -1,5 +1,9 @@
 # 工作流重构：节点、识别与版本接口
 
+## D-049 三项修正（2026-10-15，优先于以下旧描述）
+
+接口结构不变。导入成功后前端立即调用既有`POST /work-orders/text/extract`并合并结果。`surveyorName`直接预填，明确标签优先聊天昵称，证据不再标记姓名需确认；前端不再单独要求姓名候选/冲突选择，已有手改姓名不覆盖。正式提交的`INTAKE_INCOMPLETE`不再包含vehicleColor、vehicleBrand、vehicleModel；V19移除数据库正式身份约束与正式报价抬头中的品牌/车型必填，旧迁移不改，PDF缺失字段留空。其他必填和照片门禁不变，稀疏草稿仍可保存，权限不变。
+
 依据D-046 / CASE_WORKFLOW_REDESIGN V3。第一批提供服务端约束和只读流程快照；第二批增加页面及识别链路、V17追加迁移，V1—V16不修改。
 
 ## 流程快照
@@ -61,7 +65,15 @@
 
 追加V18，旧迁移不改。草稿写入/详情新增 surveyorName、surveyorPhone、vehicleColor；dispatchAddressConfirmed由服务端维护，不接受草稿自行赋值。查勘员电话只向管理端角色返回。正式提交缺失任一指定信息（牌照/VIN至少其一）或SCENE_PHOTO时返回409 INTAKE_INCOMPLETE，包含中文缺失清单；不要求保险公司、车主姓名、事故时间、区域/地址。照片沿用鉴权/版本/幂等上传，JPG/PNG、10MiB、每案20张；网点和车主不能上传/读取该类别，不创建OCR任务。
 
-文字提取/复核建草稿允许ADMIN和CUSTOMER_SERVICE，原文范围不变；按受损方标签提取，不采标的/司机字段。独立长编号为报案号候选，昵称为requiresConfirmation候选；证据包含原文行号，多值不自动选择。浏览器文件夹导入只读取TXT文字，图片单独通过材料接口关联同一草稿；部分成功重试沿用每张照片的幂等键，不重传成功项。
+文字提取/复核建草稿允许ADMIN和CUSTOMER_SERVICE，原文范围不变；按受损方标签提取，标的车牌按D-048例外采用，标的/司机电话不采为车主电话。独立长编号为报案号候选，昵称为requiresConfirmation候选；证据包含原文行号，多值不自动选择。浏览器文件夹导入只读取TXT文字，图片单独通过材料接口关联同一草稿；部分成功重试沿用每张照片的幂等键，不重传成功项。
+
+## D-048 号牌与提交恢复（2026-10-15）
+
+不改变API字段或新增迁移。`vehiclePlate`/`vehicleVin`仍分别存储，正式提交至少一项；仅有车牌且结构明显无效时409 `INTAKE_INCOMPLETE`，草稿仍可保存。`/work-orders/text/extract`返回`CASE_TEXT_PARTY_LABELS_V2`：新增标的车牌（可无冒号），规范化全角/空格/分隔符，特殊地方号牌保留候选并警示人工核对；明确的查勘员手机号直接预填，昵称仍须确认。
+
+前端单个车辆编号输入映射上述二选一字段，单个查勘员输入映射姓名/电话。正式提交失败后读取`GET /work-orders/{id}`；已是正式状态则使用已保存结果，不再提交。真正仍为草稿时显示原错误，重试复用草稿ID和提交幂等键；照片失败独立提示。保存后的前端路由异常单独处理，必要时使用详情地址重新加载。
+
+格式参考：[北京市新旧电动自行车号牌并行说明](https://www.beijing.gov.cn/zhengce/zcjd/202606/t20260606_4688955.html)、[上海交警新能源号牌说明](https://www.shanghai.gov.cn/nw5827/20200905/0001-5827_1179681.html)。仅做结构兼容，不代替登记核验，不能用单一全国电动自行车正则阻止所有地方格式。
 
 PUT /api/v1/work-orders/{id}/dispatch-location 请求 expectedVersion、regionId、address、confirmed=true；仅ADMIN/CUSTOMER_SERVICE，派单/到店异常处理阶段；已到店仅ADMIN可在异常改派时核对，其他阶段拒绝；版本冲突409，成功审计不记录完整地址。派单未经核对地址返回409 DISPATCH_ADDRESS_REQUIRED。GET eligible-shops在确认后使用现有本地Mock编码与直线距离，分批读取服务区域候选，先全局按距离/网点ID稳定排序再分页，缺地址网点距离为null排末。响应新增distanceMetres；不调用真实地图、不自动选店。Mock全局排名仅用于本轮本地模拟；未来真实服务需缓存/批量编码，不应逐网点外呼。
 

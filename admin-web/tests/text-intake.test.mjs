@@ -6,6 +6,7 @@ import ts from 'typescript'
 import * as Vue from 'vue'
 import * as Forms from '../src/features/materials/ocr-form.ts'
 import {readChatFiles} from '../src/features/workorders/intake.ts'
+import {mergeIntakeDraft} from '../src/features/workorders/intake-values.ts'
 
 function intake(){
  const {descriptor}=parse(readFileSync(new URL('../src/features/workorders/TextFormIntake.vue',import.meta.url),'utf8'))
@@ -17,11 +18,13 @@ function intake(){
  const client={async post(url,body){
   requests.push({url,body:structuredClone(body)})
   if(url.endsWith('/draft'))return {data:{data:{id:'synthetic-draft',status:'DRAFT'}}}
+  if(body.text.includes('标的车牌'))return {data:{data:{fields:{vehiclePlate:'粤BD27391',surveyorName:'合成'},evidence:{surveyorName:[{value:'合成',requiresConfirmation:true},{value:'另名'}]}}}}
   const result=body.text.includes('\n')?{fields:{claimNo:'TEXT-SYNTHETIC'},evidence:{ownerName:[{value:'候选甲'},{value:'候选乙'}]}}:{fields:{ownerName:body.text.split('：')[1]}}
   return {data:{data:result}}
  }}
  code=code.replace(/import\s*\{\s*readChatFiles\s*\}\s*from\s*['"][^'"]+['"];?/g,'const readChatFiles=__readChatFiles;')
- const component=new Function('__vue','__client','__forms','__readChatFiles',code)(Vue,client,Forms,readChatFiles)
+ code=code.replace(/import\s*\{\s*mergeIntakeDraft\s*\}\s*from\s*['"][^'"]+['"];?/g,'const mergeIntakeDraft=__mergeIntakeDraft;')
+ const component=new Function('__vue','__client','__forms','__readChatFiles','__mergeIntakeDraft',code)(Vue,client,Forms,readChatFiles,mergeIntakeDraft)
  const context=component.setup({form,locked:false},{expose(){},emit(name,value){if(name==='merge')Object.assign(form,value);if(name==='blocked')blocked=value}})
  return {context,form,requests,blocked:()=>blocked}
 }
@@ -39,4 +42,14 @@ test('TXT reading blocks creation immediately and releases the busy state after 
  const reading=context.importText({target:{files:[file],hasAttribute:()=>false}});assert.equal(blocked(),true);assert.equal(context.busy.value,true)
  await assert.rejects(context.createReviewedDraft(form),/读取或提取中/)
  release(new TextEncoder().encode('车主姓名：候选甲').buffer);await reading;assert.equal(context.text.value,'车主姓名：候选甲');assert.equal(context.busy.value,false);assert.equal(blocked(),true)
+})
+
+test('TXT and folder imports immediately extract the insured plate and surveyor name without a separate name confirmation',async()=>{
+ for(const folder of [false,true]){
+  const {context,form,requests}=intake()
+  const file=new File(['标的车牌：粤BD27391\n·车险查勘合成'],'synthetic.txt')
+  await context.importText({target:{files:[file],hasAttribute:()=>folder}})
+  assert.equal(form.vehiclePlate,'粤BD27391');assert.equal(form.surveyorName,'合成');assert.deepEqual(context.ambiguities.value,[])
+  assert.equal(requests.filter(row=>row.url.endsWith('/extract')).length,1)
+ }
 })
