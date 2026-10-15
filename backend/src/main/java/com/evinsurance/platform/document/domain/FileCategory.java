@@ -1,8 +1,8 @@
 package com.evinsurance.platform.document.domain;
 
 public enum FileCategory {
-    NOTICE, SHOP_QUOTE, ASSESSMENT, LOSS_ASSESSMENT, ARRIVAL_PHOTO, PROGRESS_PHOTO, COMPLETION_PHOTO;
+    NOTICE, SCENE_PHOTO, SHOP_QUOTE, ASSESSMENT, LOSS_ASSESSMENT, ARRIVAL_PHOTO, PROGRESS_PHOTO, COMPLETION_PHOTO;
     public boolean photo() { return name().endsWith("_PHOTO"); }
-    public boolean shopVisible() { return photo() || this == SHOP_QUOTE || this == ASSESSMENT; }
+    public boolean shopVisible() { return (photo() && this != SCENE_PHOTO) || this == SHOP_QUOTE || this == ASSESSMENT; }
     public boolean ocrSupported() { return !photo(); }
 }

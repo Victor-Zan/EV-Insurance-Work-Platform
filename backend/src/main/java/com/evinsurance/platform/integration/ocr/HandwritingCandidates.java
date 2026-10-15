@@ -16,7 +16,7 @@ public final class HandwritingCandidates {
         Map.entry("车架号","vehicleVin"),Map.entry("VIN","vehicleVin"),Map.entry("车牌号","vehiclePlate"),Map.entry("车辆其他标识","vehicleOtherIdentifier"),
         Map.entry("事故时间","accidentAt"),Map.entry("事故区域","accidentRegionText"),Map.entry("事故地址","accidentAddress"),Map.entry("事故描述","accidentDescription"),
         Map.entry("维修单号","documentNo"),Map.entry("清单编号","documentNo"),Map.entry("单据编号","documentNo"),Map.entry("单据日期","documentDate"),Map.entry("维修日期","documentDate"),
-        Map.entry("总金额","amountCandidate"),Map.entry("合计","amountCandidate"));
+        Map.entry("总金额","amountCandidate"),Map.entry("合计","amountCandidate"),Map.entry("核损总额","amountCandidate"),Map.entry("最终核损金额","amountCandidate"),Map.entry("核损金额","amountCandidate"));
     private static final Pattern LABEL=Pattern.compile("("+LABELS.keySet().stream().sorted(Comparator.comparingInt(String::length).reversed()).map(Pattern::quote).collect(java.util.stream.Collectors.joining("|"))+")[：:]\\s*");
     private static final Pattern ITEM=Pattern.compile("配件名称[：:]\\s*(.+?)\\s+数量[：:]\\s*(\\S*)\\s+单价[：:]\\s*(\\S+)\\s+金额[：:]\\s*(\\S+)\\s*$");
     private static final DateTimeFormatter DATE=DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm[:ss]").withResolverStyle(ResolverStyle.STRICT);

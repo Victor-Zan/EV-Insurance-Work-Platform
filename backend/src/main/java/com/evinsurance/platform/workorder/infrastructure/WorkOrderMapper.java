@@ -9,6 +9,7 @@ import org.apache.ibatis.annotations.Param;
 
 @Mapper
 public interface WorkOrderMapper {
+    java.util.List<WorkOrderRows.Phase> phases(@org.apache.ibatis.annotations.Param("ids") java.util.List<java.util.UUID> ids);
     void insertDraft(WorkOrderEntity row);
     int updateDraft(@Param("row") WorkOrderEntity row,@Param("actorId") long actorId,@Param("now") Instant now);
     int deleteDraft(@Param("id") UUID id,@Param("version") long version);
@@ -49,6 +50,9 @@ public interface WorkOrderMapper {
     long eligibleShopCount(@Param("regionId") long regionId);
     List<WorkOrderRows.ShopOption> eligibleShops(@Param("regionId") long regionId,@Param("offset") int offset,@Param("size") int size);
 
+    @org.apache.ibatis.annotations.Update("UPDATE work_order SET accident_region_id=#{regionId},accident_address=#{address},dispatch_address_confirmed=TRUE,version=version+1,updated_by=#{actor},updated_at=now() WHERE id=#{id} AND version=#{version} AND status IN ('PENDING_DISPATCH','PENDING_ACCEPTANCE','PENDING_ARRIVAL','ARRIVAL_EXCEPTION','ARRIVED')")
+    int dispatchLocation(@Param("id") UUID id,@Param("version") long version,@Param("regionId") long regionId,@Param("address") String address,@Param("actor") long actor);
+
     int nextAssignmentVersion(@Param("workOrderId") UUID workOrderId);
     void insertAssignment(@Param("workOrderId") UUID workOrderId,@Param("version") int version,@Param("shopId") long shopId,
         @Param("transferDescription") String transferDescription,@Param("actorId") long actorId,@Param("now") Instant now);
@@ -63,6 +67,8 @@ public interface WorkOrderMapper {
         @Param("actorRoles") String actorRoles,@Param("assignmentVersion") Integer assignmentVersion,
         @Param("traceId") String traceId,@Param("now") Instant now);
     long historyCount(@Param("workOrderId") UUID workOrderId);
+    List<WorkOrderRows.Milestone> milestones(@Param("workOrderId") UUID workOrderId);
+    WorkOrderRows.History latestHistory(@Param("workOrderId") UUID workOrderId);
     List<WorkOrderRows.History> history(@Param("workOrderId") UUID workOrderId,@Param("offset") int offset,@Param("size") int size);
 
     int reserveCommand(@Param("actorId") long actorId,@Param("operation") String operation,@Param("key") String key,

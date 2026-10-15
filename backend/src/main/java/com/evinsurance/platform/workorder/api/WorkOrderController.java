@@ -72,7 +72,7 @@ public class WorkOrderController {
 
     @PostMapping("/{id}/submit")
     @PreAuthorize("hasAnyRole('ADMIN','CUSTOMER_SERVICE')")
-    @Operation(summary="Validate and submit a formal work order; attachments are not a submission prerequisite")
+    @Operation(summary="Validate and submit a formal work order; all intake fields and a scene photo are required")
     public ApiResponse<WorkOrderViews.WorkOrder> submit(@PathVariable UUID id,@Valid @RequestBody WorkOrderRequests.Submit request,
         @RequestHeader("Idempotency-Key") String idempotencyKey) {
         return ApiResponse.success(service.submit(id,request,idempotencyKey));
@@ -101,6 +101,11 @@ public class WorkOrderController {
         @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size) {
         return ApiResponse.success(service.eligibleShops(id,page,size));
     }
+
+    @PutMapping("/{id}/dispatch-location")
+    @PreAuthorize("hasAnyRole('ADMIN','CUSTOMER_SERVICE')")
+    @Operation(summary="核对派单服务区域与实际接车地址；版本校验与审计")
+    public ApiResponse<WorkOrderViews.WorkOrder> dispatchLocation(@PathVariable UUID id,@Valid @RequestBody WorkOrderRequests.DispatchLocation request){return ApiResponse.success(service.confirmDispatchLocation(id,request));}
 
     @PostMapping("/{id}/dispatch")
     @PreAuthorize("hasAnyRole('ADMIN','CUSTOMER_SERVICE')")

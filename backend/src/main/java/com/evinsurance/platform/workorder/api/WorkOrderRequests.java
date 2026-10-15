@@ -18,6 +18,9 @@ public final class WorkOrderRequests {
         @Size(max=100) String ownerName,
         @Size(max=32) String ownerPhone,
         @Size(max=100) String policyNo,
+        @Size(max=100) String surveyorName,
+        @Size(max=32) String surveyorPhone,
+        @Size(max=100) String vehicleColor,
         @Size(max=100) String vehicleBrand,
         @Size(max=100) String vehicleModel,
         @Size(max=100) String vehicleVin,
@@ -27,6 +30,8 @@ public final class WorkOrderRequests {
         Long accidentRegionId,
         @Size(max=255) String accidentAddress,
         @Size(max=2000) String accidentDescription) {}
+
+    public record DispatchLocation(@NotNull Long expectedVersion,@NotNull Long regionId,@NotBlank @Size(max=255) String address,boolean confirmed) {}
 
     public record Submit(boolean confirmPossibleDuplicate, @Size(max=500) String duplicateReason) {}
 
@@ -68,7 +73,7 @@ public final class WorkOrderRequests {
         boolean notifyShop) {}
 
     public record CriticalFields(
-        @NotBlank @Size(max=120) String insuranceCompany,
+        @Size(max=120) String insuranceCompany,
         @NotBlank @Size(max=100) String claimNo,
         @Size(max=100) String vehicleVin,
         @Size(max=100) String vehiclePlate,

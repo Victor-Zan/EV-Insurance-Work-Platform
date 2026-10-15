@@ -136,6 +136,7 @@ class MaterialsPostgresIT {
         request.put("ownerName","王小明");
         request.put("ownerPhone",phone);
         request.put("policyNo","POL-"+claimNo);
+        request.put("surveyorName","合成查勘");request.put("surveyorPhone","13926018473");request.put("vehicleColor","蓝色");
         request.put("vehicleBrand","测试品牌");
         request.put("vehicleModel","测试车型");
         request.put("vehicleVin",vin);
@@ -149,7 +150,15 @@ class MaterialsPostgresIT {
         String body=mvc.perform(post("/api/v1/work-orders/drafts").header("Authorization","Bearer "+token)
             .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(request)))
             .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-        return json.readTree(body).path("data");
+        var draft=json.readTree(body).path("data");
+        if(request.containsKey("surveyorName"))scenePhoto(token,draft.path("id").asText());
+        return draft;
+    }
+
+    private String scenePhoto(String token,String id) throws Exception {
+        byte[] image=java.util.Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jFWkAAAAASUVORK5CYII=");
+        var body=mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/v1/materials/cases/{id}",id).file(new org.springframework.mock.web.MockMultipartFile("file","synthetic-scene.png","image/png",image)).param("category","SCENE_PHOTO").header("Authorization","Bearer "+token).header("Idempotency-Key",UUID.randomUUID().toString())).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        return json.readTree(body).path("data").path("id").asText();
     }
 
     private JsonNode submit(String token,String id,boolean confirm,String reason,String key,int expectedStatus) throws Exception {
@@ -164,6 +173,8 @@ class MaterialsPostgresIT {
     }
 
     private JsonNode dispatch(String token,String id,long targetShop,boolean confirm,String reason,String key,int expectedStatus) throws Exception {
+        if(expectedStatus!=403){var row=json.readTree(mvc.perform(get("/api/v1/work-orders/{id}",id).header("Authorization","Bearer "+admin)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data");if(row.path("status").asText().equals("PENDING_DISPATCH")&&!row.path("dispatchAddressConfirmed").asBoolean())mvc.perform(put("/api/v1/work-orders/{id}/dispatch-location",id).header("Authorization","Bearer "+admin).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("expectedVersion",row.path("version").asLong(),"regionId",regionId,"address","合成接车地址","confirmed",true)))).andExpect(status().isOk());}
+
         Map<String,Object> request=new HashMap<>();
         request.put("shopId",targetShop);
         request.put("confirmPossibleDuplicate",confirm);
@@ -207,6 +218,7 @@ class MaterialsPostgresIT {
         mvc.perform(get("/api/v1/materials/{id}/download",file).header("Authorization","Bearer "+admin)).andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Cache-Control","no-store"));
         upload(admin,id,"NOTICE",UUID.randomUUID().toString(),null,null,403);
         var assigned=dispatch(customerService,id,shopId,true,"合成文件测试",UUID.randomUUID().toString(),200).path("data");int version=assignmentVersion(assigned);
+        command(shop,"work-orders/"+id+"/accept",Map.of("assignmentVersion",version),200);
         var photo=upload(shop,id,"ARRIVAL_PHOTO",UUID.randomUUID().toString(),null,version,200);
         mvc.perform(get("/api/v1/materials/{id}/download",photo.path("id").asText()).header("Authorization","Bearer "+owner)).andExpect(status().isOk());
         upload(shop,id,"NOTICE",UUID.randomUUID().toString(),null,version,403);upload(shop,id,"ARRIVAL_PHOTO",UUID.randomUUID().toString(),null,version+1,403);
@@ -216,7 +228,7 @@ class MaterialsPostgresIT {
         mvc.perform(get("/api/v1/materials/{id}/download",photo.path("id").asText()).header("Authorization","Bearer "+owner)).andExpect(status().isForbidden());
         mvc.perform(get("/api/v1/materials/{id}/download",photo.path("id").asText()).header("Authorization","Bearer "+customerService)).andExpect(status().isOk());
         command(customerService,"materials/"+replacement.path("id").asText()+"/void",Map.of(),200);
-        assertThat(db.queryForObject("select count(*) from case_file where work_order_id=?::uuid",Long.class,id)).isEqualTo(3);
+        assertThat(db.queryForObject("select count(*) from case_file where work_order_id=?::uuid",Long.class,id)).isEqualTo(4);
         org.junit.jupiter.api.Assertions.assertThrows(org.springframework.dao.DataAccessException.class,()->db.update("delete from case_file where id=?::uuid",file));
         for(String state:List.of("COMPLETED","CANCELLED")){db.update("update work_order set status=? where id=?::uuid",state,id);upload(customerService,id,"NOTICE",UUID.randomUUID().toString(),null,null,409);command(customerService,"materials/cases/"+id+"/missing-notice",Map.of("reason","合成缺失"),409);mvc.perform(put("/api/v1/work-orders/{id}/critical-fields",id).header("Authorization","Bearer "+customerService).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("insuranceCompany","测试","claimNo","changed","vehicleVin","VIN","reason","只读测试")))).andExpect(status().isConflict());}
         assertThat(db.queryForObject("select count(*) from audit_log where action='FILE_UPLOAD' and object_id=?",Long.class,file)).isEqualTo(1);
@@ -228,10 +240,19 @@ class MaterialsPostgresIT {
         upload(customerService,id,"SHOP_QUOTE","first-"+id,null,null,409);
         for(int i=1;i<20;i++)upload(customerService,id,"NOTICE",UUID.randomUUID().toString(),null,null,200);
         upload(customerService,id,"NOTICE",UUID.randomUUID().toString(),null,null,409);upload(customerService,id,"NOTICE",UUID.randomUUID().toString(),first,null,200);
-        assertThat(db.queryForObject("select count(*) from case_file where work_order_id=?::uuid and state='ACTIVE'",Long.class,id)).isEqualTo(20);
+        assertThat(db.queryForObject("select count(*) from case_file where work_order_id=?::uuid and category='NOTICE' and state='ACTIVE'",Long.class,id)).isEqualTo(20);
+        assertThat(db.queryForObject("select count(*) from case_file where work_order_id=?::uuid and category='SCENE_PHOTO' and state='ACTIVE'",Long.class,id)).isEqualTo(1);
         var invalid=org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/v1/materials/cases/{id}",id).file(new org.springframework.mock.web.MockMultipartFile("file","fake.png","image/png","not an image".getBytes())).header("Authorization","Bearer "+customerService).header("Idempotency-Key","invalid-"+id).param("category","NOTICE");mvc.perform(invalid).andExpect(status().isBadRequest());
         var large=org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/v1/materials/cases/{id}",id).file(new org.springframework.mock.web.MockMultipartFile("file","large.pdf","application/pdf",new byte[10485761])).header("Authorization","Bearer "+customerService).header("Idempotency-Key","large-"+id).param("category","NOTICE");mvc.perform(large).andExpect(status().isBadRequest());
         String concurrent=caseId(),key=UUID.randomUUID().toString();try(var pool=Executors.newFixedThreadPool(2)){var futures=pool.invokeAll(List.<Callable<String>>of(()->upload(customerService,concurrent,"NOTICE",key,null,null,200).path("id").asText(),()->upload(customerService,concurrent,"NOTICE",key,null,null,200).path("id").asText()));assertThat(futures.get(0).get()).isEqualTo(futures.get(1).get());}
+    }
+    private void prepareAssessmentStage(String id) throws Exception {
+        var assigned=dispatch(customerService,id,shopId,true,"合成识别材料流程",UUID.randomUUID().toString(),200).path("data");
+        int version=assignmentVersion(assigned);
+        command(shop,"work-orders/"+id+"/accept",Map.of("assignmentVersion",version),200);
+        command(shop,"work-orders/"+id+"/arrive",Map.of("assignmentVersion",version),200);
+        var raw=command(shop,"quotations/cases/"+id+"/raw-quotes",Map.of("expectedVersion",0,"assignmentVersion",version,"lines",List.of(Map.of("description","合成配件","quantity",1,"unitPrice","1.00"))),200);
+        command(customerService,"quotations/cases/"+id+"/formal-quotes",Map.of("expectedVersion",raw.path("version").asInt(),"rawQuoteId",raw.path("rawQuote").path("id").asText(),"mode","FIXED_AMOUNT","fixedAmount","0.00"),200);
     }
     @Test void ocrFailureRetryHumanSnapshotsAndLeases() throws Exception {
         String id=caseId();String file=upload(customerService,id,"NOTICE",UUID.randomUUID().toString(),null,null,200).path("id").asText();
@@ -244,6 +265,7 @@ class MaterialsPostgresIT {
         command(customerService,"ocr/"+jobId+"/confirm",Map.of("expectedVersion",0),409);command(customerService,"ocr/"+jobId+"/confirm",Map.of("expectedVersion",1),200);
         assertThat(db.queryForObject("select count(*) from ocr_review where job_id=?::uuid",Long.class,jobId)).isEqualTo(2);assertThat(db.queryForObject("select claim_no from work_order where id=?::uuid",String.class,id)).doesNotContain("人工修正");
         org.junit.jupiter.api.Assertions.assertThrows(org.springframework.dao.DataAccessException.class,()->db.update("update ocr_review set candidate_json='{}' where job_id=?::uuid",jobId));
+        prepareAssessmentStage(id);
         String second=upload(customerService,id,"ASSESSMENT",UUID.randomUUID().toString(),null,null,200).path("id").asText();command(customerService,"ocr",Map.of("fileId",second),200);var expired=tasks.claim(3,60);db.update("update ocr_job set lease_until=now()-interval '1 second' where id=?",expired.id());var reclaimed=tasks.claim(3,60);tasks.finish(expired,"{}",null);assertThat(db.queryForObject("select state from ocr_job where id=?",String.class,reclaimed.id())).isEqualTo("RUNNING");tasks.finish(reclaimed,"{}",null);
         String frozenFile=upload(customerService,id,"LOSS_ASSESSMENT",UUID.randomUUID().toString(),null,null,200).path("id").asText();var frozenJob=command(customerService,"ocr",Map.of("fileId",frozenFile),200);var inFlight=tasks.claim(3,60);db.update("update work_order set status='COMPLETED' where id=?::uuid",id);tasks.finish(inFlight,"{}",null);assertThat(db.queryForObject("select state from ocr_job where id=?::uuid",String.class,frozenJob.path("id").asText())).isEqualTo("RUNNING");assertThat(tasks.claim(3,60)).isNull();command(customerService,"ocr/"+jobId+"/review",Map.of("expectedVersion",1,"candidate",Map.of()),409);
     }
@@ -255,9 +277,10 @@ class MaterialsPostgresIT {
     }
     @Test void bindingAssignmentChangesMissingReasonsAndDeletedDraftAreEnforced() throws Exception {
         String id=caseId();var assigned=dispatch(customerService,id,shopId,true,"权限追溯测试",UUID.randomUUID().toString(),200).path("data");int version=assignmentVersion(assigned);
-        var photo=upload(shop,id,"PROGRESS_PHOTO",UUID.randomUUID().toString(),null,version,200);String file=photo.path("id").asText();
+        command(shop,"work-orders/"+id+"/accept",Map.of("assignmentVersion",version),200);
+        var photo=upload(shop,id,"ARRIVAL_PHOTO",UUID.randomUUID().toString(),null,version,200);String file=photo.path("id").asText();
         var unrelated=createUser("OWNER",null);String unrelatedToken=login(unrelated.path("username").asText(),"H5");mvc.perform(get("/api/v1/materials/{id}/download",file).header("Authorization","Bearer "+unrelatedToken)).andExpect(status().isForbidden());
-        mvc.perform(get("/api/v1/materials/cases/{id}",id).header("Authorization","Bearer "+owner)).andExpect(status().isOk()).andExpect(jsonPath("$.data.records[0].name").value(org.hamcrest.Matchers.startsWith("progress_photo-"))).andExpect(jsonPath("$.data.records[0].objectKey").doesNotExist()).andExpect(jsonPath("$.data.records[0].sha256").doesNotExist());
+        mvc.perform(get("/api/v1/materials/cases/{id}",id).header("Authorization","Bearer "+owner)).andExpect(status().isOk()).andExpect(jsonPath("$.data.records[0].name").value(org.hamcrest.Matchers.startsWith("arrival_photo-"))).andExpect(jsonPath("$.data.records[0].objectKey").doesNotExist()).andExpect(jsonPath("$.data.records[0].sha256").doesNotExist());
         command(customerService,"materials/cases/"+id+"/missing-notice",Map.of("reason","合成缺失原因"),200);upload(customerService,id,"NOTICE",UUID.randomUUID().toString(),null,null,200);
         mvc.perform(get("/api/v1/materials/cases/{id}/notice-status",id).header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andExpect(jsonPath("$.data.noticePresent").value(true)).andExpect(jsonPath("$.data.missingReason").value("合成缺失原因"));
         long other=createEligibleShop();command(customerService,"work-orders/"+id+"/reassign",Map.of("shopId",other,"assignmentVersion",version,"reason","改派验证","vehicleNotArrivedConfirmed",true,"confirmPossibleDuplicate",true,"duplicateReason","合成验证"),200);

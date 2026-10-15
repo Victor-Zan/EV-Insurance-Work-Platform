@@ -15,7 +15,7 @@ public class FileController {
     public FileController(FileService service){this.service=service;}
     @GetMapping("/cases/{id}") @Operation(summary="按角色和当前派单过滤附件；包含分页和稳定排序")
     public ApiResponse<PageResponse<FileService.View>> list(@PathVariable UUID id,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size){return ApiResponse.success(service.list(id,page,size));}
-    @PostMapping(value="/cases/{id}",consumes=MediaType.MULTIPART_FORM_DATA_VALUE) @Operation(summary="真实私有附件上传/客服替换；版本不覆盖；Idempotency-Key必填")
+    @PostMapping(value="/cases/{id}",consumes=MediaType.MULTIPART_FORM_DATA_VALUE) @Operation(summary="按当前业务阶段上传/客服替换私有材料；未来阶段拒绝，版本不覆盖，Idempotency-Key必填")
     public ApiResponse<FileService.View> upload(@PathVariable UUID id,@RequestParam FileCategory category,@RequestParam(required=false) UUID replace,
         @RequestParam(required=false) Integer assignmentVersion,@RequestHeader("Idempotency-Key") String key,@RequestPart MultipartFile file){return ApiResponse.success(service.upload(id,category,replace,assignmentVersion,key,file));}
     @GetMapping("/{id}/download") @Operation(summary="鉴权后流式下载；对象键和SHA256不返回客户端")

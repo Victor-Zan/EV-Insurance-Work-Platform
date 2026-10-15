@@ -22,21 +22,30 @@ import org.springframework.web.multipart.MultipartFile;
 public class OcrSources {
     public record Source(String objectKey,String contentType,long size,String sha256,String category){}
     public record Raw(String text,String logId,int attempt){}
-    private final JdbcTemplate db;private final FileMapper files;private final FileService fileService;private final FileAccess access;private final ObjectStorageService storage;private final AuditService audit;
-    public OcrSources(JdbcTemplate db,FileMapper files,FileService fileService,FileAccess access,ObjectStorageService storage,AuditService audit){this.db=db;this.files=files;this.fileService=fileService;this.access=access;this.storage=storage;this.audit=audit;}
+    private final JdbcTemplate db;private final FileMapper files;private final FileService fileService;private final FileAccess access;private final ObjectStorageService storage;private final AuditService audit;private final com.evinsurance.platform.quotation.application.QuotationLifecycle lifecycle;
+    public OcrSources(JdbcTemplate db,FileMapper files,FileService fileService,FileAccess access,ObjectStorageService storage,AuditService audit,com.evinsurance.platform.quotation.application.QuotationLifecycle lifecycle){this.db=db;this.files=files;this.fileService=fileService;this.access=access;this.storage=storage;this.audit=audit;this.lifecycle=lifecycle;}
     public Source source(OcrRow job,boolean authorize){
-        if(authorize){var actor=CurrentUser.require();if(!access.staff(actor))throw ApiException.denied();if(job.intakeId()!=null&&!actor.roles().contains(Role.ADMIN)&&job.createdBy()!=actor.id())throw ApiException.denied();}
+        if(authorize){var actor=CurrentUser.require();if(!access.staff(actor)){
+            if(!actor.roles().contains(Role.REPAIR_SHOP)||job.fileId()==null)throw ApiException.denied();
+            var file=fileService.accessible(job.fileId());if(!"SHOP_QUOTE".equals(file.category()))throw ApiException.denied();
+        }if(job.intakeId()!=null&&!actor.roles().contains(Role.ADMIN)&&job.createdBy()!=actor.id())throw ApiException.denied();}
         if(job.fileId()!=null){var f=authorize?fileService.accessible(job.fileId()):files.find(job.fileId());if(f==null)throw ApiException.missing("OCR source");return new Source(f.objectKey(),f.contentType(),f.byteSize(),f.sha256(),f.category());}
         return db.query("SELECT * FROM ocr_intake_file WHERE id=?",(r,n)->new Source(r.getString("object_key"),r.getString("content_type"),r.getLong("byte_size"),r.getString("sha256"),"SHOP_QUOTE"),job.intakeId()).stream().findFirst().orElseThrow(()->ApiException.missing("OCR source"));
     }
     public void mutable(OcrRow job){
-        access.customerService(CurrentUser.require());source(job,true);
-        if(job.fileId()!=null){var f=fileService.accessible(job.fileId());access.mutable(access.order(f.workOrderId(),true));if(!f.state().equals("ACTIVE"))throw ApiException.conflict("STALE_SOURCE","OCR source is no longer active");}
+        var actor=CurrentUser.require();source(job,true);
+        if(!actor.roles().contains(Role.CUSTOMER_SERVICE)){
+            if(!actor.roles().contains(Role.REPAIR_SHOP)||job.fileId()==null)throw ApiException.denied();
+            var file=fileService.accessible(job.fileId());var order=access.order(file.workOrderId(),true);
+            if(!"SHOP_QUOTE".equals(file.category())||!com.evinsurance.platform.document.domain.FileStagePolicy.allowed(order.getStatus(),com.evinsurance.platform.document.domain.FileCategory.SHOP_QUOTE,false))throw ApiException.denied();
+            if(!Boolean.TRUE.equals(db.queryForObject("SELECT EXISTS(SELECT 1 FROM work_order_assignment WHERE work_order_id=? AND shop_id=? AND assignment_version=? AND status='ACCEPTED')",Boolean.class,file.workOrderId(),actor.shopId(),file.assignmentVersion())))throw ApiException.denied();
+        }
+        if(job.fileId()!=null){var f=fileService.accessible(job.fileId());var order=access.order(f.workOrderId(),true);access.mutable(order);if(!f.state().equals("ACTIVE"))throw ApiException.conflict("STALE_SOURCE","OCR source is no longer active");com.evinsurance.platform.document.domain.FileStagePolicy.require(order.getStatus(),com.evinsurance.platform.document.domain.FileCategory.valueOf(f.category()),lifecycle.hasCurrentFormal(order));}
         else{var links=db.queryForList("SELECT work_order_id FROM ocr_draft_link WHERE job_id=?",job.id());if(!links.isEmpty())access.mutable(access.order((UUID)links.getFirst().get("work_order_id"),true));}
     }
     public boolean eligible(OcrRow job,boolean lock){
         if(lock){db.queryForList("SELECT id FROM app_user WHERE id=? FOR SHARE",job.createdBy());if(job.fileId()!=null)db.queryForList("SELECT w.id FROM work_order w JOIN case_file f ON f.work_order_id=w.id WHERE f.id=? FOR UPDATE OF w",job.fileId());}
-        var enabled=db.queryForObject("SELECT count(*) FROM app_user u JOIN user_role ur ON ur.user_id=u.id JOIN app_role r ON r.id=ur.role_id WHERE u.id=? AND u.enabled AND r.code='CUSTOMER_SERVICE'",Long.class,job.createdBy());
+        var enabled=db.queryForObject("SELECT count(*) FROM app_user u JOIN user_role ur ON ur.user_id=u.id JOIN app_role r ON r.id=ur.role_id WHERE u.id=? AND u.enabled AND (r.code='CUSTOMER_SERVICE' OR (r.code='REPAIR_SHOP' AND EXISTS(SELECT 1 FROM case_file f JOIN work_order w ON w.id=f.work_order_id JOIN work_order_assignment a ON a.work_order_id=w.id JOIN shop_account sa ON sa.user_id=u.id WHERE f.id=? AND f.category='SHOP_QUOTE' AND f.shop_id=sa.shop_id AND w.shop_id=sa.shop_id AND a.shop_id=sa.shop_id AND a.assignment_version=f.assignment_version AND a.status='ACCEPTED' AND w.status IN ('ARRIVED','WAITING_QUOTE','QUOTE_REVIEWING','WAITING_INSURER_ASSESSMENT','WAITING_REPAIR_AUTHORIZATION'))))",Long.class,job.createdBy(),job.fileId());
         if(enabled==null||enabled==0)return false;
         if(job.intakeId()!=null)return Boolean.TRUE.equals(db.queryForObject("SELECT EXISTS(SELECT 1 FROM ocr_intake_file WHERE id=? AND actor_id=?)",Boolean.class,job.intakeId(),job.createdBy()));
         return Boolean.TRUE.equals(db.queryForObject("SELECT EXISTS(SELECT 1 FROM case_file f JOIN work_order w ON w.id=f.work_order_id WHERE f.id=? AND f.state='ACTIVE' AND f.category IN ('NOTICE','SHOP_QUOTE','ASSESSMENT','LOSS_ASSESSMENT') AND w.status NOT IN ('COMPLETED','CANCELLED') AND (w.status<>'DRAFT' OR w.created_by=?))",Boolean.class,job.fileId(),job.createdBy()));

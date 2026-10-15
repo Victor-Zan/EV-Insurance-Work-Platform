@@ -51,7 +51,7 @@ public class SecurityConfiguration {
                 .requestMatchers("/api/v1/complaints/**").hasAnyRole("ADMIN","CUSTOMER_SERVICE","REPAIR_SHOP","OWNER")
                 .requestMatchers("/api/v1/repairs/**").hasAnyRole("ADMIN","CUSTOMER_SERVICE","REPAIR_SHOP","OWNER")
                 .requestMatchers("/api/v1/quotations/**").hasAnyRole("ADMIN","CUSTOMER_SERVICE","REPAIR_SHOP")
-                .requestMatchers("/api/v1/ocr/**").hasAnyRole("ADMIN","CUSTOMER_SERVICE")
+                .requestMatchers("/api/v1/ocr/**").hasAnyRole("ADMIN","CUSTOMER_SERVICE","REPAIR_SHOP")
                 .requestMatchers("/api/v1/maps/**").hasRole("CUSTOMER_SERVICE")
                 .requestMatchers("/api/v1/work-orders/**").hasAnyRole("ADMIN","CUSTOMER_SERVICE","REPAIR_SHOP","OWNER")
                 .requestMatchers("/api/v1/admin/session").hasAnyRole("ADMIN","CUSTOMER_SERVICE")

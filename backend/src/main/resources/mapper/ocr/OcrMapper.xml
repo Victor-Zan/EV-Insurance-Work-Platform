@@ -12,7 +12,7 @@
   UPDATE ocr_job j SET state='RUNNING',attempts=j.attempts+1,lease_token=#{token},lease_until=now()+make_interval(secs=&gt;#{seconds}),updated_at=now() FROM next WHERE j.id=next.id RETURNING j.*
  </select>
  <update id="finish">UPDATE ocr_job SET state=CASE WHEN #{error,jdbcType=VARCHAR} IS NULL THEN 'SUCCEEDED' ELSE 'FAILED' END,candidate_json=#{candidate,jdbcType=VARCHAR},error_code=#{error,jdbcType=VARCHAR},lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=#{id} AND lease_token=#{token} AND state='RUNNING' AND lease_until&gt;now()</update>
- <update id="review">UPDATE ocr_job SET review_version=#{version}+1,candidate_json=#{candidate},updated_at=now() WHERE id=#{id} AND review_version=#{version} AND state='SUCCEEDED'</update>
+ <update id="review">UPDATE ocr_job SET review_version=#{version}+1,candidate_json=#{candidate},updated_at=now() WHERE id=#{id} AND review_version=#{version} AND state IN ('SUCCEEDED','FAILED')</update>
  <insert id="appendReview">INSERT INTO ocr_review(job_id,revision,candidate_json,actor_id,command_key) VALUES(#{id},#{version},#{candidate},#{actor},#{key})</insert>
  <select id="reviewCommand" resultType="map">SELECT candidate_json,revision FROM ocr_review WHERE job_id=#{id} AND command_key=#{key}</select>
  <insert id="confirm">INSERT INTO ocr_confirmation VALUES(#{id},#{version},#{actor},now()) ON CONFLICT DO NOTHING</insert>

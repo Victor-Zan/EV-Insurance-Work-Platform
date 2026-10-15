@@ -16,7 +16,17 @@ public class QuotationLifecycle {
     public static final Set<String> EDITABLE=Set.of("ARRIVED","WAITING_QUOTE","QUOTE_REVIEWING","WAITING_INSURER_ASSESSMENT","WAITING_REPAIR_AUTHORIZATION");
     private static final Set<String> FROZEN=Set.of("REPAIRING","WAITING_OWNER_CONFIRMATION","WAITING_INSURER_PAYMENT","WAITING_SHOP_SETTLEMENT","COMPLETED","CANCELLED","CLOSED");
     private final QuotationMapper mapper;private final AuditService audit;
-    public QuotationLifecycle(QuotationMapper mapper,AuditService audit){this.mapper=mapper;this.audit=audit;}
+    private final com.evinsurance.platform.workorder.infrastructure.WorkOrderMapper orders;
+    public QuotationLifecycle(QuotationMapper mapper,AuditService audit,com.evinsurance.platform.workorder.infrastructure.WorkOrderMapper orders){this.mapper=mapper;this.audit=audit;this.orders=orders;}
+    public boolean hasCurrentFormal(WorkOrderEntity order) {
+        var c=mapper.context(order.getId());
+        if(c==null||c.rawQuoteId==null||c.formalQuoteId==null)return false;
+        var raw=mapper.raw(c.rawQuoteId);var formal=mapper.formal(c.formalQuoteId);var assignment=orders.activeAssignment(order.getId());
+        return raw!=null&&formal!=null&&assignment!=null&&"ACCEPTED".equals(assignment.getStatus())&&java.util.Objects.equals(order.getShopId(),assignment.getShopId())&&raw.workOrderId().equals(order.getId())&&formal.workOrderId().equals(order.getId())&&formal.rawQuoteId().equals(raw.id())&&raw.shopId()==assignment.getShopId()&&raw.assignmentVersion()==assignment.getAssignmentVersion();
+    }
+    public void requireUploadStage(WorkOrderEntity order,FileCategory category) {
+        com.evinsurance.platform.document.domain.FileStagePolicy.require(order.getStatus(),category,hasCurrentFormal(order));
+    }
     public void requireEditable(WorkOrderEntity order){if(!EDITABLE.contains(order.getStatus()))throw ApiException.conflict("QUOTE_READ_ONLY","Quote/assessment changes require an arrived case before repair starts");}
     public void save(Context c){if(mapper.save(c)!=1)throw ApiException.conflict("QUOTE_VERSION_CONFLICT","Quotation context changed; refresh before retrying");c.version++;}
     public void invalidate(Context c,String reason) {

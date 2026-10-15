@@ -1,6 +1,6 @@
 import type { DraftForm } from '../workorders/work-orders'
 
-export const draftLabels: Record<keyof DraftForm,string>={insuranceCompany:'保险公司',claimNo:'保险报案号',claimReportedAt:'报案时间（中国时间）',ownerName:'车主姓名',ownerPhone:'车主手机号',policyNo:'保单号',vehicleBrand:'车辆品牌',vehicleModel:'车型',vehicleVin:'车架号 / VIN',vehiclePlate:'车牌号',vehicleOtherIdentifier:'车辆其他标识',accidentAt:'事故时间（中国时间）',accidentRegionId:'事故区域',accidentAddress:'事故地址',accidentDescription:'事故描述'}
+export const draftLabels: Record<keyof DraftForm,string>={surveyorName:'查勘员姓名',surveyorPhone:'查勘员电话',vehicleColor:'车辆颜色',insuranceCompany:'保险公司',claimNo:'保险报案号',claimReportedAt:'报案时间（中国时间）',ownerName:'车主姓名',ownerPhone:'车主手机号',policyNo:'保单号',vehicleBrand:'车辆品牌',vehicleModel:'车型',vehicleVin:'车架号 / VIN',vehiclePlate:'车牌号',vehicleOtherIdentifier:'车辆其他标识',accidentAt:'事故时间（中国时间）',accidentRegionId:'事故区域',accidentAddress:'事故地址',accidentDescription:'事故描述'}
 export function blankOcrDraft():DraftForm{return Object.fromEntries(Object.keys(draftLabels).map(k=>[k,''])) as unknown as DraftForm}
 export function prefillOcrDraft(fields:Record<string,unknown>):DraftForm{
   const draft=blankOcrDraft()

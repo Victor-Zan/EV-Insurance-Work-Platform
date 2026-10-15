@@ -1,16 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.evinsurance.platform.workorder.infrastructure.WorkOrderMapper">
+  <select id="phases" resultType="com.evinsurance.platform.workorder.infrastructure.WorkOrderRows$Phase">
+    SELECT w.id AS case_id, (q.assessment_id IS NOT NULL AND (a.source_formal_id=q.formal_quote_id OR q.formal_quote_id IS NULL)) AS amount_present,
+      EXISTS(SELECT 1 FROM case_file f WHERE f.work_order_id=w.id AND f.category='LOSS_ASSESSMENT' AND f.state='ACTIVE') AS loss_present,
+      COALESCE(q.insurer_confirmed AND q.service_confirmed,FALSE) AS confirmed,
+      COALESCE(r.work_order_id=w.id AND r.shop_id=w.shop_id AND r.shop_id=wa.shop_id AND r.assignment_version=wa.assignment_version,FALSE) AS raw_current,
+      COALESCE(r.work_order_id=w.id AND r.shop_id=w.shop_id AND r.shop_id=wa.shop_id AND r.assignment_version=wa.assignment_version AND fq.work_order_id=w.id AND fq.raw_quote_id=r.id,FALSE) AS formal_current
+    FROM work_order w LEFT JOIN quotation_context q ON q.work_order_id=w.id LEFT JOIN quote_assessment a ON a.id=q.assessment_id
+      LEFT JOIN quote_raw r ON r.id=q.raw_quote_id LEFT JOIN quote_formal fq ON fq.id=q.formal_quote_id
+      LEFT JOIN LATERAL (SELECT shop_id,assignment_version FROM work_order_assignment WHERE work_order_id=w.id AND status='ACCEPTED' ORDER BY assignment_version DESC LIMIT 1) wa ON TRUE
+    WHERE w.id IN <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+  </select>
   <insert id="insertDraft">
     INSERT INTO work_order(id,insurance_company,claim_no,claim_reported_at,data_source,current_responsible_id,
-      owner_name,owner_phone,policy_no,vehicle_brand,vehicle_model,vehicle_vin,vehicle_plate,vehicle_other_identifier,
+      surveyor_name,surveyor_phone,vehicle_color,owner_name,owner_phone,policy_no,vehicle_brand,vehicle_model,vehicle_vin,vehicle_plate,vehicle_other_identifier,
       accident_at,accident_region_id,accident_address,accident_description,created_by,updated_by,created_at,updated_at)
     VALUES(#{id},#{insuranceCompany},#{claimNo},#{claimReportedAt},#{dataSource},#{currentResponsibleId},
-      #{ownerName},#{ownerPhone},#{policyNo},#{vehicleBrand},#{vehicleModel},#{vehicleVin},#{vehiclePlate},#{vehicleOtherIdentifier},
+      #{surveyorName},#{surveyorPhone},#{vehicleColor},#{ownerName},#{ownerPhone},#{policyNo},#{vehicleBrand},#{vehicleModel},#{vehicleVin},#{vehiclePlate},#{vehicleOtherIdentifier},
       #{accidentAt},#{accidentRegionId},#{accidentAddress},#{accidentDescription},#{createdBy},#{updatedBy},#{createdAt},#{updatedAt})
   </insert>
   <update id="updateDraft">
-    UPDATE work_order SET insurance_company=#{row.insuranceCompany},claim_no=#{row.claimNo},claim_reported_at=#{row.claimReportedAt},
+    UPDATE work_order SET surveyor_name=#{row.surveyorName},surveyor_phone=#{row.surveyorPhone},vehicle_color=#{row.vehicleColor},insurance_company=#{row.insuranceCompany},claim_no=#{row.claimNo},claim_reported_at=#{row.claimReportedAt},
       owner_name=#{row.ownerName},owner_phone=#{row.ownerPhone},policy_no=#{row.policyNo},vehicle_brand=#{row.vehicleBrand},
       vehicle_model=#{row.vehicleModel},vehicle_vin=#{row.vehicleVin},vehicle_plate=#{row.vehiclePlate},
       vehicle_other_identifier=#{row.vehicleOtherIdentifier},accident_at=#{row.accidentAt},accident_region_id=#{row.accidentRegionId},
@@ -48,7 +59,7 @@
   </update>
   <select id="existingFormalClaim" resultType="string">
     SELECT business_no FROM work_order
-    WHERE status&lt;&gt;'DRAFT' AND lower(insurance_company)=lower(#{insuranceCompany}) AND lower(claim_no)=lower(#{claimNo})
+    WHERE status&lt;&gt;'DRAFT' AND (lower(insurance_company)=lower(#{insuranceCompany}) OR insurance_company IS NULL OR #{insuranceCompany,jdbcType=VARCHAR} IS NULL) AND lower(claim_no)=lower(#{claimNo})
       <if test="excludeId != null">AND id&lt;&gt;#{excludeId}</if>
     ORDER BY created_at,id LIMIT 1
   </select>
@@ -135,6 +146,14 @@
     VALUES(#{workOrderId},#{fromStatus},#{toStatus},#{action},#{reason},#{actorId},#{actorRoles},#{assignmentVersion},#{traceId},#{now})
   </insert>
   <select id="historyCount" resultType="long">SELECT count(*) FROM work_order_status_history WHERE work_order_id=#{workOrderId}</select>
+  <select id="milestones" resultType="com.evinsurance.platform.workorder.infrastructure.WorkOrderRows$Milestone">
+    SELECT to_status AS status,CASE WHEN to_status IN ('PENDING_DISPATCH','WAITING_OWNER_CONFIRMATION') THEN min(occurred_at) ELSE max(occurred_at) END AS occurred_at FROM work_order_status_history
+    WHERE work_order_id=#{workOrderId} GROUP BY to_status ORDER BY to_status
+  </select>
+  <select id="latestHistory" resultType="com.evinsurance.platform.workorder.infrastructure.WorkOrderRows$History">
+    SELECT id,from_status,to_status,action,reason,actor_id,actor_roles,assignment_version,occurred_at
+    FROM work_order_status_history WHERE work_order_id=#{workOrderId} ORDER BY occurred_at DESC,id DESC LIMIT 1
+  </select>
   <select id="history" resultType="com.evinsurance.platform.workorder.infrastructure.WorkOrderRows$History">
     SELECT id,from_status,to_status,action,reason,actor_id,actor_roles,assignment_version,occurred_at
     FROM work_order_status_history WHERE work_order_id=#{workOrderId} ORDER BY occurred_at,id LIMIT #{size} OFFSET #{offset}

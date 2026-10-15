@@ -1,10 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.evinsurance.platform.document.infrastructure.FileMapper">
+ <select id="submittedQuoteSource" resultType="boolean">SELECT EXISTS(SELECT 1 FROM workflow_recognition_link l JOIN quote_raw r ON r.id=l.business_id WHERE l.file_id=#{fileId} AND l.work_order_id=#{caseId} AND l.kind='QUOTE' AND r.work_order_id=#{caseId} AND r.shop_id=#{shopId} AND r.assignment_version=#{assignmentVersion})</select>
  <select id="find" resultType="com.evinsurance.platform.document.infrastructure.FileRow">SELECT * FROM case_file WHERE id=#{id}</select>
  <insert id="insert">INSERT INTO case_file VALUES(#{id},#{workOrderId},#{groupId},#{category},#{versionNo},#{state},#{objectKey},#{originalName},#{contentType},#{byteSize},#{sha256},#{shopId},#{assignmentVersion},#{uploadedBy},#{createdAt})</insert>
  <update id="changeState">UPDATE case_file SET state=#{state} WHERE id=#{id} AND state='ACTIVE'</update>
  <select id="activeCount" resultType="long">SELECT count(*) FROM case_file WHERE work_order_id=#{orderId} AND category=#{category} AND state='ACTIVE'</select>
+ <select id="summary" resultType="com.evinsurance.platform.document.infrastructure.FileMapper$Summary">
+  SELECT f.category,count(*) AS count,
+   count(*) FILTER (WHERE f.category!='COMPLETION_PHOTO' OR (f.content_type IN ('image/jpeg','image/png') AND EXISTS(
+    SELECT 1 FROM audit_log a WHERE a.object_type='CASE_FILE' AND a.object_id=CAST(f.id AS text)
+     AND a.action='FILE_UPLOAD' AND a.actor_id=f.uploaded_by AND 'REPAIR_SHOP'=ANY(string_to_array(a.actor_roles,','))
+   ))) AS eligible_count,max(f.created_at) AS last_uploaded_at
+  FROM case_file f WHERE f.work_order_id=#{orderId} AND f.state='ACTIVE'
+   AND (f.category NOT IN ('SHOP_QUOTE','ARRIVAL_PHOTO','PROGRESS_PHOTO','COMPLETION_PHOTO')
+    OR (f.shop_id=#{shopId} AND f.assignment_version=#{assignmentVersion}))
+  GROUP BY f.category ORDER BY f.category
+ </select>
  <sql id="scope">work_order_id=#{orderId}
   <if test="scope != 'STAFF'">AND state='ACTIVE'
    <choose>

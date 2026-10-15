@@ -11,6 +11,8 @@ export interface Assignment {
   id: number; assignmentVersion: number; shopId: number; status: string; reason?: string; transferDescription?: string
 }
 export interface WorkOrder {
+  workflowNode?:string
+  workflowActor?:string
   id: string
   businessNo?: string
   insuranceCompany?: string
@@ -22,6 +24,10 @@ export interface WorkOrder {
   ownerName?: string
   ownerPhone?: string
   policyNo?: string
+  surveyorName?:string
+  surveyorPhone?:string
+  vehicleColor?:string
+  dispatchAddressConfirmed?:boolean
   vehicleBrand?: string
   vehicleModel?: string
   vehicleVin?: string
@@ -39,14 +45,14 @@ export interface WorkOrder {
 }
 export interface DraftForm {
   insuranceCompany: string; claimNo: string; claimReportedAt: string
-  ownerName: string; ownerPhone: string; policyNo: string; vehicleBrand: string; vehicleModel: string
+  surveyorName:string; surveyorPhone:string; vehicleColor:string; ownerName: string; ownerPhone: string; policyNo: string; vehicleBrand: string; vehicleModel: string
   vehicleVin: string; vehiclePlate: string; vehicleOtherIdentifier: string
   accidentAt: string; accidentRegionId: string; accidentAddress: string; accidentDescription: string
 }
 export interface CriticalForm {
   insuranceCompany: string; claimNo: string; vehicleVin: string; vehiclePlate: string; vehicleOtherIdentifier: string; reason: string
 }
-export interface ShopOption { id: number; code: string; name: string; address?: string }
+export interface ShopOption { id: number; code: string; name: string; address?: string;distanceMetres?:number }
 export interface RegionOption { id: number; code: string; name: string; level: number }
 export interface History { id: number; fromStatus?: string; toStatus: string; action: string; reason?: string; occurredAt: string }
 export interface DuplicateConfiguration { possibleDuplicateDays: number }
@@ -95,6 +101,7 @@ export function workOrderApi(client: AxiosInstance) {
     bindOwner: (id:string,expectedVersion:number,reason:string,key=idempotencyKey('owner-bind')) => data<WorkOrder>(client.post(`/work-orders/${id}/owner-binding`,{expectedVersion,reason},{headers:{'Idempotency-Key':key}})),
     critical: (id: string,value: CriticalForm) => data<WorkOrder>(client.put(`/work-orders/${id}/critical-fields`,value)),
     shops: (id: string,page=1) => data<Page<ShopOption>>(client.get(`/work-orders/${id}/eligible-shops`,{ params:{ page,size:20 } })),
+    dispatchLocation:(id:string,expectedVersion:number,regionId:number,address:string)=>data<WorkOrder>(client.put(`/work-orders/${id}/dispatch-location`,{expectedVersion,regionId,address,confirmed:true})),
     dispatch: (id: string,shopId: number,confirmPossibleDuplicate=false,duplicateReason: string|null=null) =>
       data<WorkOrder>(client.post(`/work-orders/${id}/dispatch`,{ shopId,confirmPossibleDuplicate,duplicateReason },{ headers:{ 'Idempotency-Key':idempotencyKey('dispatch') } })),
     reassign: (id: string,value: { shopId:number; assignmentVersion:number; reason:string; vehicleNotArrivedConfirmed:boolean; transferDescription:string|null; confirmPossibleDuplicate:boolean }) =>

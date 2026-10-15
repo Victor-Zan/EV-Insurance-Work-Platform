@@ -4,6 +4,8 @@ import java.time.Instant;
 import java.util.UUID;
 
 public final class WorkOrderRows {
+    public record Phase(UUID caseId,boolean amountPresent,boolean lossPresent,boolean confirmed,boolean rawCurrent,boolean formalCurrent) {}
+    public record Milestone(String status,Instant occurredAt) {}
     private WorkOrderRows() {}
 
     public static class Assignment {
@@ -54,6 +56,8 @@ public final class WorkOrderRows {
         private Long id;
         private String code;
         private String name;
+        private Double distanceMetres;
+        public Double getDistanceMetres(){return distanceMetres;} public void setDistanceMetres(Double v){distanceMetres=v;}
         private String address;
         public Long getId(){return id;} public void setId(Long v){id=v;}
         public String getCode(){return code;} public void setCode(String v){code=v;}

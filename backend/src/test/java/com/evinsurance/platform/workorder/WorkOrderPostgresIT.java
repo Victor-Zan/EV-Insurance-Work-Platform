@@ -62,6 +62,8 @@ class WorkOrderPostgresIT {
         registry.add("spring.datasource.password",()->password);
         registry.add("spring.flyway.schemas",()->SCHEMA);
         registry.add("spring.flyway.default-schema",()->SCHEMA);
+        registry.add("OCR_WORKER_ENABLED",()->"false");
+        for(String name:List.of("MINIO_ENDPOINT","MINIO_ACCESS_KEY","MINIO_SECRET_KEY","MINIO_BUCKET"))registry.add(name,()->{String value=System.getenv("TEST_"+name);if(value==null||value.isBlank())throw new IllegalStateException("Real MinIO test configuration required");return value;});
         registry.add("JWT_SECRET_BASE64",()->SECRET);
         registry.add("JWT_TTL_SECONDS",()->"1800");
         for(String role:List.of("ADMIN","CUSTOMER_SERVICE","REPAIR_SHOP","OWNER")) {
@@ -134,6 +136,7 @@ class WorkOrderPostgresIT {
         request.put("ownerName","王小明");
         request.put("ownerPhone",phone);
         request.put("policyNo","POL-"+claimNo);
+        request.put("surveyorName","合成查勘");request.put("surveyorPhone","13926018473");request.put("vehicleColor","蓝色");
         request.put("vehicleBrand","测试品牌");
         request.put("vehicleModel","测试车型");
         request.put("vehicleVin",vin);
@@ -147,7 +150,15 @@ class WorkOrderPostgresIT {
         String body=mvc.perform(post("/api/v1/work-orders/drafts").header("Authorization","Bearer "+token)
             .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(request)))
             .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-        return json.readTree(body).path("data");
+        var draft=json.readTree(body).path("data");
+        if(request.containsKey("surveyorName"))scenePhoto(token,draft.path("id").asText());
+        return draft;
+    }
+
+    private String scenePhoto(String token,String id) throws Exception {
+        byte[] image=java.util.Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jFWkAAAAASUVORK5CYII=");
+        var body=mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/v1/materials/cases/{id}",id).file(new org.springframework.mock.web.MockMultipartFile("file","synthetic-scene.png","image/png",image)).param("category","SCENE_PHOTO").header("Authorization","Bearer "+token).header("Idempotency-Key",UUID.randomUUID().toString())).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        return json.readTree(body).path("data").path("id").asText();
     }
 
     private JsonNode submit(String token,String id,boolean confirm,String reason,String key,int expectedStatus) throws Exception {
@@ -162,6 +173,8 @@ class WorkOrderPostgresIT {
     }
 
     private JsonNode dispatch(String token,String id,long targetShop,boolean confirm,String reason,String key,int expectedStatus) throws Exception {
+        if(expectedStatus!=403){var row=json.readTree(mvc.perform(get("/api/v1/work-orders/{id}",id).header("Authorization","Bearer "+admin)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data");if(row.path("status").asText().equals("PENDING_DISPATCH")&&!row.path("dispatchAddressConfirmed").asBoolean())mvc.perform(put("/api/v1/work-orders/{id}/dispatch-location",id).header("Authorization","Bearer "+admin).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("expectedVersion",row.path("version").asLong(),"regionId",regionId,"address","合成接车地址","confirmed",true)))).andExpect(status().isOk());}
+
         Map<String,Object> request=new HashMap<>();
         request.put("shopId",targetShop);
         request.put("confirmPossibleDuplicate",confirm);
@@ -185,6 +198,45 @@ class WorkOrderPostgresIT {
         return json.readTree(mvc.perform(request).andExpect(status().is(code)).andReturn().getResponse().getContentAsString()).path("data");
     }
     private String uniquePhone(){return "139"+String.format("%08d",Math.abs(UUID.randomUUID().getMostSignificantBits()%100000000));}
+
+    @Test void minimalIntakeNeedsEverySpecifiedFieldAndScenePhotoButNoDispatchOrInsuranceData() throws Exception {
+        var valid=new HashMap<String,Object>();valid.put("claimNo","INTAKE-"+UUID.randomUUID());valid.put("ownerPhone",uniquePhone());valid.put("vehiclePlate","合成-"+UUID.randomUUID());valid.put("surveyorName","合成查勘");valid.put("surveyorPhone","13926018473");valid.put("vehicleColor","蓝色");valid.put("vehicleBrand","合成品牌");valid.put("vehicleModel","合成车型");
+        var draft=api(customerService,"POST","/api/v1/work-orders/drafts",valid,null,200);String id=draft.path("id").asText();
+        api(customerService,"POST","/api/v1/work-orders/"+id+"/submit",Map.of(),"missing-photo-"+id,409);
+        String photo=scenePhoto(customerService,id);
+        for(String field:valid.keySet()){
+            var missing=new HashMap<>(valid);missing.remove(field);
+            api(customerService,"PUT","/api/v1/work-orders/"+id+"/draft",missing,null,200);
+            api(customerService,"POST","/api/v1/work-orders/"+id+"/submit",Map.of(),"missing-"+field+id,409);
+        }
+        api(customerService,"PUT","/api/v1/work-orders/"+id+"/draft",valid,null,200);
+        var formal=api(customerService,"POST","/api/v1/work-orders/"+id+"/submit",Map.of(),"valid-"+id,200);
+        assertThat(formal.path("status").asText()).isEqualTo("PENDING_DISPATCH");assertThat(formal.path("surveyorName").asText()).isEqualTo("合成查勘");assertThat(formal.path("vehicleColor").asText()).isEqualTo("蓝色");
+        assertThat(formal.hasNonNull("insuranceCompany")).isFalse();assertThat(formal.hasNonNull("accidentRegionId")).isFalse();
+        assertThat(api(customerService,"POST","/api/v1/work-orders/"+id+"/submit",Map.of(),"valid-"+id,200).path("id")).isEqualTo(formal.path("id"));
+        api(customerService,"POST","/api/v1/work-orders/"+id+"/dispatch",Map.of("shopId",shopId),"no-address-"+id,409);
+        var location=Map.of("expectedVersion",formal.path("version").asLong(),"regionId",regionId,"address","合成接车地点","confirmed",true);
+        api(shop,"PUT","/api/v1/work-orders/"+id+"/dispatch-location",location,null,403);
+        api(customerService,"PUT","/api/v1/work-orders/"+id+"/dispatch-location",location,null,200);
+        api(customerService,"PUT","/api/v1/work-orders/"+id+"/dispatch-location",location,null,409);
+        long jobsBefore=db.queryForObject("SELECT count(*) FROM ocr_job",Long.class);
+        api(customerService,"POST","/api/v1/ocr",Map.of("fileId",photo),"scene-not-ocr-"+id,400);
+        assertThat(db.queryForObject("SELECT count(*) FROM ocr_job",Long.class)).isEqualTo(jobsBefore);
+        long nearest=createEligibleShop();db.update("UPDATE repair_shop SET address=? WHERE id=?","合成接车地点",nearest);db.update("UPDATE repair_shop SET address=? WHERE id=?","另一个合成地点",shopId);
+        var shops=api(customerService,"GET","/api/v1/work-orders/"+id+"/eligible-shops?size=1",null,null,200);
+        assertThat(shops.path("records").size()).isEqualTo(1);
+        assertThat(shops.path("records").get(0).path("id").asLong()).isEqualTo(nearest);assertThat(shops.path("records").get(0).path("distanceMetres").asDouble()).isZero();
+        var next=api(customerService,"GET","/api/v1/work-orders/"+id+"/eligible-shops?size=1&page=2",null,null,200);assertThat(next.path("records").get(0).path("id").asLong()).isNotEqualTo(nearest);assertThat(next.path("records").get(0).path("distanceMetres").asDouble()).isGreaterThanOrEqualTo(0);
+        var dispatched=api(customerService,"POST","/api/v1/work-orders/"+id+"/dispatch",Map.of("shopId",shopId),"dispatch-"+id,200);
+        var shopView=api(shop,"GET","/api/v1/work-orders/"+id,null,null,200);assertThat(shopView.hasNonNull("surveyorPhone")).isFalse();
+        int assignment=dispatched.path("currentAssignment").path("assignmentVersion").asInt();
+        api(shop,"POST","/api/v1/work-orders/"+id+"/accept",Map.of("assignmentVersion",assignment),"accept-"+id,200);
+        api(shop,"POST","/api/v1/work-orders/"+id+"/arrive",Map.of("assignmentVersion",assignment),"arrive-"+id,200);
+        var raw=api(shop,"POST","/api/v1/quotations/cases/"+id+"/raw-quotes",Map.of("expectedVersion",0,"assignmentVersion",assignment,"lines",List.of(Map.of("description","合成配件","quantity",1,"unitPrice","18.30"))),"raw-"+id,200);
+        var reviewed=api(customerService,"POST","/api/v1/quotations/cases/"+id+"/formal-quotes",Map.of("expectedVersion",raw.path("version").asInt(),"rawQuoteId",raw.path("rawQuote").path("id").asText(),"mode","FIXED_AMOUNT","fixedAmount","0.00"),"formal-"+id,200);
+        assertThat(reviewed.path("formalQuote").path("total").asText()).isEqualTo("18.30");
+        assertThat(db.queryForObject("SELECT count(*) FROM case_file WHERE work_order_id=?::uuid AND category='NOTICE'",Long.class,id)).isZero();
+    }
     @Test void ownerContactAndPendingBindingUseRealApisAndNeverTransferOwnership() throws Exception {
         String phone=uniquePhone(),suffix=UUID.randomUUID().toString();
         var pending=formal(customerService,"BIND-"+suffix,phone,"VIN-"+suffix,Instant.now().minus(100,ChronoUnit.DAYS));
@@ -284,7 +336,7 @@ class WorkOrderPostgresIT {
         Map<String,Object> incomplete=new HashMap<>(valid);
         incomplete.remove("vehicleVin");
         String incompleteId=createDraft(customerService,incomplete).path("id").asText();
-        submit(customerService,incompleteId,false,null,"invalid-"+incompleteId,400);
+        submit(customerService,incompleteId,false,null,"invalid-"+incompleteId,409);
 
         JsonNode formal=submit(customerService,id,false,null,"formal-"+id,200).path("data");
         String businessNo=formal.path("businessNo").asText();

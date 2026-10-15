@@ -16,6 +16,14 @@ public class WorkOrderEntity {
     private String ownerName;
     private String ownerPhone;
     private String policyNo;
+    private String surveyorName;
+    private String surveyorPhone;
+    private String vehicleColor;
+    private boolean dispatchAddressConfirmed;
+    public String getSurveyorName(){return surveyorName;} public void setSurveyorName(String v){surveyorName=v;}
+    public String getSurveyorPhone(){return surveyorPhone;} public void setSurveyorPhone(String v){surveyorPhone=v;}
+    public String getVehicleColor(){return vehicleColor;} public void setVehicleColor(String v){vehicleColor=v;}
+    public boolean isDispatchAddressConfirmed(){return dispatchAddressConfirmed;} public void setDispatchAddressConfirmed(boolean v){dispatchAddressConfirmed=v;}
     private String vehicleBrand;
     private String vehicleModel;
     private String vehicleVin;

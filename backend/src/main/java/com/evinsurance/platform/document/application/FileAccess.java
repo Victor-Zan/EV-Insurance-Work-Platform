@@ -9,7 +9,8 @@ import org.springframework.stereotype.Service;
 @Service
 public class FileAccess {
     private final WorkOrderMapper orders;
-    public FileAccess(WorkOrderMapper orders) { this.orders=orders; }
+    private final com.evinsurance.platform.document.infrastructure.FileMapper files;
+    public FileAccess(WorkOrderMapper orders,com.evinsurance.platform.document.infrastructure.FileMapper files) { this.orders=orders;this.files=files; }
     public boolean staff(CurrentUser a) { return a.roles().contains(Role.ADMIN)||a.roles().contains(Role.CUSTOMER_SERVICE); }
     public void customerService(CurrentUser a) { if(!a.roles().contains(Role.CUSTOMER_SERVICE)) throw ApiException.denied(); }
     public WorkOrderEntity order(UUID id,boolean lock) {
@@ -22,15 +23,18 @@ public class FileAccess {
         throw ApiException.denied();
     }
     public void mutable(WorkOrderEntity row) {
-        if("CANCELLED".equals(row.getStatus())||"COMPLETED".equals(row.getStatus())) throw ApiException.conflict("READ_ONLY","Cancelled or completed cases are read-only");
+        if(java.util.Set.of("CANCELLED","COMPLETED","CLOSED").contains(row.getStatus())) throw ApiException.conflict("READ_ONLY","Cancelled or completed cases are read-only");
     }
     public Integer assignment(UUID id) { var r=orders.activeAssignment(id); return r==null?null:r.getAssignmentVersion(); }
     public void readable(FileRow f) {
         order(f.workOrderId(),false); var a=CurrentUser.require();
         if(staff(a)) return;
-        if(!"ACTIVE".equals(f.state())) throw ApiException.denied();
         var category=FileCategory.valueOf(f.category());
-        if(a.roles().contains(Role.OWNER)&&category.photo()) return;
+        if(!"ACTIVE".equals(f.state())){
+            if(a.roles().contains(Role.REPAIR_SHOP)&&category==FileCategory.SHOP_QUOTE&&a.shopId().equals(f.shopId())&&java.util.Objects.equals(assignment(f.workOrderId()),f.assignmentVersion())&&files.submittedQuoteSource(f.id(),f.workOrderId(),a.shopId(),f.assignmentVersion()))return;
+            throw ApiException.denied();
+        }
+        if(a.roles().contains(Role.OWNER)&&category.photo()&&category!=FileCategory.SCENE_PHOTO) return;
         if(a.roles().contains(Role.REPAIR_SHOP)&&category.shopVisible()&&a.shopId().equals(f.shopId())&&
             java.util.Objects.equals(assignment(f.workOrderId()),f.assignmentVersion())) return;
         throw ApiException.denied();

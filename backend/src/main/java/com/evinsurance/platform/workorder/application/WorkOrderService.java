@@ -43,8 +43,10 @@ public class WorkOrderService {
     private final AuditService audit;
     private final ObjectMapper json;
 
-    public WorkOrderService(WorkOrderMapper mapper,AuditService audit,ObjectMapper json) {
-        this.mapper=mapper;
+    private final com.evinsurance.platform.document.infrastructure.FileMapper files;
+    private final com.evinsurance.platform.integration.map.MapProvider maps;
+    public WorkOrderService(WorkOrderMapper mapper,AuditService audit,ObjectMapper json,com.evinsurance.platform.document.infrastructure.FileMapper files,com.evinsurance.platform.integration.map.MapProvider maps) {
+        this.mapper=mapper;this.files=files;this.maps=maps;
         this.audit=audit;
         this.json=json;
     }
@@ -125,7 +127,8 @@ public class WorkOrderService {
         };
         int offset=PageResponse.offset(page,size);
         String search=trim(query);
-        var rows=mapper.list(scope,scopeId,status,search,offset,size).stream().map(r -> view(r,false,actor)).toList();
+        var entities=mapper.list(scope,scopeId,status,search,offset,size);var phases=new java.util.HashMap<UUID,WorkOrderRows.Phase>();if(!entities.isEmpty())for(var phase:mapper.phases(entities.stream().map(WorkOrderEntity::getId).toList()))phases.put(phase.caseId(),phase);
+        var rows=entities.stream().map(r -> view(r,false,actor,phases.get(r.getId()))).toList();
         return new PageResponse<>(page,size,mapper.count(scope,scopeId,status,search),rows);
     }
 
@@ -151,13 +154,19 @@ public class WorkOrderService {
         return new WorkOrderViews.DuplicateConfiguration(request.possibleDuplicateDays());
     }
 
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public PageResponse<WorkOrderRows.ShopOption> eligibleShops(UUID id,int page,int size) {
         var actor=requireStaff();
         var row=requireVisible(id,actor,false);
-        if(row.getAccidentRegionId()==null) throw state("Accident region is required");
         int offset=PageResponse.offset(page,size);
-        return new PageResponse<>(page,size,mapper.eligibleShopCount(row.getAccidentRegionId()),
-            mapper.eligibleShops(row.getAccidentRegionId(),offset,size));
+        if(row.getAccidentRegionId()==null)return new PageResponse<>(page,size,0,List.of());
+        long count=mapper.eligibleShopCount(row.getAccidentRegionId());
+        if(!row.isDispatchAddressConfirmed()||trim(row.getAccidentAddress())==null)return new PageResponse<>(page,size,count,mapper.eligibleShops(row.getAccidentRegionId(),offset,size));
+        // Mock geocoding is local. Read candidates in bounded batches, rank before pagination.
+        var ranked=new java.util.ArrayList<WorkOrderRows.ShopOption>();var origin=maps.geocode(row.getAccidentAddress()).point();
+        for(int start=0;start<count;start+=100){var batch=mapper.eligibleShops(row.getAccidentRegionId(),start,100);for(var shop:batch){if(trim(shop.getAddress())!=null)shop.setDistanceMetres(maps.distance(origin,maps.geocode(shop.getAddress()).point()).metres());ranked.add(shop);}}
+        ranked.sort(java.util.Comparator.comparing(WorkOrderRows.ShopOption::getDistanceMetres,java.util.Comparator.nullsLast(Double::compareTo)).thenComparing(WorkOrderRows.ShopOption::getId));
+        return new PageResponse<>(page,size,count,ranked.stream().skip(offset).limit(size).toList());
     }
 
     @Transactional
@@ -168,7 +177,7 @@ public class WorkOrderService {
         if(Set.of(WorkOrderStatus.DRAFT.name(),WorkOrderStatus.CANCELLED.name(),WorkOrderStatus.CLOSED.name(),WorkOrderStatus.COMPLETED.name()).contains(row.getStatus())) {
             throw state("Critical fields cannot be changed in the current state");
         }
-        String insurance=required(request.insuranceCompany(),"insuranceCompany");
+        String insurance=trim(request.insuranceCompany());
         String claim=required(request.claimNo(),"claimNo");
         String vin=trim(request.vehicleVin());
         String plate=trim(request.vehiclePlate());
@@ -416,6 +425,7 @@ public class WorkOrderService {
         boolean confirmDuplicate,String duplicateReason,String transferDescription) {
         var row=lock(id);
         requireStatus(row,WorkOrderStatus.PENDING_DISPATCH);
+        if(!row.isDispatchAddressConfirmed()||trim(row.getAccidentAddress())==null)throw ApiException.conflict("DISPATCH_ADDRESS_REQUIRED","请先核对服务区域和实际接车地址");
         if(row.getAccidentRegionId()==null||mapper.shopEligible(shopId,row.getAccidentRegionId())!=1) {
             throw ApiException.conflict("SHOP_NOT_ELIGIBLE","Shop is disabled or outside the service region");
         }
@@ -489,6 +499,9 @@ public class WorkOrderService {
         row.setOwnerName(trim(request.ownerName()));
         row.setOwnerPhone(trim(request.ownerPhone()));
         row.setPolicyNo(trim(request.policyNo()));
+        row.setSurveyorName(trim(request.surveyorName()));
+        row.setSurveyorPhone(trim(request.surveyorPhone()));
+        row.setVehicleColor(trim(request.vehicleColor()));
         row.setVehicleBrand(trim(request.vehicleBrand()));
         row.setVehicleModel(trim(request.vehicleModel()));
         row.setVehicleVin(trim(request.vehicleVin()));
@@ -501,19 +514,30 @@ public class WorkOrderService {
         return row;
     }
 
+    public List<String> formalMissing(WorkOrderEntity row) {
+        var missing=new java.util.ArrayList<String>();
+        String[][] values={{row.getClaimNo(),"案件号"},{row.getOwnerPhone(),"车主手机号"},{row.getSurveyorName(),"查勘员姓名"},{row.getSurveyorPhone(),"查勘员电话"},{row.getVehicleColor(),"车辆颜色"},{row.getVehicleBrand(),"车辆品牌"},{row.getVehicleModel(),"车型"}};
+        for(var value:values)if(trim(value[0])==null)missing.add("请填写"+value[1]);
+        if(trim(row.getVehiclePlate())==null&&trim(row.getVehicleVin())==null)missing.add("请填写车辆牌照或车架号");
+        if(files.activeCount(row.getId(),"SCENE_PHOTO")==0)missing.add("请上传至少1张现场物损照片");
+        return List.copyOf(missing);
+    }
     private void validateFormal(WorkOrderEntity row) {
-        required(row.getInsuranceCompany(),"insuranceCompany");
-        required(row.getClaimNo(),"claimNo");
-        required(row.getOwnerName(),"ownerName");
-        required(row.getOwnerPhone(),"ownerPhone");
-        required(row.getVehicleBrand(),"vehicleBrand");
-        required(row.getVehicleModel(),"vehicleModel");
-        requireVehicleIdentifier(row.getVehicleVin(),row.getVehiclePlate(),row.getVehicleOtherIdentifier());
-        if(row.getAccidentAt()==null) throw ApiException.invalid("accidentAt is required");
-        if(row.getAccidentRegionId()==null||mapper.regionEnabled(row.getAccidentRegionId())!=1) {
-            throw ApiException.invalid("An enabled accidentRegionId is required");
-        }
-        required(row.getAccidentDescription(),"accidentDescription");
+        var missing=formalMissing(row);
+        if(!missing.isEmpty())throw ApiException.conflict("INTAKE_INCOMPLETE",String.join("；",missing));
+    }
+
+    @Transactional
+    public WorkOrderViews.WorkOrder confirmDispatchLocation(UUID id,WorkOrderRequests.DispatchLocation request) {
+        var actor=requireStaff();var row=lock(id);requireVisibleRow(row,actor);
+        if(!Set.of("PENDING_DISPATCH","PENDING_ACCEPTANCE","PENDING_ARRIVAL","ARRIVAL_EXCEPTION","ARRIVED").contains(row.getStatus()))throw state("当前阶段不能修改接车地址");
+        if("ARRIVED".equals(row.getStatus())&&!actor.roles().contains(Role.ADMIN))throw ApiException.denied();
+        if(!request.confirmed())throw ApiException.invalid("请核对并确认实际接车地址");
+        if(!Objects.equals(row.getVersion(),request.expectedVersion()))throw state("Work order changed; refresh before confirming address");
+        if(mapper.regionEnabled(request.regionId())!=1)throw ApiException.invalid("请选择有效服务区域");
+        if(mapper.dispatchLocation(id,row.getVersion(),request.regionId(),request.address().trim(),actor.id())!=1)throw state("Work order changed concurrently");
+        audit.record(actor,Action.WORK_ORDER_DRAFT_UPDATE,"WORK_ORDER",id,"Dispatch location reviewed; address excluded; region="+request.regionId());
+        return view(mapper.find(id),true,actor);
     }
 
     private void requireVehicleIdentifier(String vin,String plate,String other) {
@@ -620,6 +644,9 @@ public class WorkOrderService {
     }
 
     private WorkOrderViews.WorkOrder view(WorkOrderEntity row,boolean detail,CurrentUser actor) {
+        return view(row,detail,actor,mapper.phases(java.util.List.of(row.getId())).getFirst());
+    }
+    private WorkOrderViews.WorkOrder view(WorkOrderEntity row,boolean detail,CurrentUser actor,WorkOrderRows.Phase phase) {
         String ownerName=row.getOwnerName();
         String ownerPhone=row.getOwnerPhone();
         String policyNo=row.getPolicyNo();
@@ -646,9 +673,20 @@ public class WorkOrderService {
             row.getClaimReportedAt(),row.getDataSource(),row.getCurrentResponsibleId(),row.getOwnerBindingStatus(),ownerName,ownerPhone,
             policyNo,row.getVehicleBrand(),row.getVehicleModel(),vin,plate,other,row.getAccidentAt(),row.getAccidentRegionId(),address,
             description,row.getShopId(),row.getStatus(),row.getStatusStartedAt(),row.getVersion(),row.getCreatedBy(),row.getCreatedAt(),
-            row.getUpdatedAt(),assignment);
+            row.getUpdatedAt(),assignment,node(row,phase),nodeActor(row,phase),row.getSurveyorName(),
+            actor.roles().contains(Role.ADMIN)||actor.roles().contains(Role.CUSTOMER_SERVICE)?row.getSurveyorPhone():null,row.getVehicleColor(),row.isDispatchAddressConfirmed());
     }
 
+    private String node(WorkOrderEntity row,WorkOrderRows.Phase phase){if(java.util.Set.of("WAITING_INSURER_ASSESSMENT","WAITING_REPAIR_AUTHORIZATION").contains(row.getStatus())&&(phase==null||!phase.formalCurrent()))return phase!=null&&phase.rawCurrent()?"QUOTE_REVIEW":"SHOP_QUOTE";var n=com.evinsurance.platform.workorder.domain.WorkflowNode.current(row.getStatus(),phase!=null&&phase.amountPresent(),phase!=null&&phase.lossPresent());return n==null?"UNKNOWN":n.name();}
+    private String nodeActor(WorkOrderEntity row,WorkOrderRows.Phase phase){if(java.util.Set.of("WAITING_INSURER_ASSESSMENT","WAITING_REPAIR_AUTHORIZATION").contains(row.getStatus())&&(phase==null||!phase.formalCurrent()))return phase!=null&&phase.rawCurrent()?"客服":"网点";return switch(row.getStatus()){
+        case "DRAFT","PENDING_DISPATCH","ARRIVAL_EXCEPTION" -> "管理员或客服";
+        case "PENDING_ACCEPTANCE","PENDING_ARRIVAL","ARRIVED","WAITING_QUOTE" -> "网点";
+        case "QUOTE_REVIEWING","WAITING_INSURER_ASSESSMENT" -> "客服";
+        case "WAITING_REPAIR_AUTHORIZATION" -> phase!=null&&phase.confirmed()&&phase.amountPresent()&&phase.lossPresent()?"网点":"客服";
+        case "REPAIRING" -> "网点或客服";
+        case "WAITING_OWNER_CONFIRMATION" -> "车主或客服";
+        default -> "无需办理";
+    };}
     private void validateKey(String key) {
         if(key==null||key.isBlank()||key.length()>128) throw ApiException.invalid("Idempotency-Key is required and must be at most 128 characters");
     }

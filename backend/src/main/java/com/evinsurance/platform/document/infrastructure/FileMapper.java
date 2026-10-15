@@ -3,6 +3,9 @@ import java.util.*;
 import org.apache.ibatis.annotations.*;
 @Mapper
 public interface FileMapper {
+    boolean submittedQuoteSource(@Param("fileId") UUID fileId,@Param("caseId") UUID caseId,@Param("shopId") Long shopId,@Param("assignmentVersion") Integer assignmentVersion);
+    record Summary(String category,long count,long eligibleCount,java.time.Instant lastUploadedAt) {}
+    List<Summary> summary(@Param("orderId") UUID orderId,@Param("shopId") Long shopId,@Param("assignmentVersion") Integer assignmentVersion);
     FileRow find(UUID id);
     void insert(FileRow row);
     int changeState(@Param("id") UUID id,@Param("state") String state);

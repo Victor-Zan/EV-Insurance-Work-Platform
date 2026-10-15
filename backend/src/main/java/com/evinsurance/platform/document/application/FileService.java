@@ -39,7 +39,8 @@ public class FileService {
     public View upload(UUID orderId,FileCategory category,UUID replace,Integer assignmentVersion,String key,MultipartFile upload) {
         var a=CurrentUser.require(); var order=access.order(orderId,true); access.mutable(order); checkKey(key);
         Integer current=access.assignment(orderId);
-        if(!a.roles().contains(Role.CUSTOMER_SERVICE)) {
+        if(category==FileCategory.SCENE_PHOTO&&!access.staff(a))throw ApiException.denied();
+        if(!a.roles().contains(Role.CUSTOMER_SERVICE)&&!(category==FileCategory.SCENE_PHOTO&&access.staff(a))) {
             if(!a.roles().contains(Role.REPAIR_SHOP)||!category.shopVisible()||replace!=null||current==null||!current.equals(assignmentVersion)) throw ApiException.denied();
         }
         if(upload.isEmpty()||upload.getSize()>10485760) throw ApiException.invalid("File must be 1 byte to 10 MiB");
@@ -49,13 +50,16 @@ public class FileService {
         quotationLifecycle.beforeMaterialChange(order,category);
         String name=upload.getOriginalFilename();
         if(name==null||name.length()>160||name.contains("/")||name.contains("\\")||name.chars().anyMatch(c->c<32)) throw ApiException.invalid("Invalid file name");
-        String type=detect(bytes,name,upload.getContentType()); String sha=hash(bytes);
+        String type=detect(bytes,name,upload.getContentType());
+        if(category==FileCategory.SCENE_PHOTO&&!Set.of("image/jpeg","image/png").contains(type))throw ApiException.invalid("物损照片仅支持JPG/PNG");
+        String sha=hash(bytes);
         String requestHash=hash((orderId+":"+category+":"+replace+":"+assignmentVersion+":"+sha+":"+name).getBytes(java.nio.charset.StandardCharsets.UTF_8));
         var command=files.command(a.id(),key);
         if(command!=null) {
             if(!requestHash.equals(command.get("request_hash"))) throw ApiException.conflict("IDEMPOTENCY_CONFLICT","Key already used for different upload");
             return view(accessible((UUID)command.get("file_id")));
         }
+        quotationLifecycle.requireUploadStage(order,category);
         FileRow previous=replace==null?null:accessible(replace);
         if(previous!=null && (!previous.workOrderId().equals(orderId)||!previous.category().equals(category.name())||!"ACTIVE".equals(previous.state()))) throw ApiException.conflict("FILE_VERSION_CONFLICT","Only the current active version of the same category can be replaced");
         if(previous!=null)repairMaterials.requireChangeable(previous.id());
@@ -74,7 +78,7 @@ public class FileService {
         return view(files.find(id));
     }
     @Transactional public void voidFile(UUID id) {
-        var a=CurrentUser.require(); access.customerService(a); var f=accessible(id); var order=access.order(f.workOrderId(),true); access.mutable(order);
+        var a=CurrentUser.require(); var f=accessible(id); if(!("SCENE_PHOTO".equals(f.category())&&access.staff(a)))access.customerService(a); var order=access.order(f.workOrderId(),true); access.mutable(order);
         if("VOID".equals(f.state())) return;
         repairMaterials.requireChangeable(id);
         quotationLifecycle.beforeMaterialChange(order,FileCategory.valueOf(f.category()));

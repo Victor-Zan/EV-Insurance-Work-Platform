@@ -41,7 +41,14 @@ public class FundsService {
         if(access.staff(actor))out.set("receivable",directionView(target(id,"RECEIVE"),net(id,"RECEIVE")));
         var payable=mapper.target(id,"PAY");BigDecimal amount=payable==null?null:(BigDecimal)payable.get("amount");
         Long shop=null;Integer assignment=null;if(!access.staff(actor)){var current=orders.activeAssignment(id);shop=actor.shopId();assignment=current.getAssignmentVersion();if(payable!=null&&(!Objects.equals(shop,((Number)payable.get("shop_id")).longValue())||!Objects.equals(assignment,((Number)payable.get("assignment_version")).intValue())))amount=null;}
-        out.set("payable",directionView(amount,mapper.net(id,"PAY",shop,assignment).setScale(2)));return out;
+        var paid=mapper.net(id,"PAY",shop,assignment).setScale(2);out.set("payable",directionView(amount,paid));
+        if(access.staff(actor)){
+            var receivable=target(id,"RECEIVE");var received=net(id,"RECEIVE");var current=orders.activeAssignment(id);boolean mutable=!"CANCELLED".equals(order.getStatus());
+            boolean currentPay=current!=null&&payable!=null&&Objects.equals(current.getShopId(),((Number)payable.get("shop_id")).longValue())&&current.getAssignmentVersion()==((Number)payable.get("assignment_version")).intValue();
+            out.put("canSetPayTarget",mutable&&current!=null&&"ACCEPTED".equals(current.getStatus()));
+            out.put("canRecordReceive",mutable&&receivable!=null&&receivable.compareTo(received)>0);
+            out.put("canRecordPay",mutable&&"COMPLETED".equals(order.getStatus())&&mapper.received(id)&&currentPay&&amount!=null&&amount.compareTo(paid)>0&&"SETTLED".equals(FundsMoney.status(receivable,received)));
+        }return out;
     }
     private String filter(String value) {if(value==null||value.isBlank())return null;if(value.length()>120)throw ApiException.invalid("Filter is too long");return value.trim();}
     private String fundsStatus(String value) {value=filter(value);if(value!=null&&!Set.of("UNSET","UNPAID","PARTIAL","SETTLED").contains(value))throw ApiException.invalid("Unknown funds status");return value;}
