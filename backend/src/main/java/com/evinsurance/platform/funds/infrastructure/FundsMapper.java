@@ -5,6 +5,12 @@ import java.time.Instant;
 import org.apache.ibatis.annotations.*;
 @Mapper
 public interface FundsMapper {
+    @Select("SELECT coalesce((SELECT staged_flow FROM funds_context WHERE work_order_id=#{id}),false)") boolean staged(UUID id);
+    @Update("UPDATE funds_context SET staged_flow=true WHERE work_order_id=#{id}") void enableFlow(UUID id);
+    @Select("SELECT id FROM repair_receipt r WHERE r.work_order_id=#{id} AND NOT EXISTS(SELECT 1 FROM repair_receipt_withdrawal w WHERE w.receipt_id=r.id) ORDER BY id DESC LIMIT 1") Long receiptId(UUID id);
+    @Select("SELECT md5(coalesce(string_agg(e.id::text,',' ORDER BY e.id),'')) FROM funds_entry e WHERE e.work_order_id=#{id} AND e.direction=#{direction} AND NOT EXISTS(SELECT 1 FROM funds_reversal r WHERE r.entry_id=e.id)") String ledgerBasis(@Param("id") UUID id,@Param("direction") String direction);
+    @Select("SELECT * FROM funds_confirmation WHERE work_order_id=#{id} AND direction=#{direction} ORDER BY id DESC LIMIT 1") Map<String,Object> confirmation(@Param("id") UUID id,@Param("direction") String direction);
+    @Insert("INSERT INTO funds_confirmation(work_order_id,direction,basis_hash,funds_version,actor_id,receipt_id,target_id,entry_ids) VALUES(#{id},#{direction},#{basis},#{version},#{actor},(SELECT id FROM repair_receipt r WHERE r.work_order_id=#{id} AND NOT EXISTS(SELECT 1 FROM repair_receipt_withdrawal w WHERE w.receipt_id=r.id) ORDER BY id DESC LIMIT 1),(SELECT id FROM funds_target WHERE work_order_id=#{id} AND direction=#{direction} ORDER BY id DESC LIMIT 1),ARRAY(SELECT e.id FROM funds_entry e WHERE e.work_order_id=#{id} AND e.direction=#{direction} AND NOT EXISTS(SELECT 1 FROM funds_reversal r WHERE r.entry_id=e.id) ORDER BY e.id))") void confirm(@Param("id") UUID id,@Param("direction") String direction,@Param("basis") String basis,@Param("version") int version,@Param("actor") long actor);
     @Select("SELECT 1 FROM pg_advisory_xact_lock(hashtextextended(#{key},0))") int commandLock(String key);
     @Select("SELECT version FROM funds_context WHERE work_order_id=#{id}") Integer version(UUID id);
     @Insert("INSERT INTO funds_context(work_order_id) VALUES(#{id}) ON CONFLICT DO NOTHING") void ensure(UUID id);

@@ -24,6 +24,12 @@ public class FileController {
         .header(HttpHeaders.CONTENT_DISPOSITION,ContentDisposition.attachment().filename(d.metadata().name(),java.nio.charset.StandardCharsets.UTF_8).build().toString())
         .header("X-Content-Type-Options","nosniff").header(HttpHeaders.CACHE_CONTROL,"no-store").body(new InputStreamResource(d.stream()));}
     @PostMapping("/{id}/void") public ApiResponse<Void> voidFile(@PathVariable UUID id){service.voidFile(id);return ApiResponse.success(null);}
+    @GetMapping("/{id}/preview") @Operation(summary="管理员/客服按原文件权限逐页预览PDF；PNG响应及X-Page-Count")
+    public ResponseEntity<byte[]> preview(@PathVariable UUID id,@RequestParam(defaultValue="1") int page) throws java.io.IOException {
+        var image=service.preview(id,page);
+        return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG).header("X-Page-Count",String.valueOf(image.pages()))
+            .header(HttpHeaders.CACHE_CONTROL,"no-store").header("X-Content-Type-Options","nosniff").body(image.bytes());
+    }
     @GetMapping("/cases/{id}/notice-status") public ApiResponse<FileService.MaterialStatus> notice(@PathVariable UUID id){return ApiResponse.success(service.materialStatus(id));}
     public record MissingRequest(String reason){}
     @PostMapping("/cases/{id}/missing-notice") public ApiResponse<FileService.MaterialStatus> missing(@PathVariable UUID id,@RequestBody MissingRequest body){return ApiResponse.success(service.missing(id,body.reason()));}

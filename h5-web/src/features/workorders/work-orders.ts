@@ -22,6 +22,7 @@ export const statusLabels: Record<WorkOrderStatus,string> = {
 export function actionFor(status:WorkOrderStatus,role:'REPAIR_SHOP'|'OWNER'):{label:string;section:string} {
   if(role==='OWNER') {
     if(status==='WAITING_OWNER_CONFIRMATION')return {label:'确认收车',section:'receipt'}
+    if(status==='WAITING_INSURER_PAYMENT'||status==='WAITING_SHOP_SETTLEMENT')return {label:'已收车，等待客服完成资金确认',section:'receipt'}
     if(status==='COMPLETED')return {label:'查看完工与评价',section:'receipt'}
     if(status==='REPAIRING')return {label:'查看维修进度',section:'progress'}
     return {label:'查看案件进度',section:'overview'}
@@ -29,7 +30,7 @@ export function actionFor(status:WorkOrderStatus,role:'REPAIR_SHOP'|'OWNER'):{la
   const actions:Partial<Record<WorkOrderStatus,{label:string;section:string}>>={
     PENDING_ACCEPTANCE:{label:'处理接单',section:'overview'},PENDING_ARRIVAL:{label:'确认车辆到店',section:'overview'},ARRIVAL_EXCEPTION:{label:'处理到店异常',section:'overview'},
     ARRIVED:{label:'提交原始报价',section:'quotation'},WAITING_QUOTE:{label:'提交原始报价',section:'quotation'},QUOTE_REVIEWING:{label:'查看报价状态',section:'quotation'},WAITING_INSURER_ASSESSMENT:{label:'查看授权条件',section:'quotation'},WAITING_REPAIR_AUTHORIZATION:{label:'查看授权条件',section:'quotation'},
-    REPAIRING:{label:'更新维修进度',section:'repair'},WAITING_OWNER_CONFIRMATION:{label:'等待车主收车',section:'repair'},WAITING_SHOP_SETTLEMENT:{label:'查看结算',section:'settlement'},COMPLETED:{label:'查看案件记录',section:'overview'},
+    REPAIRING:{label:'更新维修进度',section:'repair'},WAITING_OWNER_CONFIRMATION:{label:'等待车主收车',section:'repair'},WAITING_INSURER_PAYMENT:{label:'等待客服确认到账',section:'settlement'},WAITING_SHOP_SETTLEMENT:{label:'查看结算',section:'settlement'},COMPLETED:{label:'查看案件记录',section:'overview'},
   }
   return actions[status]??{label:'查看案件详情',section:'overview'}
 }

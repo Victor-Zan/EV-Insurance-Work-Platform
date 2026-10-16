@@ -19,7 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class WorkflowService {
     public record Node(String key,String label,String state,Instant completedAt) {}
-    public record Material(String category,boolean required,boolean present,boolean satisfied,boolean exceptionAccepted,boolean canUpload) {}
+    public record Material(String category,boolean required,boolean present,boolean satisfied,boolean exceptionAccepted,boolean canUpload,boolean shopUploaded) {}
     public record View(UUID caseId,String status,long workOrderVersion,int quotationVersion,int basisVersion,
                        String currentNode,String actorRole,String action,boolean canAct,boolean canContinue,
                        List<String> missing,List<Node> nodes,List<Material> materials,boolean legacyNeedsReview) {}
@@ -29,8 +29,9 @@ public class WorkflowService {
     private final QuotationMapper quotes;
     private final QuotationLifecycle lifecycle;
     private final FileMapper files;
-    public WorkflowService(WorkOrderService workOrders,WorkOrderMapper orders,QuotationMapper quotes,QuotationLifecycle lifecycle,FileMapper files) {
-        this.workOrders=workOrders;this.orders=orders;this.quotes=quotes;this.lifecycle=lifecycle;this.files=files;
+    private final com.evinsurance.platform.funds.application.FundsService funds;
+    public WorkflowService(WorkOrderService workOrders,WorkOrderMapper orders,QuotationMapper quotes,QuotationLifecycle lifecycle,FileMapper files,com.evinsurance.platform.funds.application.FundsService funds) {
+        this.workOrders=workOrders;this.orders=orders;this.quotes=quotes;this.lifecycle=lifecycle;this.files=files;this.funds=funds;
     }
 
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
@@ -78,18 +79,24 @@ public class WorkflowService {
                     if(!currentAmount)missing.add("最终核损金额未录入");
                     if(!loss)missing.add("缺少有效核损单");
                 }
-                case REPAIR_AUTHORIZATION -> {
+                case REPAIR -> {
+                    if("REPAIRING".equals(displayStatus)){
+                        role="REPAIR_SHOP_OR_CUSTOMER_SERVICE";action="SUBMIT_COMPLETION";
+                        if(!eligible(counts,FileCategory.COMPLETION_PHOTO))missing.add("需网点上传本次派单有效JPG/PNG完工照");
+                        break;
+                    }
                     role="CUSTOMER_SERVICE";
                     if(c!=null&&c.insurerConfirmed&&c.serviceConfirmed){role="REPAIR_SHOP";action="START_REPAIR";}
                     else action=c!=null&&c.insurerConfirmed?"CONFIRM_CUSTOMER_SERVICE":"CONFIRM_INSURER";
                     // Keep already authorized legacy evidence valid; new confirmations require current formal context.
                     if(!"START_REPAIR".equals(action)&&!currentFormal)missing.add("请先完成当前报价审核");
-                }
-                case REPAIR -> {
-                    role="REPAIR_SHOP_OR_CUSTOMER_SERVICE";action="SUBMIT_COMPLETION";
-                    if(!eligible(counts,FileCategory.COMPLETION_PHOTO))missing.add("需网点上传本次派单有效JPG/PNG完工照");
+                    if(!lifecycle.hasCurrentAssessment(c))missing.add("请核对当前最终核损单及采用金额");
                 }
                 case RECEIPT -> {role="OWNER_OR_CUSTOMER_SERVICE";action="CONFIRM_RECEIPT";}
+                case FUNDS -> {
+                    role="CUSTOMER_SERVICE";boolean receive="WAITING_INSURER_PAYMENT".equals(displayStatus);action=receive?"CONFIRM_FUNDS_RECEIVE":"CONFIRM_FUNDS_PAY";
+                    if(!funds.get(id).path(receive?"canConfirmReceive":"canConfirmPay").asBoolean())missing.add(receive?"请补齐应收金额、到账流水和凭证编号后确认":"请补齐应付金额、结算流水和凭证编号后确认");
+                }
                 default -> { }
             }
         }
@@ -102,11 +109,13 @@ public class WorkflowService {
         for(var milestone:orders.milestones(id))times.put(milestone.status(),milestone.occurredAt());
         var raw=c==null||c.rawQuoteId==null?null:quotes.raw(c.rawQuoteId);
         var formal=c==null||c.formalQuoteId==null?null:quotes.formal(c.formalQuoteId);
+        boolean stagedFunds=current!=null&&current.ordinal()>=WorkflowNode.FUNDS.ordinal()&&funds.get(id).path("stagedFlow").asBoolean();
         var nodes=new ArrayList<Node>();
         for(var node:WorkflowNode.values()) {
             String state="UNRECORDED";
             if(current!=null)state=node.ordinal()<current.ordinal()?"DONE":node==current?(terminal?"STOPPED":node==WorkflowNode.COMPLETE?"DONE":canAct?"CURRENT":"WAITING"):(terminal?"TERMINATED":"LOCKED");
             if("DONE".equals(state)&&((node==WorkflowNode.SHOP_QUOTE&&raw==null)||(node==WorkflowNode.QUOTE_REVIEW&&formal==null)||(node==WorkflowNode.INSURER_ASSESSMENT&&(assessment==null||!loss))))state="UNRECORDED";
+            if(node==WorkflowNode.FUNDS&&"DONE".equals(state)&&!stagedFunds)state="UNRECORDED";
             Instant time=null;
             if("DONE".equals(state))time=switch(node) {
                 case CREATE -> times.get("PENDING_DISPATCH");
@@ -114,9 +123,9 @@ public class WorkflowService {
                 case SHOP_QUOTE -> raw==null?null:raw.createdAt();
                 case QUOTE_REVIEW -> formal==null?null:formal.createdAt();
                 case INSURER_ASSESSMENT -> assessment==null?null:later(assessment.createdAt(),counts.containsKey(FileCategory.LOSS_ASSESSMENT)?counts.get(FileCategory.LOSS_ASSESSMENT).lastUploadedAt():null);
-                case REPAIR_AUTHORIZATION -> times.get("REPAIRING");
                 case REPAIR -> times.get("WAITING_OWNER_CONFIRMATION");
-                case RECEIPT,COMPLETE -> times.get("COMPLETED");
+                case RECEIPT -> times.getOrDefault("WAITING_INSURER_PAYMENT",times.get("COMPLETED"));
+                case FUNDS,COMPLETE -> times.get("COMPLETED");
             };
             nodes.add(new Node(node.name(),node.label,state,time));
         }
@@ -126,10 +135,10 @@ public class WorkflowService {
             boolean present=present(counts,category);
             if(!allowed&&!present)continue;
             boolean required=(category==FileCategory.SCENE_PHOTO&&(current==WorkflowNode.CREATE||current==WorkflowNode.QUOTE_REVIEW))
-                ||(category==FileCategory.LOSS_ASSESSMENT&&(current==WorkflowNode.INSURER_ASSESSMENT||current==WorkflowNode.REPAIR_AUTHORIZATION))
-                ||(category==FileCategory.COMPLETION_PHOTO&&current==WorkflowNode.REPAIR);
+                ||(category==FileCategory.LOSS_ASSESSMENT&&(current==WorkflowNode.INSURER_ASSESSMENT||(current==WorkflowNode.REPAIR&&"WAITING_REPAIR_AUTHORIZATION".equals(displayStatus))))
+                ||(category==FileCategory.COMPLETION_PHOTO&&current==WorkflowNode.REPAIR&&"REPAIRING".equals(displayStatus));
             boolean exception=category==FileCategory.NOTICE&&!present&&!blank(files.missingReason(id));
-            materials.add(new Material(category.name(),required,present,eligible(counts,category)||exception,exception,allowed&&(actor.roles().contains(Role.CUSTOMER_SERVICE)||(category==FileCategory.SCENE_PHOTO&&actor.roles().contains(Role.ADMIN)))));
+            materials.add(new Material(category.name(),required,present,eligible(counts,category)||exception,exception,allowed&&(actor.roles().contains(Role.CUSTOMER_SERVICE)||(category==FileCategory.SCENE_PHOTO&&actor.roles().contains(Role.ADMIN))),counts.containsKey(category)&&counts.get(category).shopUploadedCount()>0));
         }
         boolean legacy=current==null||(assessment!=null&&!currentFormal&&!terminal)
             ||(current.ordinal()>=WorkflowNode.REPAIR.ordinal()&&(!currentFormal||!currentAmount||!loss));

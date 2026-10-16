@@ -23,13 +23,14 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class RepairService {
     private final RepairMapper mapper;
+    private final com.evinsurance.platform.funds.infrastructure.FundsMapper funds;
     private final WorkOrderMapper orders;
     private final FileMapper files;
     private final QuotationMapper quotations;
     private final AuditService audit;
     private final ObjectMapper json;
-    public RepairService(RepairMapper mapper,WorkOrderMapper orders,FileMapper files,QuotationMapper quotations,AuditService audit,ObjectMapper json){
-        this.mapper=mapper;this.orders=orders;this.files=files;this.quotations=quotations;this.audit=audit;this.json=json;
+    public RepairService(RepairMapper mapper,WorkOrderMapper orders,FileMapper files,QuotationMapper quotations,AuditService audit,ObjectMapper json,com.evinsurance.platform.funds.infrastructure.FundsMapper funds){
+        this.funds=funds;this.mapper=mapper;this.orders=orders;this.files=files;this.quotations=quotations;this.audit=audit;this.json=json;
     }
     private boolean staff(CurrentUser a){return a.roles().contains(Role.ADMIN)||a.roles().contains(Role.CUSTOMER_SERVICE);}
     private WorkOrderEntity visible(UUID id,boolean lock){
@@ -145,15 +146,17 @@ public class RepairService {
             if(request.expectedVersion()==null||request.expectedVersion()!=version(id))throw ApiException.conflict("REPAIR_VERSION_CONFLICT","Refresh before confirming receipt");
             var completion=mapper.completion(id);if(completion==null)throw ApiException.conflict("COMPLETION_EVIDENCE_MISSING","A recorded completion with frozen photo evidence is required");
             mapper.receipt(id,(UUID)completion.get("id"),actor.id(),customerService?"CUSTOMER_SERVICE":"OWNER");
+            funds.ensure(id);funds.enableFlow(id);
             var now=Instant.now();
-            if(orders.transition(id,order.getVersion(),order.getStatus(),"COMPLETED",order.getShopId(),false,actor.id(),now)!=1)throw ApiException.conflict("WORK_ORDER_STATE_CONFLICT","Work order changed concurrently");
+            if(orders.transition(id,order.getVersion(),order.getStatus(),"WAITING_INSURER_PAYMENT",order.getShopId(),false,actor.id(),now)!=1)throw ApiException.conflict("WORK_ORDER_STATE_CONFLICT","Work order changed concurrently");
             var assignment=orders.activeAssignment(id);
-            orders.insertHistory(id,order.getStatus(),"COMPLETED","REPAIR_RECEIPT_CONFIRM",null,actor.id(),actor.roles().stream().map(Enum::name).sorted().collect(java.util.stream.Collectors.joining(",")),assignment==null?null:assignment.getAssignmentVersion(),TraceContext.currentTraceId()==null?UUID.randomUUID().toString():TraceContext.currentTraceId(),now);
-            order.setStatus("COMPLETED");order.setVersion(order.getVersion()+1);advance(id,request.expectedVersion());
-            audit.record(actor,AuditService.Action.REPAIR_RECEIPT_CONFIRM,"WORK_ORDER",id,"Receipt confirmed; work order completed; source="+(customerService?"CUSTOMER_SERVICE":"OWNER"));
+            orders.insertHistory(id,order.getStatus(),"WAITING_INSURER_PAYMENT","REPAIR_RECEIPT_CONFIRM",null,actor.id(),actor.roles().stream().map(Enum::name).sorted().collect(java.util.stream.Collectors.joining(",")),assignment==null?null:assignment.getAssignmentVersion(),TraceContext.currentTraceId()==null?UUID.randomUUID().toString():TraceContext.currentTraceId(),now);
+            order.setStatus("WAITING_INSURER_PAYMENT");order.setVersion(order.getVersion()+1);advance(id,request.expectedVersion());
+            audit.record(actor,AuditService.Action.REPAIR_RECEIPT_CONFIRM,"WORK_ORDER",id,"Receipt confirmed; awaiting manual funds confirmation; source="+(customerService?"CUSTOMER_SERVICE":"OWNER"));
             return view(order);
         });
     }
+    private boolean afterReceipt(String status){return Set.of("WAITING_INSURER_PAYMENT","WAITING_SHOP_SETTLEMENT","COMPLETED").contains(status);}
     private String requiredText(String text,String field){if(text==null||text.isBlank()||text.length()>2000)throw ApiException.invalid(field+" must be 1..2000 characters");return text.trim();}
     private void expected(UUID id,Integer expected){if(expected==null||expected!=version(id))throw ApiException.conflict("REPAIR_VERSION_CONFLICT","Refresh the current repair version");}
     @Transactional public JsonNode withdraw(UUID id,RepairRequests.Withdraw request,String key){
@@ -161,12 +164,12 @@ public class RepairService {
         var order=visible(id,true);
         return command(id,"WITHDRAW",key,request,()->{
             expected(id,request.expectedVersion());var receipt=mapper.receiptLatest(id);
-            if(!"COMPLETED".equals(order.getStatus())||receipt==null||mapper.withdrawn(((Number)receipt.get("id")).longValue()))throw ApiException.conflict("RECEIPT_STATE_CONFLICT","Withdraw a current confirmed receipt only");
+            if(!afterReceipt(order.getStatus())||receipt==null||mapper.withdrawn(((Number)receipt.get("id")).longValue()))throw ApiException.conflict("RECEIPT_STATE_CONFLICT","Withdraw a current confirmed receipt only");
             var actor=CurrentUser.require();String reason=requiredText(request.reason(),"Withdrawal reason");
             mapper.withdraw(((Number)receipt.get("id")).longValue(),reason,actor.id());var now=Instant.now();
-            if(orders.transition(id,order.getVersion(),"COMPLETED","WAITING_OWNER_CONFIRMATION",order.getShopId(),false,actor.id(),now)!=1)throw ApiException.conflict("WORK_ORDER_STATE_CONFLICT","Work order changed concurrently");
+            if(orders.transition(id,order.getVersion(),order.getStatus(),"WAITING_OWNER_CONFIRMATION",order.getShopId(),false,actor.id(),now)!=1)throw ApiException.conflict("WORK_ORDER_STATE_CONFLICT","Work order changed concurrently");
             var assignment=orders.activeAssignment(id);
-            orders.insertHistory(id,"COMPLETED","WAITING_OWNER_CONFIRMATION","REPAIR_RECEIPT_WITHDRAW",reason,actor.id(),"CUSTOMER_SERVICE",assignment==null?null:assignment.getAssignmentVersion(),TraceContext.currentTraceId()==null?UUID.randomUUID().toString():TraceContext.currentTraceId(),now);
+            orders.insertHistory(id,order.getStatus(),"WAITING_OWNER_CONFIRMATION","REPAIR_RECEIPT_WITHDRAW",reason,actor.id(),"CUSTOMER_SERVICE",assignment==null?null:assignment.getAssignmentVersion(),TraceContext.currentTraceId()==null?UUID.randomUUID().toString():TraceContext.currentTraceId(),now);
             order.setStatus("WAITING_OWNER_CONFIRMATION");order.setVersion(order.getVersion()+1);advance(id,request.expectedVersion());
             audit.record(actor,AuditService.Action.REPAIR_RECEIPT_WITHDRAW,"WORK_ORDER",id,"Receipt withdrawn; original completion and review retained");return view(order);
         });
@@ -178,7 +181,7 @@ public class RepairService {
     }
     private JsonNode reviewView(WorkOrderEntity order,Map<String,Object> receipt){
         var original=mapper.review(order.getId());if(original==null)return json.nullNode();var latest=mapper.revision((UUID)original.get("id"));var current=latest==null?original:latest;
-        boolean active="COMPLETED".equals(order.getStatus())&&receipt!=null&&!mapper.withdrawn(((Number)receipt.get("id")).longValue())&&Objects.equals(((Number)current.get("receipt_id")).longValue(),((Number)receipt.get("id")).longValue());
+        boolean active=afterReceipt(order.getStatus())&&receipt!=null&&!mapper.withdrawn(((Number)receipt.get("id")).longValue())&&Objects.equals(((Number)current.get("receipt_id")).longValue(),((Number)receipt.get("id")).longValue());
         return json.createObjectNode().put("eligibleForCurrentRating",active).set("original",reviewEntry(original,false)).set("current",reviewEntry(current,latest!=null));
     }
     @Transactional public JsonNode review(UUID id,RepairRequests.Review request,String key,boolean correction){
@@ -187,7 +190,7 @@ public class RepairService {
         else if(!actor.roles().contains(Role.OWNER)||!Objects.equals(order.getOwnerUserId(),actor.id()))throw ApiException.denied();
         return command(id,correction?"REVIEW_CORRECT":"REVIEW",key,request,()->{
             expected(id,request.expectedVersion());var receipt=mapper.receiptLatest(id);
-            if(!"COMPLETED".equals(order.getStatus())||receipt==null||mapper.withdrawn(((Number)receipt.get("id")).longValue()))throw ApiException.conflict("REVIEW_STATE_CONFLICT","Review requires a current confirmed receipt");
+            if(!afterReceipt(order.getStatus())||receipt==null||mapper.withdrawn(((Number)receipt.get("id")).longValue()))throw ApiException.conflict("REVIEW_STATE_CONFLICT","Review requires a current confirmed receipt");
             String text=request.text();if(text!=null){if(text.length()>2000)throw ApiException.invalid("Review text is limited to 2000 characters");text=text.trim();if(text.isEmpty())text=null;}
             Integer score=null;var input=request.score();if(input!=null&&!input.isNull()){if(!input.isIntegralNumber()||!input.canConvertToInt()||input.asInt()<1||input.asInt()>5)throw ApiException.invalid("Score must be an integer from 1 to 5");score=input.asInt();}
             if(score==null&&text==null)throw ApiException.invalid("Provide review text or score, or skip the review entirely");

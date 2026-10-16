@@ -210,12 +210,62 @@ class QuotationPostgresIT {
     private Map<String,Object> rawBody(String id,List<Map<String,Object>> lines) throws Exception {var c=context(shop,id);return Map.of("expectedVersion",c.path("version").asInt(),"assignmentVersion",c.path("assignmentVersion").asInt(),"lines",lines);}
     private JsonNode raw(String id,String price) throws Exception{return request(shop,path(id,"raw-quotes"),rawBody(id,List.of(Map.of("description","原始配件","quantity",3,"unitPrice",price))),200);}
     private JsonNode review(String id,String mode,String value,int expected) throws Exception {var c=context(customerService,id);return request(customerService,path(id,"formal-quotes"),Map.of("expectedVersion",c.path("version").asInt(),"rawQuoteId",c.path("rawQuote").path("id").asText(),"mode",mode,mode.equals("FIXED_AMOUNT")?"fixedAmount":"percentage",value),expected);}
-    private JsonNode assess(String id,String amount,int expected) throws Exception{return request(customerService,path(id,"assessments"),Map.of("expectedVersion",context(customerService,id).path("version").asInt(),"amount",amount),expected);}
-    private JsonNode confirm(String id,String kind) throws Exception{return request(customerService,path(id,"confirmations/"+kind),Map.of("expectedVersion",context(customerService,id).path("version").asInt()),200);}
+    private JsonNode assess(String id,String amount,int expected) throws Exception {
+        var current=context(customerService,id);
+        var available=db.queryForList("select id from case_file where work_order_id=?::uuid and category='LOSS_ASSESSMENT' and state='ACTIVE' order by created_at desc,id desc limit 1",id);
+        if(expected!=200||!current.hasNonNull("formalQuote")||available.isEmpty())return request(customerService,path(id,"assessments"),Map.of("expectedVersion",current.path("version").asInt(),"amount",amount),expected);
+        var job=request(customerService,"ocr",Map.of("fileId",available.getFirst().get("id").toString()),200);
+        if("QUEUED".equals(job.path("state").asText())){var claimed=ocrTasks.claim(3,60);assertThat(claimed.id().toString()).isEqualTo(job.path("id").asText());ocrTasks.finish(claimed,json.writeValueAsString(Map.of("mock",true,"amountCandidate",amount)),null);}
+        String jobId=job.path("id").asText();int revision=job.path("reviewVersion").asInt();
+        var reviewed=request(customerService,"ocr/"+jobId+"/review",Map.of("expectedVersion",revision,"candidate",Map.of("originalReviewed",true,"adopted",amount)),200);
+        int confirmedRevision=reviewed.path("reviewVersion").asInt();request(customerService,"ocr/"+jobId+"/confirm",Map.of("expectedVersion",confirmedRevision),200);
+        return request(customerService,path(id,"recognized-assessment"),Map.of("jobId",jobId,"revision",confirmedRevision,"assessment",Map.of("expectedVersion",current.path("version").asInt(),"amount",amount)),expected);
+    }
+    private JsonNode confirm(String id,String kind) throws Exception {
+        var c=context(customerService,id);var body=new HashMap<String,Object>();body.put("expectedVersion",c.path("version").asInt());
+        if("CUSTOMER_SERVICE".equals(kind)){body.put("assessmentId",c.path("assessment").path("id").asText());body.put("lossFileId",c.path("assessment").path("lossFileId").asText());body.put("amount",c.path("assessment").path("amount").asText());body.put("originalReviewed",true);}
+        return request(customerService,path(id,"confirmations/"+kind),body,200);
+    }
     private JsonNode start(String id,int expected) throws Exception {var c=context(shop,id);return request(shop,path(id,"start-repair"),Map.of("expectedVersion",c.path("version").asInt(),"assignmentVersion",c.path("assignmentVersion").asInt()),expected);}
     private String upload(String id,String category,String replace,int expected) throws Exception {
         var req=org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/v1/materials/cases/{id}",id).file(new org.springframework.mock.web.MockMultipartFile("file","synthetic.pdf","application/pdf","%PDF-1.7\nSYNTHETIC\n%%EOF".getBytes())).param("category",category).header("Authorization","Bearer "+customerService).header("Idempotency-Key",UUID.randomUUID().toString());if(replace!=null)req.param("replace",replace);
         return json.readTree(mvc.perform(req).andExpect(status().is(expected)).andReturn().getResponse().getContentAsString()).path("data").path("id").asText();
+    }
+    @Test void customerReviewKeepsRawPricesAndOriginalsImmutableAndUsesCorrectedTotals() throws Exception {
+        String id=arrived();int assignment=context(shop,id).path("assignmentVersion").asInt();
+        quoteOriginal(id,assignment,"first.png");quoteOriginal(id,assignment,"second.png");
+        upload(id,"SHOP_QUOTE",null,200); // Staff material must not be attributed to this shop submission.
+        var raw=raw(id,"10.00");String rawId=raw.path("rawQuote").path("id").asText();
+        var c=context(customerService,id);
+        assertThat(c.path("rawQuote").path("originals").size()).isEqualTo(2);
+        quoteOriginal(id,assignment,"later.png");
+        assertThat(context(customerService,id).path("rawQuote").path("originals").size()).isEqualTo(2);
+        var body=new HashMap<String,Object>(Map.of("expectedVersion",c.path("version").asInt(),"rawQuoteId",rawId,"mode","PERCENTAGE","percentage","7.50","reviewedLines",List.of(Map.of("description","原件核对配件","quantity",2,"unitPrice","15.25"))));
+        for(String token:List.of(shop,admin,owner))request(token,path(id,"formal-quotes"),body,403);
+        var invalid=new HashMap<>(body);invalid.put("reviewedLines",List.of(Map.of("description","核对配件","quantity",0,"unitPrice","15.25")));request(customerService,path(id,"formal-quotes"),invalid,400);
+        invalid.put("reviewedLines",List.of(Map.of("description","核对配件","quantity",1,"unitPrice","1.001")));request(customerService,path(id,"formal-quotes"),invalid,400);
+        assertThat(db.queryForObject("select count(*) from quote_formal_review",Long.class)).isZero();
+        String key=UUID.randomUUID().toString();var result=request(customerService,path(id,"formal-quotes"),body,key,200);
+        assertThat(result.path("formalQuote").path("originalTotal").asText()).isEqualTo("30.50");
+        assertThat(result.path("formalQuote").path("markupAmount").asText()).isEqualTo("2.29");
+        assertThat(result.path("formalQuote").path("total").asText()).isEqualTo("32.79");
+        assertThat(result.path("formalQuote").path("reviewedLines").get(0).path("description").asText()).isEqualTo("原件核对配件");
+        assertThat(result.path("rawQuote").path("total").asText()).isEqualTo("30.00");
+        assertThat(db.queryForObject("select unit_price from quote_raw_item where raw_quote_id=?::uuid",java.math.BigDecimal.class,rawId)).isEqualByComparingTo("10.00");
+        assertThat(request(customerService,path(id,"formal-quotes"),body,key,200)).isEqualTo(result);
+        assertThat(db.queryForObject("select count(*) from quote_formal_review",Long.class)).isEqualTo(1);
+        assertThat(db.queryForObject("select count(*) from audit_log where action='QUOTE_REVIEW'",Long.class)).isEqualTo(1);
+        assertThat(context(shop,id).has("formalQuote")).isFalse();
+        request(customerService,path(id,"formal-quotes"),body,409);
+        org.junit.jupiter.api.Assertions.assertThrows(org.springframework.dao.DataAccessException.class,()->db.update("update quote_formal_review set adopted_json='[]'"));
+        org.junit.jupiter.api.Assertions.assertThrows(org.springframework.dao.DataAccessException.class,()->db.update("delete from quote_raw_file where raw_quote_id=?::uuid",rawId));
+        flyway.validate();
+    }
+    private void quoteOriginal(String id,int assignment,String name) throws Exception {
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/v1/materials/cases/{id}",id)
+            .file(new org.springframework.mock.web.MockMultipartFile("file",name,"image/png",Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5S8AAAAASUVORK5CYII=")))
+            .param("category","SHOP_QUOTE").param("assignmentVersion",String.valueOf(assignment))
+            .header("Authorization","Bearer "+shop).header("Idempotency-Key",UUID.randomUUID().toString())).andExpect(status().isOk());
     }
     @Test void assessmentAndConfirmationsCannotSkipEarlierWorkflowSteps() throws Exception {
         String id=arrived();
@@ -261,6 +311,52 @@ class QuotationPostgresIT {
         review(id,"FIXED_AMOUNT","0.00",200);
     }
     private void authorized(String id) throws Exception {prepareFormal(id);upload(id,"LOSS_ASSESSMENT",null,200);assess(id,"0.00",200);confirm(id,"INSURER");confirm(id,"CUSTOMER_SERVICE");assertThat(context(shop,id).path("authorized").asBoolean()).isTrue();}
+    @Test void finalAuthorizationChecksPriceAndLatestConfirmedLossDocumentInsteadOfFormalQuoteTotal() throws Exception {
+        String id=arrived();raw(id,"10.00");review(id,"FIXED_AMOUNT","0.00",200);
+        upload(id,"LOSS_ASSESSMENT",null,200);assess(id,"18.00",200);confirm(id,"INSURER");
+        var c=context(customerService,id);var a=c.path("assessment");
+        assertThat(a.path("sourceCurrent").asBoolean()).isTrue();
+        assertThat(c.path("formalQuote").path("total").asText()).isEqualTo("30.00");
+        var body=new HashMap<String,Object>(Map.of("expectedVersion",c.path("version").asInt(),"assessmentId",a.path("id").asText(),"lossFileId",a.path("lossFileId").asText(),"amount","30.00","originalReviewed",true));
+        request(customerService,path(id,"confirmations/CUSTOMER_SERVICE"),body,409);
+        body.put("amount","18.00");body.put("originalReviewed",false);request(customerService,path(id,"confirmations/CUSTOMER_SERVICE"),body,400);
+        body.put("originalReviewed",true);body.put("lossFileId",UUID.randomUUID().toString());request(customerService,path(id,"confirmations/CUSTOMER_SERVICE"),body,409);
+        body.put("lossFileId",a.path("lossFileId").asText());body.put("assessmentId",UUID.randomUUID().toString());request(customerService,path(id,"confirmations/CUSTOMER_SERVICE"),body,409);
+        body.put("assessmentId",a.path("id").asText());
+        for(String token:List.of(shop,owner,admin))request(token,path(id,"confirmations/CUSTOMER_SERVICE"),body,403);
+        assertThat(context(customerService,id).path("authorized").asBoolean()).isFalse();
+        String key=UUID.randomUUID().toString();var accepted=request(customerService,path(id,"confirmations/CUSTOMER_SERVICE"),body,key,200);
+        assertThat(accepted.path("authorized").asBoolean()).isTrue();
+        assertThat(request(customerService,path(id,"confirmations/CUSTOMER_SERVICE"),body,key,200)).isEqualTo(accepted);
+        var stored=json.readTree(db.queryForObject("select file_snapshot from quotation_confirmation where work_order_id=?::uuid and kind='CUSTOMER_SERVICE' order by created_at desc limit 1",String.class,id));
+        assertThat(stored.path("amount").asText()).isEqualTo("18.00");assertThat(stored.path("lossFileId").asText()).isEqualTo(a.path("lossFileId").asText());
+        upload(id,"LOSS_ASSESSMENT",null,200);
+        c=context(customerService,id);assertThat(c.path("assessment").path("sourceCurrent").asBoolean()).isFalse();start(id,409);
+        confirm(id,"INSURER");body.put("expectedVersion",context(customerService,id).path("version").asInt());request(customerService,path(id,"confirmations/CUSTOMER_SERVICE"),body,409);
+        assess(id,"19.00",200);confirm(id,"INSURER");confirm(id,"CUSTOMER_SERVICE");start(id,200);
+    }
+    @Test void unlinkedAssessmentCannotAuthorizeEvenWithAnActiveFileAndMatchingEnteredPrice() throws Exception {
+        String id=arrived();prepareFormal(id);upload(id,"LOSS_ASSESSMENT",null,200);
+        var c=context(customerService,id);var recorded=request(customerService,path(id,"assessments"),Map.of("expectedVersion",c.path("version").asInt(),"amount","12.00"),200);
+        assertThat(recorded.path("assessment").path("sourceCurrent").asBoolean()).isFalse();confirm(id,"INSURER");c=context(customerService,id);
+        String file=db.queryForObject("select id::text from case_file where work_order_id=?::uuid and category='LOSS_ASSESSMENT' and state='ACTIVE' order by created_at desc,id desc limit 1",String.class,id);
+        request(customerService,path(id,"confirmations/CUSTOMER_SERVICE"),Map.of("expectedVersion",c.path("version").asInt(),"assessmentId",c.path("assessment").path("id").asText(),"lossFileId",file,"amount","12.00","originalReviewed",true),409);
+        assertThat(context(customerService,id).path("authorized").asBoolean()).isFalse();
+    }
+    @Test void documentPreviewsRenderTheAuthorizedPdfAndKeepRoleAndCaseScope() throws Exception {
+        String id=arrived();prepareFormal(id);String quote=context(customerService,id).path("formalQuote").path("id").asText();
+        String url="/api/v1/quotations/cases/"+id+"/formal-quotes/"+quote;
+        byte[] pdf=mvc.perform(get(url+"/pdf").header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();
+        byte[] png=mvc.perform(get(url+"/preview").header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("X-Page-Count","1")).andReturn().getResponse().getContentAsByteArray();
+        assertThat(javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(png))).isNotNull();
+        mvc.perform(get(url+"/preview?page=0").header("Authorization","Bearer "+customerService)).andExpect(status().isBadRequest());
+        mvc.perform(get(url+"/preview?page=999").header("Authorization","Bearer "+customerService)).andExpect(status().isBadRequest());
+        for(String token:List.of(shop,owner))mvc.perform(get(url+"/preview").header("Authorization","Bearer "+token)).andExpect(status().isForbidden());
+        String other=arrived();mvc.perform(get("/api/v1/quotations/cases/"+other+"/formal-quotes/"+quote+"/preview").header("Authorization","Bearer "+customerService)).andExpect(status().isNotFound());
+        String file=json.readTree(mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/v1/materials/cases/{id}",id).file(new org.springframework.mock.web.MockMultipartFile("file","synthetic-loss.pdf","application/pdf",pdf)).param("category","LOSS_ASSESSMENT").header("Authorization","Bearer "+customerService).header("Idempotency-Key",UUID.randomUUID().toString())).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data").path("id").asText();
+        mvc.perform(get("/api/v1/materials/{id}/preview",file).header("Authorization","Bearer "+admin)).andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("X-Page-Count","1"));
+        for(String token:List.of(shop,owner))mvc.perform(get("/api/v1/materials/{id}/preview",file).header("Authorization","Bearer "+token)).andExpect(status().isForbidden());
+    }
     @Test void confirmationRequiresAmountFileAndInsurerInOrder() throws Exception {
         String id=arrived();prepareFormal(id);
         request(customerService,path(id,"confirmations/INSURER"),Map.of("expectedVersion",context(customerService,id).path("version").asInt()),409);
@@ -269,12 +365,13 @@ class QuotationPostgresIT {
         upload(id,"LOSS_ASSESSMENT",null,200);
         request(customerService,path(id,"confirmations/CUSTOMER_SERVICE"),Map.of("expectedVersion",context(customerService,id).path("version").asInt()),409);
         assertThat(db.queryForObject("select count(*) from quotation_confirmation where work_order_id=?::uuid",Long.class,id)).isZero();
-        confirm(id,"INSURER");confirm(id,"CUSTOMER_SERVICE");
-        mvc.perform(get("/api/v1/work-orders/{id}/workflow",id).header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andExpect(jsonPath("$.data.currentNode").value("REPAIR_AUTHORIZATION")).andExpect(jsonPath("$.data.canAct").value(false)).andExpect(jsonPath("$.data.action").value("START_REPAIR"));
+        assess(id,"0.00",200);confirm(id,"INSURER");confirm(id,"CUSTOMER_SERVICE");
+        mvc.perform(get("/api/v1/work-orders/{id}/workflow",id).header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andExpect(jsonPath("$.data.currentNode").value("REPAIR")).andExpect(jsonPath("$.data.canAct").value(false)).andExpect(jsonPath("$.data.action").value("START_REPAIR"));
         raw(id,"1.00");
         assertThat(context(customerService,id).hasNonNull("assessment")).isFalse();
         assertThat(db.queryForObject("select assessment_id from quotation_context where work_order_id=?::uuid",UUID.class,id)).isNull();
-        assertThat(db.queryForObject("select count(*) from quote_assessment where work_order_id=?::uuid",Long.class,id)).isEqualTo(1);
+        // Original unlinked amount and the subsequent document-reviewed revision are both retained.
+        assertThat(db.queryForObject("select count(*) from quote_assessment where work_order_id=?::uuid",Long.class,id)).isEqualTo(2);
         assertThat(context(customerService,id).path("authorized").asBoolean()).isFalse();
         request(customerService,path(id,"confirmations/INSURER"),Map.of("expectedVersion",context(customerService,id).path("version").asInt()),409);
     }
@@ -382,7 +479,7 @@ class QuotationPostgresIT {
         mvc.perform(get("/api/v1/historical-cases").header("Authorization","Bearer "+admin).param("query","HIST-100"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(2));
     }
-    @Test void allFourIndividualMissingConditionsAreRejectedAndNothingElseIsAdded() throws Exception {
+    @Test void allFourConditionsAndCurrentDocumentAmountBindingAreRevalidated() throws Exception {
         for(int omitted=0;omitted<4;omitted++) {
             String id=arrived();authorized(id);
             // Simulate a single missing condition in legacy evidence; authorized=true must never bypass revalidation.
@@ -393,7 +490,7 @@ class QuotationPostgresIT {
                 case 3 -> db.update("update quotation_context set service_confirmed=false where work_order_id=?::uuid",id);
                 default -> throw new AssertionError();
             }
-            var view=context(shop,id);assertThat(view.path("gate").path("allowed").asBoolean()).isFalse();assertThat(view.path("gate").path("missing").size()).isEqualTo(1);start(id,409);
+            var view=context(shop,id);assertThat(view.path("gate").path("allowed").asBoolean()).isFalse();assertThat(view.path("gate").path("missing").size()).isEqualTo(omitted==0?2:1);start(id,409);
         }
         String valid=arrived();authorized(valid);String key=UUID.randomUUID().toString();var c=context(shop,valid);var body=Map.of("expectedVersion",c.path("version").asInt(),"assignmentVersion",c.path("assignmentVersion").asInt());
         var first=request(shop,path(valid,"start-repair"),body,key,200);var retry=request(shop,path(valid,"start-repair"),body,key,200);assertThat(retry).isEqualTo(first);assertThat(first.path("status").asText()).isEqualTo("REPAIRING");
@@ -404,7 +501,7 @@ class QuotationPostgresIT {
         String file=upload(id,"LOSS_ASSESSMENT",null,200);assess(id,"0.04",200);confirm(id,"INSURER");confirm(id,"CUSTOMER_SERVICE");
         var changed=assess(id,"0.05",200);assertThat(changed.path("authorized").asBoolean()).isFalse();assertThat(changed.path("gate").path("insurerConfirmationRecorded").asBoolean()).isFalse();assertThat(changed.path("gate").path("customerServiceConfirmationRecorded").asBoolean()).isFalse();start(id,409);
         confirm(id,"INSURER");confirm(id,"CUSTOMER_SERVICE");String next=upload(id,"LOSS_ASSESSMENT",file,200);assertThat(context(shop,id).path("authorized").asBoolean()).isFalse();assertThat(context(customerService,id).path("assessment").path("amount").asText()).isEqualTo("0.05");
-        confirm(id,"INSURER");confirm(id,"CUSTOMER_SERVICE");raw(id,"0.02");var afterRaw=context(customerService,id);assertThat(afterRaw.path("formalQuote").isNull()).isTrue();assertThat(afterRaw.path("authorized").asBoolean()).isFalse();
+        assertThat(context(customerService,id).path("assessment").path("sourceCurrent").asBoolean()).isFalse();assess(id,"0.05",200);confirm(id,"INSURER");confirm(id,"CUSTOMER_SERVICE");raw(id,"0.02");var afterRaw=context(customerService,id);assertThat(afterRaw.path("formalQuote").isNull()).isTrue();assertThat(afterRaw.path("authorized").asBoolean()).isFalse();
         review(id,"PERCENTAGE","0.00",200);assess(id,"0.05",200);confirm(id,"INSURER");confirm(id,"CUSTOMER_SERVICE");start(id,200);
         assess(id,"1.00",409);request(shop,path(id,"raw-quotes"),rawBody(id,List.of(Map.of("description","开修后修订","quantity",1,"unitPrice","9.00"))),409);upload(id,"LOSS_ASSESSMENT",next,409);request(customerService,"materials/"+next+"/void",Map.of(),409);assertThat(db.queryForObject("select count(*) from quotation_confirmation where work_order_id=?::uuid",Long.class,id)).isGreaterThan(2);
     }
@@ -502,7 +599,7 @@ class QuotationPostgresIT {
         for(String token:List.of(owner,customerService)){
             String id=completedRepair(),key=UUID.randomUUID().toString();var body=Map.of("expectedVersion",1);
             var result=request(token,"repairs/cases/"+id+"/receipt",body,key,200);
-            assertThat(result.path("status").asText()).isEqualTo("COMPLETED");assertThat(result.path("version").asInt()).isEqualTo(2);
+            assertThat(result.path("status").asText()).isEqualTo("WAITING_INSURER_PAYMENT");assertThat(result.path("version").asInt()).isEqualTo(2);
             assertThat(result.path("receipt").path("confirmedBy").asText()).isEqualTo(token.equals(owner)?"OWNER":"CUSTOMER_SERVICE");
             request(token,"repairs/cases/"+id+"/receipt",body,key,200);request(token,"repairs/cases/"+id+"/receipt",body,409);
             assertThat(db.queryForObject("select count(*) from repair_receipt where work_order_id=?::uuid",Integer.class,id)).isEqualTo(1);
@@ -614,6 +711,8 @@ class QuotationPostgresIT {
     private JsonNode funds(String token,String id) throws Exception {return json.readTree(mvc.perform(get("/api/v1/funds/cases/{id}",id).header("Authorization","Bearer "+token)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data");}
     private JsonNode fundsTarget(String id,String direction,String amount,int expected) throws Exception {var body=new HashMap<String,Object>();body.put("expectedVersion",funds(customerService,id).path("version").asInt());body.put("direction",direction);body.put("amount",amount);body.put("reason","合成资金目标版本");return request(customerService,"funds/cases/"+id+"/targets",body,expected);}
     private Map<String,Object> fundsEntry(String id,String dir,String number,String amount) throws Exception {return Map.of("expectedVersion",funds(customerService,id).path("version").asInt(),"direction",dir,"transactionNo",number,"amount",amount,"occurredAt","2026-10-10T02:00:00Z","note","SYNTHETIC_INTERNAL_NOTE");}
+    private JsonNode fundsConfirm(String id,String dir,int expected) throws Exception {return request(customerService,"funds/cases/"+id+"/confirmations",Map.of("expectedVersion",funds(customerService,id).path("version").asInt(),"direction",dir),expected);}
+    private void caseStatus(String id,String state) {assertThat(db.queryForObject("select status from work_order where id=?::uuid",String.class,id)).isEqualTo(state);}
     private String receivedRepair() throws Exception {String id=completedRepair();request(owner,"repairs/cases/"+id+"/receipt",Map.of("expectedVersion",1),200);return id;}
     @Test void fundsPartialMultipleReceiptsAndPaymentsRemainSeparateFromRepairAndRoleFiltered() throws Exception {
         String id=receivedRepair();fundsTarget(id,"RECEIVE","100.01",200);fundsTarget(id,"PAY","80.00",200);
@@ -623,7 +722,9 @@ class QuotationPostgresIT {
         request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"RECEIVE",number,"21.00"),409);
         request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"RECEIVE","RECEIVE-"+UUID.randomUUID(),"80.02"),409);
         request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"RECEIVE","RECEIVE-"+UUID.randomUUID(),"80.01"),200);
+        caseStatus(id,"WAITING_INSURER_PAYMENT");fundsConfirm(id,"RECEIVE",200);
         request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"PAY","PAY-"+UUID.randomUUID(),"30.00"),200);request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"PAY","PAY-"+UUID.randomUUID(),"50.00"),200);
+        caseStatus(id,"WAITING_SHOP_SETTLEMENT");fundsConfirm(id,"PAY",200);
         assertThat(funds(customerService,id).path("receivable").path("net").asText()).isEqualTo("100.01");assertThat(funds(customerService,id).path("payable").path("status").asText()).isEqualTo("SETTLED");assertThat(funds(shop,id).has("receivable")).isFalse();
         String shopHistory=mvc.perform(get("/api/v1/funds/cases/{id}/entries",id).header("Authorization","Bearer "+shop)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();assertThat(shopHistory).doesNotContain("RECEIVE","SYNTHETIC_INTERNAL_NOTE","transactionNo","reversalReason");
         mvc.perform(get("/api/v1/funds/cases/{id}",id).header("Authorization","Bearer "+owner)).andExpect(status().isForbidden());mvc.perform(get("/api/v1/funds/cases/{id}/export",id).header("Authorization","Bearer "+owner)).andExpect(status().isForbidden());
@@ -641,10 +742,49 @@ class QuotationPostgresIT {
         assertThat(funds(customerService,id).path("receivable").path("net").asText()).isEqualTo("0.00");assertThat(db.queryForObject("select count(*) from funds_reversal where entry_id=?::uuid",Integer.class,entry)).isEqualTo(1);assertThat(db.queryForObject("select status from work_order where id=?::uuid",String.class,id)).isEqualTo("CANCELLED");
     }
     @Test void receiptWithdrawalPreservesFundsAndBlocksNewPaymentUntilRereceipt() throws Exception {
-        String id=receivedRepair();fundsTarget(id,"RECEIVE","20.00",200);fundsTarget(id,"PAY","20.00",200);request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"RECEIVE","WITHDRAW-R-"+UUID.randomUUID(),"20.00"),200);request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"PAY","WITHDRAW-P-"+UUID.randomUUID(),"10.00"),200);
-        var before=funds(customerService,id);assertThat(before.path("canRecordPay").asBoolean()).isTrue();request(customerService,"repairs/cases/"+id+"/receipt/withdraw",Map.of("expectedVersion",2,"reason","合成收车撤回"),200);var expectedAfter=(tools.jackson.databind.node.ObjectNode)before.deepCopy();expectedAfter.put("canRecordPay",false);assertThat(funds(customerService,id)).isEqualTo(expectedAfter);
+        String id=receivedRepair();fundsTarget(id,"RECEIVE","20.00",200);fundsTarget(id,"PAY","20.00",200);request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"RECEIVE","WITHDRAW-R-"+UUID.randomUUID(),"20.00"),200);fundsConfirm(id,"RECEIVE",200);request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"PAY","WITHDRAW-P-"+UUID.randomUUID(),"10.00"),200);
+        var before=funds(customerService,id);assertThat(before.path("canRecordPay").asBoolean()).isTrue();request(customerService,"repairs/cases/"+id+"/receipt/withdraw",Map.of("expectedVersion",2,"reason","合成收车撤回"),200);var after=funds(customerService,id);assertThat(after.path("canRecordPay").asBoolean()).isFalse();assertThat(after.path("receiveConfirmed").asBoolean()).isFalse();assertThat(after.path("receivable")).isEqualTo(before.path("receivable"));assertThat(after.path("payable")).isEqualTo(before.path("payable"));caseStatus(id,"WAITING_OWNER_CONFIRMATION");
         request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"PAY","AFTER-WITHDRAW-"+UUID.randomUUID(),"10.00"),409);fundsTarget(id,"PAY",null,409);fundsTarget(id,"PAY","9.00",409);
-        request(owner,"repairs/cases/"+id+"/receipt",Map.of("expectedVersion",3),200);request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"PAY","AFTER-RERECEIVE-"+UUID.randomUUID(),"10.00"),200);assertThat(funds(customerService,id).path("payable").path("status").asText()).isEqualTo("SETTLED");
+        request(owner,"repairs/cases/"+id+"/receipt",Map.of("expectedVersion",3),200);fundsConfirm(id,"RECEIVE",200);request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"PAY","AFTER-RERECEIVE-"+UUID.randomUUID(),"10.00"),200);assertThat(funds(customerService,id).path("payable").path("status").asText()).isEqualTo("SETTLED");
+    }
+
+    @Test void fundsManualConfirmationRequiresOrderedSettledLegsAndCurrentVersions() throws Exception {
+        String early=arrived();fundsTarget(early,"RECEIVE","0.00",200);fundsConfirm(early,"RECEIVE",409);
+        String id=receivedRepair();caseStatus(id,"WAITING_INSURER_PAYMENT");fundsConfirm(id,"RECEIVE",409);fundsConfirm(id,"PAY",409);
+        fundsTarget(id,"RECEIVE","20.00",200);fundsTarget(id,"PAY","10.00",200);
+        request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"RECEIVE","CONFIRM-PART-"+UUID.randomUUID(),"5.00"),200);fundsConfirm(id,"RECEIVE",409);
+        request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"RECEIVE","CONFIRM-FULL-"+UUID.randomUUID(),"15.00"),200);
+        var body=Map.of("expectedVersion",funds(customerService,id).path("version").asInt(),"direction","RECEIVE");
+        for(String actor:List.of(admin,shop,owner))request(actor,"funds/cases/"+id+"/confirmations",body,403);
+        request(customerService,"funds/cases/"+id+"/confirmations",Map.of("expectedVersion",0,"direction","RECEIVE"),409);
+        request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"PAY","BEFORE-CONFIRM-"+UUID.randomUUID(),"10.00"),409);
+        String key=UUID.randomUUID().toString();var first=request(customerService,"funds/cases/"+id+"/confirmations",body,key,200);
+        assertThat(request(customerService,"funds/cases/"+id+"/confirmations",body,key,200)).isEqualTo(first);caseStatus(id,"WAITING_SHOP_SETTLEMENT");fundsConfirm(id,"PAY",409);
+        assertThat(findTask(customerService,id,"PAY_SHOP").path("kind").asText()).isEqualTo("PAY_SHOP");
+        assertThat(getData(shop,"notifications/todos?caseId="+id+"&size=100").path("total").asInt()).isZero();
+        boolean listed=false;for(var row:getData(customerService,"work-orders?status=WAITING_SHOP_SETTLEMENT&size=100").path("records"))if(id.equals(row.path("id").asText())){listed=true;assertThat(row.path("workflowNode").asText()).isEqualTo("FUNDS");assertThat(row.path("workflowActor").asText()).isEqualTo("客服");}assertThat(listed).isTrue();
+        request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"PAY","CONFIRM-PAY-"+UUID.randomUUID(),"10.00"),200);caseStatus(id,"WAITING_SHOP_SETTLEMENT");
+        fundsConfirm(id,"PAY",200);caseStatus(id,"COMPLETED");
+        mvc.perform(get("/api/v1/work-orders/{id}/workflow",id).header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andExpect(jsonPath("$.data.currentNode").value("COMPLETE")).andExpect(jsonPath("$.data.nodes[7].key").value("FUNDS"));
+        assertThat(funds(shop,id).toString()).doesNotContain("receiveConfirmed","canConfirm","receivable","flowStage");
+        assertThat(db.queryForObject("select count(*) from funds_confirmation where work_order_id=?::uuid",Integer.class,id)).isEqualTo(2);
+        assertThat(db.queryForObject("select cardinality(entry_ids) from funds_confirmation where work_order_id=?::uuid and direction='RECEIVE'",Integer.class,id)).isEqualTo(2);
+        assertThat(db.queryForObject("select count(*) from audit_log where object_id=? and action='FUNDS_CONFIRM'",Integer.class,id)).isEqualTo(2);
+        org.junit.jupiter.api.Assertions.assertThrows(org.springframework.dao.DataAccessException.class,()->db.update("delete from funds_confirmation where work_order_id=?::uuid",id));
+    }
+    @Test void fundsZeroTargetsNeedExplicitConfirmationAndChangedEvidenceReopensCorrectStep() throws Exception {
+        String id=receivedRepair();fundsTarget(id,"RECEIVE","0.00",200);fundsTarget(id,"PAY","0.00",200);fundsConfirm(id,"PAY",409);
+        fundsConfirm(id,"RECEIVE",200);fundsConfirm(id,"PAY",200);caseStatus(id,"COMPLETED");
+        fundsTarget(id,"PAY","0.00",200);caseStatus(id,"WAITING_SHOP_SETTLEMENT");fundsConfirm(id,"PAY",200);
+        fundsTarget(id,"RECEIVE","10.00",200);caseStatus(id,"WAITING_INSURER_PAYMENT");
+        String entry=request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"RECEIVE","REOPEN-"+UUID.randomUUID(),"10.00"),200).path("entryId").asText();
+        fundsConfirm(id,"RECEIVE",200);caseStatus(id,"WAITING_SHOP_SETTLEMENT");fundsConfirm(id,"PAY",200);caseStatus(id,"COMPLETED");
+        request(customerService,"funds/cases/"+id+"/entries/"+entry+"/reverse",Map.of("expectedVersion",funds(customerService,id).path("version").asInt(),"reason","合成到账冲销"),200);
+        caseStatus(id,"WAITING_INSURER_PAYMENT");assertThat(funds(customerService,id).path("receiveConfirmed").asBoolean()).isFalse();assertThat(funds(customerService,id).path("payConfirmed").asBoolean()).isFalse();
+        mvc.perform(get("/api/v1/work-orders/{id}/workflow",id).header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andExpect(jsonPath("$.data.currentNode").value("FUNDS"));
+        String legacy=receivedRepair();db.update("update funds_context set staged_flow=false where work_order_id=?::uuid",legacy);db.update("update work_order set status='COMPLETED' where id=?::uuid",legacy);
+        fundsTarget(legacy,"RECEIVE","0.00",200);caseStatus(legacy,"COMPLETED");assertThat(funds(customerService,legacy).path("stagedFlow").asBoolean()).isFalse();fundsConfirm(legacy,"RECEIVE",409);
+        mvc.perform(get("/api/v1/work-orders/{id}/workflow",legacy).header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andExpect(jsonPath("$.data.currentNode").value("COMPLETE")).andExpect(jsonPath("$.data.nodes[7].state").value("UNRECORDED"));
     }
     private JsonNode importCsv(String token,String csv,int expected) throws Exception {
         var result=mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/v1/funds/imports").file(new org.springframework.mock.web.MockMultipartFile("file","synthetic.csv","text/csv",csv.getBytes(java.nio.charset.StandardCharsets.UTF_8))).header("Authorization","Bearer "+token)).andExpect(status().is(expected)).andReturn().getResponse().getContentAsString();return json.readTree(result).path("data");

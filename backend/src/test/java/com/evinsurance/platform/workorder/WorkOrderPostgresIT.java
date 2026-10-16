@@ -231,6 +231,10 @@ class WorkOrderPostgresIT {
         assertThat(shops.path("records").size()).isEqualTo(1);
         assertThat(shops.path("records").get(0).path("id").asLong()).isEqualTo(nearest);assertThat(shops.path("records").get(0).path("distanceMetres").asDouble()).isZero();
         var next=api(customerService,"GET","/api/v1/work-orders/"+id+"/eligible-shops?size=1&page=2",null,null,200);assertThat(next.path("records").get(0).path("id").asLong()).isNotEqualTo(nearest);assertThat(next.path("records").get(0).path("distanceMetres").asDouble()).isGreaterThanOrEqualTo(0);
+        var mapped=api(customerService,"GET","/api/v1/maps/cases/"+id+"/shops?size=1",null,null,200);
+        assertThat(mapped.path("records").get(0).path("id").asLong()).isEqualTo(nearest);
+        assertThat(mapped.path("records").get(0).path("distanceMetres").asDouble()).isZero();
+        assertThat(mapped.path("records").get(0).path("mockLocation").path("mock").asBoolean()).isTrue();
         var dispatched=api(customerService,"POST","/api/v1/work-orders/"+id+"/dispatch",Map.of("shopId",shopId),"dispatch-"+id,200);
         var shopView=api(shop,"GET","/api/v1/work-orders/"+id,null,null,200);assertThat(shopView.hasNonNull("surveyorPhone")).isFalse();
         int assignment=dispatched.path("currentAssignment").path("assignmentVersion").asInt();

@@ -235,6 +235,37 @@ class MaterialsPostgresIT {
         mvc.perform(put("/api/v1/work-orders/{id}/critical-fields",id).header("Authorization","Bearer "+customerService).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("insuranceCompany","测试","claimNo","changed","vehicleVin","VIN","reason","只读测试")))).andExpect(status().isConflict());
         flyway.validate();
     }
+    @Test void shopReceiptsDistinguishStaffUploadsAndOnlySubmittedQuoteAdvancesWorkflow() throws Exception {
+        String id=caseId();
+        var assigned=dispatch(customerService,id,shopId,true,"合成报价接收测试",UUID.randomUUID().toString(),200).path("data");
+        int version=assignmentVersion(assigned);
+        command(shop,"work-orders/"+id+"/accept",Map.of("assignmentVersion",version),200);
+        command(shop,"work-orders/"+id+"/arrive",Map.of("assignmentVersion",version),200);
+        upload(customerService,id,"ARRIVAL_PHOTO",UUID.randomUUID().toString(),null,null,200);
+        var flow=workflow(id);
+        assertThat(flow.path("currentNode").asText()).isEqualTo("SHOP_QUOTE");
+        assertThat(material(flow,"ARRIVAL_PHOTO").path("present").asBoolean()).isTrue();
+        assertThat(material(flow,"ARRIVAL_PHOTO").path("shopUploaded").asBoolean()).isFalse();
+        var photo=upload(shop,id,"ARRIVAL_PHOTO",UUID.randomUUID().toString(),null,version,200);
+        upload(shop,id,"SHOP_QUOTE",UUID.randomUUID().toString(),null,version,200);
+        flow=workflow(id);
+        assertThat(material(flow,"ARRIVAL_PHOTO").path("shopUploaded").asBoolean()).isTrue();
+        assertThat(material(flow,"SHOP_QUOTE").path("shopUploaded").asBoolean()).isTrue();
+        assertThat(flow.path("currentNode").asText()).isEqualTo("SHOP_QUOTE");
+        assertThat(flow.path("canAct").asBoolean()).isFalse();
+        command(customerService,"quotations/cases/"+id+"/formal-quotes",Map.of("expectedVersion",0,"rawQuoteId",UUID.randomUUID().toString(),"mode","FIXED_AMOUNT","fixedAmount","0.00"),409);
+        command(customerService,"materials/"+photo.path("id").asText()+"/void",Map.of(),200);
+        assertThat(material(workflow(id),"ARRIVAL_PHOTO").path("shopUploaded").asBoolean()).isFalse();
+        command(shop,"quotations/cases/"+id+"/raw-quotes",Map.of("expectedVersion",0,"assignmentVersion",version,"lines",List.of(Map.of("description","合成配件","quantity",1,"unitPrice","1.00"))),200);
+        assertThat(workflow(id).path("currentNode").asText()).isEqualTo("QUOTE_REVIEW");
+    }
+    private JsonNode workflow(String id) throws Exception {
+        return json.readTree(mvc.perform(get("/api/v1/work-orders/{id}/workflow",id).header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data");
+    }
+    private JsonNode material(JsonNode flow,String category) {
+        for(var item:flow.path("materials"))if(category.equals(item.path("category").asText()))return item;
+        throw new AssertionError("Missing material: "+category);
+    }
     @Test void limitsTypesAndIdempotentConcurrency() throws Exception {
         String id=caseId();mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/v1/materials/cases/{id}",id).file(new org.springframework.mock.web.MockMultipartFile("file","synthetic.pdf","application/pdf","%PDF-1.7".getBytes())).header("Authorization","Bearer "+customerService).param("category","NOTICE")).andExpect(status().isBadRequest());String first=upload(customerService,id,"NOTICE","first-"+id,null,null,200).path("id").asText();
         upload(customerService,id,"SHOP_QUOTE","first-"+id,null,null,409);
@@ -271,7 +302,14 @@ class MaterialsPostgresIT {
     }
     @Test void mapMockScopeAndValidation() throws Exception {
         mvc.perform(get("/api/v1/maps/search?query=合成地址").header("Authorization","Bearer "+customerService)).andExpect(status().isOk());
-        for(String token:List.of(admin,shop,owner))mvc.perform(get("/api/v1/maps/geocode?address=test").header("Authorization","Bearer "+token)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/v1/maps/geocode?address=test").header("Authorization","Bearer "+admin)).andExpect(status().isOk());
+        for(String token:List.of(shop,owner)){
+            mvc.perform(get("/api/v1/maps/geocode?address=test").header("Authorization","Bearer "+token)).andExpect(status().isForbidden());
+            mvc.perform(get("/api/v1/maps/cities?query=模拟").header("Authorization","Bearer "+token)).andExpect(status().isForbidden());
+        }
+        for(String token:List.of(admin,customerService))mvc.perform(get("/api/v1/maps/cities").param("query","模拟覆盖市").header("Authorization","Bearer "+token)).andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(1)).andExpect(jsonPath("$.data.records[0].code").value("DEV-CITY"));
+        mvc.perform(get("/api/v1/maps/cities?query=不存在的城市").header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(0));
+        mvc.perform(get("/api/v1/maps/cities?size=101").header("Authorization","Bearer "+customerService)).andExpect(status().isBadRequest());
         mvc.perform(get("/api/v1/maps/reverse?latitude=91&longitude=114").header("Authorization","Bearer "+customerService)).andExpect(status().isBadRequest());
         mvc.perform(get("/api/v1/maps/distance?fromLat=22&fromLon=114&toLat=22&toLon=114").header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andExpect(jsonPath("$.data.metres").value(0)).andExpect(jsonPath("$.data.mock").value(true));
     }

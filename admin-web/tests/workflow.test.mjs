@@ -12,6 +12,10 @@ test('old links only open the current task; associated records remain accessible
   for(const link of ['funds','complaint'])assert.equal(safeCaseSection(link,'CREATE'),'overview')
   assert.equal(safeCaseSection('repair','CREATE'),'overview')
   assert.equal(safeCaseSection('quotation','REPAIR'),'repair')
+  assert.equal(safeCaseSection('', 'REPAIR','WAITING_REPAIR_AUTHORIZATION'),'quotation')
+  assert.equal(safeCaseSection('', 'REPAIR','REPAIRING'),'repair')
+  assert.equal(safeCaseSection('', 'FUNDS','WAITING_INSURER_PAYMENT'),'funds')
+  assert.equal(safeCaseSection('', 'FUNDS','WAITING_SHOP_SETTLEMENT'),'funds')
 })
 test('real timeline renderer has nine noninteractive nodes, distinct actor states and material-independent green',()=>{
   const source=readFileSync(new URL('../src/features/workorders/WorkflowTimeline.vue',import.meta.url),'utf8')

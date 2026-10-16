@@ -112,6 +112,13 @@
       JOIN user_role ur ON ur.user_id=u.id JOIN app_role r ON r.id=ur.role_id AND r.code='OWNER'
     WHERE op.contact_phone=#{phone} ORDER BY op.user_id LIMIT 2
   </select>
+  <select id="dispatchCityCount" resultType="long">
+    SELECT count(*) FROM region WHERE enabled AND level=2 AND position(lower(#{query}) in lower(name))>0
+  </select>
+  <select id="dispatchCities" resultType="com.evinsurance.platform.workorder.infrastructure.WorkOrderRows$CityOption">
+    SELECT id,code,name FROM region WHERE enabled AND level=2 AND position(lower(#{query}) in lower(name))>0
+    ORDER BY name,id LIMIT #{size} OFFSET #{offset}
+  </select>
   <select id="regionEnabled" resultType="long">SELECT count(*) FROM region WHERE id=#{id} AND enabled</select>
   <select id="shopEligible" resultType="long">
     SELECT count(*) FROM repair_shop s JOIN shop_service_region ssr ON ssr.shop_id=s.id

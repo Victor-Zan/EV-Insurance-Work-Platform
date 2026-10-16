@@ -23,7 +23,7 @@ public class FileAccess {
         throw ApiException.denied();
     }
     public void mutable(WorkOrderEntity row) {
-        if(java.util.Set.of("CANCELLED","COMPLETED","CLOSED").contains(row.getStatus())) throw ApiException.conflict("READ_ONLY","Cancelled or completed cases are read-only");
+        if(java.util.Set.of("CANCELLED","WAITING_INSURER_PAYMENT","WAITING_SHOP_SETTLEMENT","COMPLETED","CLOSED").contains(row.getStatus())) throw ApiException.conflict("READ_ONLY","Cancelled or received cases have read-only materials");
     }
     public Integer assignment(UUID id) { var r=orders.activeAssignment(id); return r==null?null:r.getAssignmentVersion(); }
     public void readable(FileRow f) {

@@ -1,5 +1,161 @@
 # 项目进度
 
+## 2026-10-16 本轮提交及main合并范围
+
+- 按用户要求，将codex/case-workflow-redesign当前已完成且未提交的D-051至D-060变更一并提交，范围包括派单Mock地图、网点报价接收与核对、核损授权对照、维修及顺序资金确认、顶栏压缩和右栏完整显示，以及相关测试、迁移与文档。
+- 合并前核对main没有独有提交，分支已有d22f617、43ac52d及本轮待提交改动，采用快进方式合入本地main；本次不推送远程。沿用各阶段已记录的测试、构建和浏览器验收，提交前检查差异格式，不重复运行无新变化的构建。
+- .env、tmp运行数据、构建产物和本地验收截图均不纳入提交。D-058尚未实施的整页滚动改造保持待实施。
+
+## 2026-10-16 D-060 各流程页面右侧任务栏完整显示完成
+
+- 先更新需求/决策及滚动方案；修改管理端案件详情共用任务栏，取消max-height限高、overflow:auto及滚动条占位，内容按实际高度完整展开，不使用裁切或隐藏溢出来掩盖滚动条。所有节点和案件资料/记录共用该侧栏。
+- 收紧标题和材料行间距，矮桌面窗口进一步减少留白，保留12px材料文字、全部必需/已有材料及绿勾红叉。按D-058方案移除当前查看阅读标记、补充材料展开区及冗长缺项列表，补充材料从案件资料查看，右框提示缺项数量；正文提交校验和业务门禁保持原样。移除仅服务于滚动阅读标记和compact的观察器，保留顶栏尺寸监听。
+- 实际浏览器只读检查000004资金页与000005完成页，未写案件、材料或资金：1280×720资金页右栏top332.33/bottom615.07；1280×640同页完整可见，正文滚动后top259/bottom541.74；完成页1280×640右栏bottom591.07，1366×768右栏bottom643.68。各次overflowY=visible、scrollHeight=clientHeight，无内部滚动条。截图workflow-sidebar-fully-visible.png位于本任务visualizations目录；浏览器错误日志为空，临时窗口尺寸已恢复。
+- 管理端node --test tests/workflow.test.mjs tests/quote-review.test.mjs tests/funds-flow.test.mjs：13项通过，0失败/跳过；npm run lint、npm run typecheck、npm run build通过，日志tmp/workflow-stage2/sidebar-{tests,lint,types,build}.log。未新增仅镜像CSS实现的测试，布局以真实浏览器验收；Git diff --check通过。
+
+本轮仅改共享右框与相关文档，后端/H5及状态金额规则未改，未重复其构建测试；无依赖安装、运行数据写入或服务重启。其他节点通过同一模板统一生效，未逐节点新建工单验收；物理手机及其他浏览器未验证。D-058整页单滚动和正文预览方案仍待实施。仍在codex/case-workflow-redesign，未提交/推送，本阶段完成并停止。
+
+## 2026-10-16 D-059 流程顶栏压缩与结案按钮反馈完成
+
+- 按本次范围局部实施：调整顶栏排版和间距，1280×720同一页面实测高度245.59px→164.33px（66.9%），完整保留摘要和九个节点，滚动时摘要不淡出；首屏高度回退同步为164px。D-058整页单滚动及右框方案仍待实施，本次未扩大范围。
+- 查明000004无法结案的原因是应付目标尚未设置、有效结算流水为0。确认按钮改为可点击检查，缺项在按钮附近明确提示并定位到金额或流水输入；刷新后版本或资金方向变化要求重新核对，不会用原来的点击确认新金额或下一方向。现有服务端顺序、结清、权限及版本门禁保留，不自动补金额或结案。
+- 000004实际点击后提示先保存应付金额、再记录结算流水，未发起资金确认写入，最终只读复核仍WAITING_SHOP_SETTLEMENT、资金版本3、应付为空/实付0。仅已有合成000005通过正常冲销和重录模拟PAY520.00，再从浏览器点击确认结算成功COMPLETED，版本13，两步确认均有效；没有真实资金转账。
+
+| 验证 | 结果 |
+| --- | --- |
+| 管理端定向测试 | node --test tests/funds-flow.test.mjs tests/funds-assessment.test.mjs tests/workflow.test.mjs tests/authorization-price.test.mjs tests/quote-receipt.test.mjs tests/quote-review.test.mjs：25项通过，0失败/跳过。新增覆盖缺目标/未结清反馈、定位输入、不发送确认、合法结算、并发版本/方向变化及零额。日志tmp/workflow-stage2/header-settlement-tests-final.log。 |
+| 前端门禁 | npm run lint、npm run typecheck、npm run build最终通过；日志tmp/workflow-stage2/header-settlement-{lint,types,build}-final.log。Git diff --check通过。 |
+| 浏览器/API | 顶栏压缩后摘要完整，滚动前后透明度均为1；000004缺项点击提示并聚焦金额，000005满足条件后实际结案。浏览器错误日志为空。截图settlement-validation-and-compact-header.png位于本任务visualizations目录，最终只读快照tmp/settlement-fix-final-snapshots.jsonl。 |
+
+本次仅修改管理端及相关设计/进度文档，未改后端/H5、未安装依赖、未重启服务，故未重复后端/H5构建。保留独立Vue测试夹具既有非挂载上下文警告，未屏蔽错误。未验证物理手机或其他浏览器。仍在codex/case-workflow-redesign，未提交/推送，本阶段完成并停止。
+
+## 2026-10-16 D-058 客服案件页滚动方案完成，待实施
+
+- 用户确认顶部案件摘要及完整流程固定，滚动不改变形态；右侧任务框固定、完整显示、无内部滚动；矮窗口仍保留右框，优先精简文字和压缩间距。
+- 已形成[客服案件链路滚动交互方案](CUSTOMER_SERVICE_SCROLL_PLAN.md)：正常页面仅中间正文纵向滚动，固定头部/右框/操作区；减少右框重复说明，完整缺项仍由正文和继续校验展示；取消单据纵向嵌套滚动，放大层独立阅读并锁定背景，保留必要表格横向查看。列明1280×720、1366×768、1280×640验收及节点切换/位置保持规则。
+- 当前阶段仅讨论和文稿，没有修改前端代码、后端接口或运行数据，没有执行构建/测试。代码实施与浏览器验收均待方案确认，未提交/推送。
+
+## 2026-10-16 D-057 资金页面核损参考与顺序录入完成
+
+- 先更新REQUIREMENTS/DECISIONS/设计稿。资金页增加核损原件及最终确认金额，只显示有关联且客服已确认的采用金额；来源缺失/未确认/下载失败均明确提示。图片可放大与受控下载，PDF按页预览，过期请求不能覆盖新数据，页面切换/卸载清理Blob URL。已确认核损金额只作参照，应付仍由客服人工录入。
+- 移除方向选择，当前方向根据后端真实阶段计算：先保险到账，再网点结算；阶段切换清空上笔金额、流水号和备注，时间刷新为中国时间当天/当前时刻，允许手改。已完成的新流程只显示结果。正常办理删除“金额依据”输入，目标版本使用准确的系统操作说明满足现有审计字段；冲销通过独立窗口填写原因，不能空原因提交。备注明确选填。旧资金记录的记账能力保留。
+- 只改管理端的资金组件、日期/方向小函数与定向测试；后端接口、数据库、资金顺序与权限门禁沿用现有实现，无依赖安装，无新迁移或后端重启。
+
+| 验证 | 结果 |
+| --- | --- |
+| 管理端最终定向测试 | node --test tests/funds-flow.test.mjs tests/funds-assessment.test.mjs tests/workflow.test.mjs tests/authorization-price.test.mjs tests/quote-receipt.test.mjs tests/quote-review.test.mjs：23项全部通过，0失败/跳过。覆盖无方向选择、状态决定方向、禁止未结清确认、目标操作说明、空备注、默认中国时间/跨日、步骤清空、旧记录及独立冲销原因、图片/多页PDF/错误来源/过期响应/URL回收，以及现有报价、授权、时间轴回归。日志tmp/workflow-stage2/funds-simple-tests-final.log。 |
+| 前端门禁 | npm run lint、npm run typecheck、npm run build最终通过，日志funds-simple-{lint,types,build}-final.log。最初发现冲销弹窗可空时间类型不匹配，已修正；未放宽类型检查。Vue独立渲染夹具的非挂载上下文警告保留，实际浏览器错误日志为空。 |
+| 浏览器/API验收 | 仅在已有合成000005记录一次带说明的冲销并重录恢复完成：看到有效核损原件、620.00最终确认金额，放大成功；无方向select；实际结算520.00，备注留空、时间使用自动默认2026-10-16T17:32，保存后仍须人工确认结算。GET复核note为空、PAY/520.00/发生时间留档、COMPLETED且两步确认有效。API记录tmp/funds-simple-verification.json，截图funds-simplified-payment.png。 |
+
+000004只读核对时已处于WAITING_SHOP_SETTLEMENT，运行验收没有修改或回退该工单；没有真实资金转账或使用外部OCR。最终单据预览、已完成视图和控制台再次复查通过。PDF分页主要由定向测试及既有预览API验证，本轮真实浏览器使用PNG核损单；未验证物理手机或其他浏览器。后端未改，未重复后端构建测试。前端5173热更新已生效，Git diff --check通过。阶段完成并停止，仍在codex/case-workflow-redesign，未提交/推送。
+
+## 2026-10-16 D-056 维修合并、资金顺序及滚动修复完成
+
+- 已按用户两项答复实施：时间轴“维修授权＋维修”合为“维修中”，保留内部授权状态、核损最终价格校验与网点开始维修；网点当前派单完工照片提交后进入收车。收车改为WAITING_INSURER_PAYMENT，客服人工确认到账后WAITING_SHOP_SETTLEMENT，人工确认结算后COMPLETED。记录完整流水不会自动确认或结案。
+- 新增V21资金确认不可变记录，关联收车、人工目标、有效流水ID、金额依据哈希、操作者、版本及时间；零额也须先设置目标并按序人工确认。幂等与版本锁复用资金接口，付款须当前派单及有效到账确认。目标修订、冲销、收车撤回/重新确认会使旧确认失效并退回相应步骤，保留原账目与审计；历史已结案不批量改状态，时间轴资金节点无记录则显示未留档。资金始终仅记账，不执行真实付款，结算额不自动推算。
+- 管理端资金当前任务分为到账、网点结算两步，后一步在到账确认前禁用；录入人工金额、流水/凭证编号和中国时间，结清后另点确认。历史分笔及修订折叠保留，两端收车提示、可选评价和客服撤回兼容新状态；资金确认信息仅员工可见，网点只看本店结算。收车后材料与旧通知单缺失说明冻结。
+- 移除报价底栏IntersectionObserver固定/普通布局切换及尺寸监听，改为留在文档流内的CSS sticky，底栏用不透明底色。右栏移除位移/过渡与毛玻璃，固定头部事实区高度，限制右栏高度并独立滚动，预留页面底部空间，避免底部受父容器挤压到头部下方。保留阅读标记，无依赖安装。
+
+| 验证 | 结果 |
+| --- | --- |
+| 后端完整检查 | verify.ps1 -IntegrationTest QuotationPostgresIT,MaterialsPostgresIT,WorkOrderPostgresIT -LogName repair-funds-release：50单元＋58集成通过，0失败/错误/跳过，Maven构建、23份Flyway校验通过。覆盖有/无权限、顺序/部分到账/过期版本/幂等、零额、修订/冲销退回、重新收车、历史结案兼容及确认快照不可修改。日志tmp/workflow-stage1/repair-funds-release.log（delivery同样通过）。列表办理人补正后，repair-funds-list-actor-final又通过50单元＋1项完整资金链路集成，Maven构建通过，覆盖列表FUNDS/客服及网点无资金待办。 |
+| 管理端 | 最终17项定向测试、lint/typecheck/build均通过，日志tmp/workflow-stage2/repair-funds-admin-*-release.log。包含跨资金步骤清空金额、凭证、时间和备注的断言，避免将到账输入误用于网点结算。Vue独立渲染夹具非挂载上下文警告保留，实际浏览器错误日志为空。 |
+| H5 | 20项测试及lint/typecheck/build通过；日志tmp/workflow-stage2/repair-funds-h5-*.log。保留网点开始维修，收车后车主可选评价不被资金进度阻塞。 |
+| 本机真实API及浏览器 | 已核验并更新8080开发运行时，V21迁移成功。仅原合成案件542e6cbb-9335-48c0-b884-1db678ed3d79：授权620.00→网点开修→网点完工照→客服页面收车→两笔模拟到账600+20仍停资金节点→页面确认到账→页面人工应付520/时间/凭证/实际流水→仍待确认→页面点击确认结算并结案。API复核COMPLETE/COMPLETED及两项确认true。未修改真实案件或做真实支付。 |
+| 滚动验收 | 本机1280×720浏览器在新版维修授权长页面反复到底/向上/到底，页面高1983、底部scrollY1262.67、右栏top340、底栏top562.25保持一致，右栏在头部bottom321.59以下，单个底栏且无固定/普通切换。截图workflow-scroll-stable.png；完成截图funds-workflow-complete.png，均在本任务visualizations目录。未验证物理手机/其他浏览器。 |
+
+初次构建发现旧节点测试引用已移除枚举，按合并后的节点语义更新；首轮集成发现资金阶段仍可写旧通知单缺失说明，修复材料冻结后完整通过。合成脚本初次开修漏传assignmentVersion被403拒绝，补齐真实派单版本后通过，未放松后端权限。曾因开发登录过期重新登录；未使用真实用户图片或外部计费OCR。
+
+收尾复核发现新资金结算待办PAY_SHOP被旧“名称以SHOP结尾”规则分到网点，已明确分给客服并补充网点待办不可见断言；release完整回归通过。案件列表的资金阶段办理人同步补为客服，定向完整资金链路验证通过。已再次核验运行进程并切换8080至repair-funds-release-runtime.jar；5173显示最终前端。进度及主设计流程/API节点枚举已同步，阶段完成并停止。仍在codex/case-workflow-redesign，未提交/推送。
+
+## 2026-10-16 D-055 维修授权单据与最终价格校验完成
+
+- 用户已确认“定损单”是上一阶段正式报价单，不增加独立ASSESSMENT材料必传条件。维修授权默认对照正式报价和当前最终核损原件，最终授权以核损单经人工核对采用金额为准，允许与正式报价总额不同。
+- 客服最终确认须填写授权金额、勾选已核对两份单据；提交assessmentId/lossFileId/amount/originalReviewed。服务端在案件锁、报价版本和当前派单校验下，检查金额对应的正式报价、当前最新有效核损文件、已确认OCR修订及采用金额；金额不一致、文件/金额版本不符、缺核对来源均拒绝，旧客户端仅传expectedVersion不能完成最终确认。OCR失败后的人工补录/原件确认仍有效，不能直接信原始OCR数值。
+- 复用不可变quotation_confirmation.file_snapshot保存最终金额、核损ID、文件ID和识别修订，审计摘要记录核损版本及金额；核损材料变更继续撤销确认，重新确认和网点开修均重查当前来源。历史无原件关联的直接金额录入须返回“修正核损”补做核对，不伪造历史识别关系。
+- 浏览器发现原PDF iframe为空白，已用现有PDFBox增加受控逐页PNG预览，正式报价和PDF核损单都支持页码切换，原件仍可下载，图片核损直接显示。复用鉴权/案件范围/审计，页码越界400，no-store/nosniff，单页长边最多1800像素。旧请求/组件卸载不覆盖新单据，Blob URL清理；单据加载失败禁止最终确认，只有源版本变化才清除已填写核对，保险代录等同源刷新不清空输入。无新依赖或数据库迁移。
+
+| 验证 | 结果 |
+| --- | --- |
+| 后端最终 `verify.ps1 -IntegrationTest QuotationPostgresIT,MaterialsPostgresIT -LogName authorization-preview-delivery` | 50项单元+45项集成全部通过，0失败/错误/跳过，Maven构建成功，22份Flyway迁移校验通过。新增覆盖核损金额≠报价允许、错误价格/错文件/错金额版本/未勾选/无识别关联拒绝、材料更新旧来源失效、重新核对后恢复、幂等及确认快照、三种非客服角色拒绝、真实PDF转PNG/多页与页码边界、跨案件及原文件权限。日志tmp/workflow-stage1/authorization-preview-delivery.log。 |
+| 前端定向测试 | `node --test tests/authorization-price.test.mjs tests/quote-receipt.test.mjs tests/quote-review.test.mjs tests/workflow.test.mjs`最终15项通过，覆盖原件未加载/价格不符/未核对拒绝、报价与核损不同、合法金额规范化、下载失败/旧响应/URL清理、PDF核损与正式报价翻页、只读角色以及既有流程和报价回归。模板夹具的Vue非挂载上下文警告保留，真实浏览器错误日志为空。 |
+| 管理端 lint / typecheck / build | 最终全部通过。最终前端日志tmp/workflow-stage2/authorization-{tests,lint,types,build}-delivery.log。 |
+| 本机真实API和浏览器 | 核验进程身份后将8080更新至authorization-preview-runtime.jar，5173热更新。仅新合成案件542e6cbb-9335-48c0-b884-1db678ed3d79：两张合成网点报价→正式报价628.61→Mock核损原件及人工采用620.00。实际看到左侧正式报价PDF原页图像、右侧核损原图；记录保险确认后填628.61被提示“确认金额必须与最终核损单采用金额一致”，填620.00并核对后授权成功、进入等待网点。GET复核authorized=true/sourceCurrent=true，报价628.61和核损620.00均保留，未开始维修。 |
+
+初次完整检查被既有百度OCR超时测试偶发的认证超时中断（预期识别超时），未改/跳过该测试，重跑通过。旧集成夹具直接记金额后上传文件，不符合本轮已确认规则，已改为通过真实Mock识别/人工核对/关联接口准备合法证据，并相应断言两份不可变金额版本及缺文件同时使来源失效；初次旧数量断言失败日志保留。最终价格版与新增PDF预览版均完整验证通过。启动期间首次合成脚本连接被拒、热更新期间预览404均在健康启动/重载后恢复，未修改真实案件。
+
+截图authorization-price-blocked.png、authorization-price-final.png位于本任务visualizations目录；合成API记录tmp/authorization-{prepare,verify-final}-verification.json。用户参考图与真实资料未用于本轮验收，未触发外部计费OCR、未改变现有正式案件状态。阶段完成并停止，仍在codex/case-workflow-redesign，未提交/推送。
+
+## 2026-10-16 D-054 原图对照报价审核完成
+
+- 用户当次确认允许客服纠正项目、数量和单价，保留网点原报价及修订记录，覆盖旧单项不可改规则。先更新REQUIREMENTS/DECISIONS/API/设计稿后实现。
+- 案件流程关联导航仅保留当前任务、案件资料、记录，所有节点不再显示资金/投诉按钮；独立模块与旧合规路由权限不改。
+- 报价审核改为左侧原件、右侧四列核对表，下方加价率。支持多原件切换、100%—250%放大/还原、受控下载、加载/空白/失败状态；保留“项目、数量、单价、金额”列及行序，可修正项目/数量/单价和补齐/删除误识别行，行金额由数量×单价计算。窄屏上下排列，未关联历史原件明确提示，不把后上传文件当成原件。
+- 新报价在网点提交事务中将当前派单有效报价原件快照到quote_raw_file（上限20，排除客服代传）；V20历史仅回填已有OCR明确关联。上下文返回该版本originals，客服复用网点已提交核对明细，不重做OCR、不改变其原始识别记录。
+- /formal-quotes可选reviewedLines，客服限定，后端仍校验状态、当前报价、派单、版本及物损照片；另存不可变quote_formal_review和QUOTE_REVIEW审计，正式报价行采用核对值，原raw和历史正式版本保留。原固定金额API兼容。前端以BigInt按分预览0—100%加价，服务端BigDecimal沿用HALF_UP重算；保存后的百分比和核对行能再次带回。并发新报价到达时保留未提交输入但禁止套用到新版本，需明确放弃修正并重新载入。
+
+| 验证 | 结果 |
+| --- | --- |
+| 后端 `verify.ps1 -IntegrationTest QuotationPostgresIT,MaterialsPostgresIT -LogName quote-review-final` | 49项单元+42项集成全通过，0失败/错误/跳过，Maven构建成功；22份Flyway迁移校验通过。新增覆盖多图版本绑定/排除代传/后上传不混入、核对原价保留、修订金额/HALF_UP、非法数量与精度、仅客服可写、幂等/陈旧版本拒绝、快照不可修改、网点看不到客服修订。日志tmp/workflow-stage1/quote-review-final.log。 |
+| 管理端定向测试 | `node --test tests/quote-review.test.mjs tests/quote-receipt.test.mjs tests/workflow.test.mjs`最终11项通过；覆盖精确大额/小额半分/零价/非法输入、编辑不覆盖源、切图URL清理/过期响应、开发预览只读、并发报价禁止静默套用、核对与百分比回填、5种节点导航无资金/投诉、既有时间轴/轮询。独立模板渲染夹具的Vue非挂载警告保留，真实页面无错误日志。 |
+| `npm run lint` / `npm run typecheck` / `npm run build` | 最终通过，最终测试与检查日志为tmp/workflow-stage2/quote-review-{tests,lint,types,build}-final.log。无依赖安装。 |
+| 实际浏览器及API | 更新已核验8080项目Java进程为quote-review-runtime.jar，开发库新增V20迁移成功，5173使用新界面。新合成案件a6504123-6ff7-4b23-bfd4-257e9dbcea51，网点提交两张合成报价原件和3行明细；客服切第2张、放大、回第1张成功，导航仅3项。修改项目名、第2项数量3/单价48.25并输入7.50%后即显示584.75+43.86=628.61；实际点击继续成功进入保险核损，GET确认正式报价628.61、修订行留档、原网点报价533.00/原数量2及单价46.50不变、两张原件仍关联。 |
+
+验收只用标有“合成验收”的自制图片和模拟案件，未上传用户参考图或真实聊天资料、未修改真实案件。浏览器登录曾过期，使用既有开发账号重新登录后验证完成。截图quote-review-comparison-final.png和quote-review-submitted-final.png位于本任务visualizations目录，API记录tmp/quote-review-submitted-verification.json。本轮未再次浏览器运行真实OCR供应商识别，OCR核对链路由原有集成测试覆盖；任意表单版式逐像素复刻与手写识别准确率不在本轮验证范围，当前按用户示例四列表格对照。历史无明确关联的原件不补造关系，需网点核对重提。
+
+仍在codex/case-workflow-redesign；未提交/推送，本阶段完成并停止。开发只读预览入口沿用D-053，后端状态检查保持启用。
+
+## 2026-10-16 D-053 客服网点报价接收与只读开发预览完成
+
+- 客服网点报价当前任务改为报价原件、到店照的只读接收状态和报价提交确认，红叉待上传、绿勾网点已上传。报价办理页共享MaterialsPanel整体不渲染，避免进入报价审核后又出现同一上传区；建单物损照片、案件资料及核损单专用识别/核对窗口保留。
+- workflow材料新增shopUploaded，复用当前派单有效文件汇总及上传时不可变审计角色；客服历史代传、已作废文件不显示网点已上传，不改变present/satisfied和既有上传权限。无数据库迁移、依赖或生产配置变更。
+- 等待节点每8秒只读刷新，可见页面且无正在提交操作时才请求；离开/卸载清理定时器，旧请求响应失效，失败提示手动刷新。收到网点正式提交报价后刷新真实节点进入报价审核；只上传文件不制造报价或推进。
+- 用户答复确认临时下一步仅预览。Vite开发模式客服专用“预览报价审核”显示只读表单和明确提示，可返回，时间轴保持真实网点报价等待态；不能提交、不写案件、不生成测试金额，生产构建不开放，后端门禁始终有效。结束客服开发时应删除此预览入口，无需重新开启后端检查。
+
+| 验证 | 结果 |
+| --- | --- |
+| 后端 `verify.ps1 -IntegrationTest MaterialsPostgresIT,QuotationPostgresIT -LogName quote-receipt-final` | 49项单元+41项集成通过，0失败/错误/跳过，Maven构建成功，21份Flyway迁移校验通过。新增回归验证客服代传≠网点上传、上传不推进、缺报价审核被拒、作废取消接收标记、网点正式提交进入QUOTE_REVIEW；既有报价/越权/跨网点与OCR集成通过。日志tmp/workflow-stage1/quote-receipt-final.log。 |
+| 前端 `node --test tests/quote-receipt.test.mjs tests/workflow.test.mjs` | 最终6项通过：接收来源、预览无写入/禁用字段、生产/非客服无入口、轮询更新/隐藏/过期响应、报价办理共享上传区隐藏、真实时间轴与旧链接回归。初次测试夹具组件引用/TS模板编译/含箭头表达式匹配的失败已修正并保留日志，未删除或跳过测试；独立渲染夹具会输出Vue非挂载上下文警告，实际页面错误日志为空。 |
+| 管理端 lint / typecheck / build | 最终通过，日志tmp/workflow-stage2/quote-receipt-{tests,lint,types,build}-delivery.log。生产构建成功，不安装依赖。 |
+| 实际开发环境浏览器与API | 8080后端核验进程身份后更新为通过验证的quote-receipt-runtime.jar，5173热更新。仅新合成案件41df9e3b-9b98-4952-a763-e690541b7b10：等待页上传框=0；打开预览后加价字段禁用、无提交按钮、GET确认仍SHOP_QUOTE/canAct=false；开发网点上传两份合成PNG后页面自动出现两项绿勾仍未推进；提交100元合成报价后无需手动刷新即进入报价审核，时间轴由你办理，审核页文件框/案件附件标题均=0。 |
+
+截图quote-receipt-waiting.png、quote-review-preview.png、quote-receipt-received.png、quote-review-auto-entered.png保存在本任务visualizations目录；本地合成记录tmp/quote-receipt-*-verification.json。人工原始报价提交链路与自动刷新已现场验证；OCR原件关联链路本轮由既有集成测试验证，未在本轮浏览器重新走OCR。未推进真实案件、未提交/推送。本阶段完成并停止。
+
+## 2026-10-16 D-052 地图定位与深圳合作网点推荐完成
+
+- 用户最新要求覆盖D-051附件只读展示：派单到店当前任务完全不渲染案件附件，案件资料和右侧材料状态保留，不删除原文件或更改门禁。
+- 定位区域改为城市输入筛选、聊天文字地址自动带入、地址可改/确认、Mock地图定位。复用MapProvider，新增/maps/cities分页字面搜索、地图候选坐标和距离字段；服务端全候选排序后分页，最近有距离的网点为推荐。地图标记与列表都可选择，修改城市/地址清空推荐并禁用派单，重新打开已确认地址保留确认及实际派单网点。
+- 通过管理员接口在实际开发库新增/配置广东省、深圳市和SZ-PARTNER-01—10，名称逐字采用用户名单，全部启用并覆盖深圳市，不创建“active”网点。未提供真实地址，因此门店地址明确含“模拟定位，待补详细地址”，无外部地图请求、无虚构真实道路距离、无生产种子迁移。
+- 管理员/客服可使用城市和地图接口；网点/车主拒绝，案件范围和原派单状态/版本/地址确认约束不变。通过已核验身份的进程重启更新8080实际开发后端，5173热更新及生产构建使用新版，保留原业务数据和本地存储连接。
+
+| 验证 | 结果 |
+| --- | --- |
+| 后端 `verify.ps1 -IntegrationTest WorkOrderPostgresIT,MaterialsPostgresIT -LogName dispatch-map-final` | 49项单元+16项集成全部通过，0失败/错误/跳过，Maven构建成功；验证城市筛选/空结果/分页上限、ADMIN/客服允许、网点/车主拒绝、地图候选全局排序/距离与Mock坐标、既有材料和案件隔离；21份迁移校验通过，本轮无迁移。日志`tmp/workflow-stage1/dispatch-map-final.log`。 |
+| 前端 `node --test tests/dispatch-map.test.mjs tests/workflow.test.mjs` | 最终6项通过，覆盖地址候选、定位顺序、最近推荐、手动覆盖、改地址清空、定位失败不可派单、已确认地址重开不重复保存/不覆盖原派单网点及地图坐标边界。日志`tmp/workflow-stage2/dispatch-map-tests-delivery.log`。 |
+| `npm run lint` / `npm run typecheck` / `npm run build` | 最终全部通过，日志`dispatch-map-lint-delivery.log`、`dispatch-map-types-last.log`、`dispatch-map-build-last.log`在tmp/workflow-stage2。 |
+| 实际浏览器 | localhost:5173，新合成聊天记录建单并带入“深圳市南山区科技园合成接车位置”；输入“深圳”搜索城市成功，定位出现10个合作网点和最近推荐，地图与列表改选均生效；修改地址后标记=0、派单禁用。最终人工改选“小哈快修白石洲”后派单成功，GET复核PENDING_ACCEPTANCE、对应网点ID、assignmentVersion=1。案件附件区域=0，浏览器错误日志为空。 |
+
+所有验收仅合成案件`5617236e-497f-4031-a484-36f205ec0be4`，未推进真实用户案件。截图`dispatch-map-final.png`、`dispatch-map-submitted.png`保存本任务visualizations目录；本地记录`tmp/shenzhen-partners.json`、`tmp/dispatch-map-recommendation.json`、`tmp/dispatch-map-submitted.json`。初次组件测试编译别名未转换、初次后端地图全局安全匹配仍限客服的失败已修复，保留失败日志，最终检查未跳过测试。`git diff --check`通过。
+
+尚需补齐：10家店真实详细地址或坐标，随后选择真实地图供应商/凭据并另行验证真实定位和路程。当前Mock范围实现、回归和页面验收完成；仍在codex/case-workflow-redesign，D-051与本轮改动未提交/推送。本阶段停止。
+
+## 2026-10-16 D-051 派单只读材料与模拟网点完成
+
+先按用户要求提交此前D-048—D-050改动：`43ac52d fix: complete case intake validation and submission recovery`，提交后工作区为空；私密.env和tmp未提交。仍在`codex/case-workflow-redesign`，本轮以下新改动未提交/推送。
+
+- 派单当前任务的MaterialsPanel传入空写入类别，仅保留已上传材料列表与受控下载，上传框/上传按钮/替换/作废全部消失。其余节点沿用原类别，建单照片、服务端状态/权限门禁、右侧材料绿勾不改。
+- 在实际开发后端8080通过既有管理员接口新增启用网点`DEV-DISPATCH-DEMO`，名称“模拟维修网点（派单测试）”，本地ID=2，覆盖DEV-PROVINCE/CITY/DISTRICT。地址和联系人明确为模拟，未新增账号或生产种子迁移，原开发网点不修改，管理员接口留有创建/服务区域审计。
+- 合成案件`195e5d7f-3292-47ae-931f-65f169cbb3d2`上传合成照片、正式建单、确认模拟区域与接车地址后，API候选包含新网点并返回Mock距离。实际localhost:5173页面选择新网点并点击派单成功；只读GET复核状态PENDING_ACCEPTANCE、currentAssignment.shopId=2、assignmentVersion=1。真实案件未改派或推进。
+
+| 验证 | 结果 |
+| --- | --- |
+| 管理端 `npm run lint` / `npm run typecheck` / `npm run build` | 通过，最终日志`tmp/workflow-stage2/dispatch-ui-{lint,types,build}-final.log`。 |
+| `node --test tests/workflow.test.mjs` | 2项流程/时间轴回归通过，`tmp/workflow-stage2/dispatch-ui-tests.log`。 |
+| 实际浏览器与API | 本机5173/8080，合成案件实际派单成功并持久化；派单页文件输入框=0、替换按钮=0、作废按钮=0，仍显示dispatch-demo.png及受控下载，等待网点为黄色。记录`tmp/dispatch-demo-result.json`、`tmp/dispatch-demo-verification.json`；截图`dispatch-demo-ready.png`、`dispatch-readonly-final.png`位于本任务visualizations目录。 |
+| 范围 | 后端源码/依赖/迁移未改，无需重复后端构建或数据库迁移；本轮未新增测试账号，不改变现有数据范围，Mock地图不调用真实地图。`git diff --check`通过。 |
+
+操作方式：在“模拟覆盖省/市/区”中选择服务区域，填写并确认接车地址，再选择“模拟维修网点（派单测试）”派单。开发站点按既有CORS配置使用localhost:5173；初次用127.0.0.1地址登录被原CORS限制拒绝，未放宽配置，切换文档指定地址后登录与派单通过。本轮完成并停止。
+
 ## 2026-10-15 D-050 开发环境STORAGE_UNAVAILABLE已恢复
 
 D-049三项任务已完成后，用户报告正式建单在物损照片上传阶段返回503 STORAGE_UNAVAILABLE。本轮仅处理实际运行配置与恢复验证，不绕过文件落库/必填/权限门禁。

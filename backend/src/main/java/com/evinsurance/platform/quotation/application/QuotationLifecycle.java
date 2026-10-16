@@ -17,7 +17,17 @@ public class QuotationLifecycle {
     private static final Set<String> FROZEN=Set.of("REPAIRING","WAITING_OWNER_CONFIRMATION","WAITING_INSURER_PAYMENT","WAITING_SHOP_SETTLEMENT","COMPLETED","CANCELLED","CLOSED");
     private final QuotationMapper mapper;private final AuditService audit;
     private final com.evinsurance.platform.workorder.infrastructure.WorkOrderMapper orders;
-    public QuotationLifecycle(QuotationMapper mapper,AuditService audit,com.evinsurance.platform.workorder.infrastructure.WorkOrderMapper orders){this.mapper=mapper;this.audit=audit;this.orders=orders;}
+    private final tools.jackson.databind.ObjectMapper json;
+    public QuotationLifecycle(QuotationMapper mapper,AuditService audit,com.evinsurance.platform.workorder.infrastructure.WorkOrderMapper orders,tools.jackson.databind.ObjectMapper json){this.mapper=mapper;this.audit=audit;this.orders=orders;this.json=json;}
+    public boolean hasCurrentAssessment(Context c) {
+        if(c==null||c.assessmentId==null||c.formalQuoteId==null)return false;
+        var amount=mapper.assessment(c.assessmentId);var proof=mapper.assessmentProof(c.assessmentId);
+        if(amount==null||!java.util.Objects.equals(amount.sourceFormalId(),c.formalQuoteId)||proof==null||!proof.currentFile())return false;
+        var adopted=json.readTree(proof.candidateJson());var value=adopted.path("adopted");
+        return adopted.path("originalReviewed").asBoolean(false)&&value.isTextual()
+            &&value.asText().matches("[0-9]{1,36}(\\.[0-9]{1,2})?")
+            &&new java.math.BigDecimal(value.asText()).compareTo(amount.amount())==0;
+    }
     public boolean hasCurrentFormal(WorkOrderEntity order) {
         var c=mapper.context(order.getId());
         if(c==null||c.rawQuoteId==null||c.formalQuoteId==null)return false;

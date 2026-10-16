@@ -7,6 +7,19 @@
  <sql id="versionTable"><choose><when test="type == 'RAW'">quote_raw</when><when test="type == 'FORMAL'">quote_formal</when><otherwise>quote_assessment</otherwise></choose></sql>
  <select id="nextVersion" resultType="int">SELECT coalesce(max(version_no),0)+1 FROM <include refid="versionTable"/> WHERE work_order_id=#{id}</select>
  <select id="raw" resultType="com.evinsurance.platform.quotation.infrastructure.QuotationRows$Raw">SELECT * FROM quote_raw WHERE id=#{id}</select>
+ <insert id="snapshotRawFiles">INSERT INTO quote_raw_file(raw_quote_id,file_id)
+  SELECT #{quote},f.id FROM case_file f WHERE f.work_order_id=#{caseId} AND f.category='SHOP_QUOTE'
+   AND f.state='ACTIVE' AND f.shop_id=#{shop} AND f.assignment_version=#{assignment}
+   AND EXISTS(SELECT 1 FROM audit_log a WHERE a.object_type='CASE_FILE' AND a.object_id=CAST(f.id AS text)
+    AND a.action='FILE_UPLOAD' AND a.actor_id=f.uploaded_by AND 'REPAIR_SHOP'=ANY(string_to_array(a.actor_roles,',')))
+  ORDER BY f.created_at,f.id LIMIT 20
+ </insert>
+ <select id="rawOriginals" resultType="com.evinsurance.platform.quotation.infrastructure.QuotationRows$RawOriginal">
+  SELECT f.id,f.original_name AS name,f.content_type FROM quote_raw_file r JOIN case_file f ON f.id=r.file_id
+  WHERE r.raw_quote_id=#{id} ORDER BY f.created_at,f.id LIMIT 20
+ </select>
+ <select id="formalReview" resultType="string">SELECT adopted_json FROM quote_formal_review WHERE formal_quote_id=#{id}</select>
+ <insert id="insertFormalReview">INSERT INTO quote_formal_review(formal_quote_id,adopted_json,actor_id) VALUES(#{quote},#{adopted},#{actor})</insert>
  <select id="rawItems" resultType="com.evinsurance.platform.quotation.infrastructure.QuotationRows$RawItem">SELECT line_no,description,quantity,unit_price,amount,source_snapshot FROM quote_raw_item WHERE raw_quote_id=#{id} ORDER BY line_no LIMIT 1000</select>
  <insert id="insertRaw">INSERT INTO quote_raw(id,work_order_id,version_no,shop_id,assignment_version,total,created_by) VALUES(#{id},#{caseId},#{version},#{shop},#{assignment},#{total},#{actor})</insert>
  <insert id="insertRawItem">INSERT INTO quote_raw_item VALUES(#{id},#{line},#{description},#{quantity},#{unit},#{amount},#{snapshot})</insert>
@@ -17,6 +30,16 @@
  <insert id="insertFormal">INSERT INTO quote_formal(id,work_order_id,version_no,raw_quote_id,markup_mode,markup_value,original_total,markup_amount,total,calculation_version,created_by) VALUES(#{id},#{caseId},#{version},#{raw},#{mode},#{value},#{original},#{markup},#{total},'PRO_RATA_LARGEST_REMAINDER_V1',#{actor})</insert>
  <insert id="insertFormalItem">INSERT INTO quote_formal_item VALUES(#{id},#{line.sequence},#{line.description},#{line.quantity},#{line.originalUnitPrice},#{line.originalAmount},#{line.allocatedMarkup},#{line.externalUnitPrice},#{line.externalAmount})</insert>
  <select id="assessment" resultType="com.evinsurance.platform.quotation.infrastructure.QuotationRows$Assessment">SELECT * FROM quote_assessment WHERE id=#{id}</select>
+ <select id="assessmentProof" resultType="com.evinsurance.platform.quotation.infrastructure.QuotationRows$AssessmentProof">
+  SELECT l.file_id,l.revision,r.candidate_json,
+   (f.state='ACTIVE' AND f.id=(SELECT n.id FROM case_file n WHERE n.work_order_id=l.work_order_id
+    AND n.category='LOSS_ASSESSMENT' AND n.state='ACTIVE' ORDER BY n.created_at DESC,n.id DESC LIMIT 1)) AS current_file
+  FROM workflow_recognition_link l JOIN quote_assessment s ON s.id=l.business_id AND s.work_order_id=l.work_order_id
+   JOIN case_file f ON f.id=l.file_id AND f.work_order_id=l.work_order_id AND f.category='LOSS_ASSESSMENT'
+   JOIN ocr_review r ON r.job_id=l.job_id AND r.revision=l.revision
+   JOIN ocr_confirmation c ON c.job_id=l.job_id AND c.revision=l.revision
+  WHERE l.business_id=#{id} AND l.kind='ASSESSMENT'
+ </select>
  <insert id="insertAssessment">INSERT INTO quote_assessment(id,work_order_id,version_no,source_formal_id,amount,file_snapshot,created_by) VALUES(#{id},#{caseId},#{version},#{formal,jdbcType=OTHER},#{amount},#{snapshot},#{actor})</insert>
  <select id="activeLossFiles" resultType="map">SELECT id,version_no FROM case_file WHERE work_order_id=#{id} AND category='LOSS_ASSESSMENT' AND state='ACTIVE' ORDER BY id LIMIT 20</select>
  <insert id="confirmation">INSERT INTO quotation_confirmation(id,work_order_id,basis_version,kind,raw_quote_id,formal_quote_id,assessment_id,file_snapshot,actor_id) VALUES(#{id},#{c.workOrderId},#{c.basisVersion},#{kind},#{c.rawQuoteId,jdbcType=OTHER},#{c.formalQuoteId,jdbcType=OTHER},#{c.assessmentId,jdbcType=OTHER},#{snapshot},#{actor}) ON CONFLICT(work_order_id,basis_version,kind) DO NOTHING</insert>

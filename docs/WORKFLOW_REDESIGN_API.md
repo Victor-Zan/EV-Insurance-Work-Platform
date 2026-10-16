@@ -1,5 +1,23 @@
 # 工作流重构：节点、识别与版本接口
 
+## D-055 维修授权金额校验（2026-10-16）
+
+上下文assessment新增lossFileId/revision/sourceCurrent，仅管理员/客服可见。CUSTOMER_SERVICE确认除expectedVersion外须提交assessmentId、lossFileId、amount（十进制字符串）、originalReviewed=true；INSURER代录请求保持原格式。后端比较当前核损版本/最新有效文件/已确认OCR采用金额与确认金额，不符返回409，缺少核对确认返回参数错误。确认快照保存绑定证据，开修重查。未经成功加载与人工核对不提交最终价格；核损修正沿用recognized-assessment接口。
+
+为避免内置浏览器PDF插件空白，新增`GET /quotations/cases/{id}/formal-quotes/{quote}/preview?page=1`及`GET /materials/{id}/preview?page=1`，使用已有PDFBox逐页渲染同一原PDF为PNG，返回X-Page-Count，页码1起始、越界400、no-store/nosniff。仅管理员/客服可用，复用原正式报价和文件的鉴权、案件范围和下载审计。单页长边最多1800像素；前端可翻页，原始PDF及核损原文件仍受控下载，核损图片直接显示。
+
+## D-054 原图及客服核对（2026-10-16）
+
+报价上下文rawQuote增加originals（该提交版本关联原件的id/name/contentType，最多20份），通过既有受控下载加载。正式报价POST /formal-quotes新增可选reviewedLines，格式与网点lines相同；仅客服可写，验证当前raw版本/派单/状态，服务端计算核对后总额及加价，另存不可变quote_formal_review与审计。旧请求不带reviewedLines仍按网点原报价计算。formalQuote返回reviewedLines（有核对版本时），网点/车主不返回客服核对数据，FORMAL历史沿用分页和权限。新增V20迁移，旧迁移不改。
+
+## D-053 网点资料接收（2026-10-16）
+
+`GET /work-orders/{id}/workflow`的materials新增`shopUploaded`布尔字段：只统计当前派单有效材料，且上传审计角色包含REPAIR_SHOP。原present/satisfied含义及接口权限保持不变，不新增写接口。客服等待网点报价时每8秒读取workflow（后台页暂停），真实节点变化后重新加载案件；上传文件本身不推进，网点提交报价仍由既有报价接口完成。开发模式只读预览不调用写接口，生产不开放，后端门禁始终有效。
+
+## D-052 城市与Mock地图（2026-10-16）
+
+`GET /maps/cities?query=&page=1&size=20`仅返回启用的二级城市，名称字面包含搜索，按名称/id稳定分页；query不超过100字符，size沿用上限100。`GET /maps/cases/{id}/shops`保留分页/案件范围，新增address、distanceMetres并保留mockLocation坐标，候选顺序来自eligible-shops的全局距离排序。所有maps接口允许ADMIN/CUSTOMER_SERVICE，网点/车主仍拒绝，案件数据范围不变。定位沿用GET /maps/geocode，保存城市/接车地址沿用PUT dispatch-location的版本及confirmed检查，所有写入仍审计。地图读取不推进状态，无数据库结构变更。深圳10店仅本地管理配置，地址含模拟定位说明，当前地图及距离均为Mock。
+
 ## D-049 三项修正（2026-10-15，优先于以下旧描述）
 
 接口结构不变。导入成功后前端立即调用既有`POST /work-orders/text/extract`并合并结果。`surveyorName`直接预填，明确标签优先聊天昵称，证据不再标记姓名需确认；前端不再单独要求姓名候选/冲突选择，已有手改姓名不覆盖。正式提交的`INTAKE_INCOMPLETE`不再包含vehicleColor、vehicleBrand、vehicleModel；V19移除数据库正式身份约束与正式报价抬头中的品牌/车型必填，旧迁移不改，PDF缺失字段留空。其他必填和照片门禁不变，稀疏草稿仍可保存，权限不变。
@@ -14,7 +32,7 @@
 | --- | --- |
 | caseId / status | 当前案件和真实状态 |
 | workOrderVersion / quotationVersion / basisVersion | 服务端快照依据版本；写入仍按各原接口的期望版本与幂等键校验 |
-| currentNode | CREATE、DISPATCH_ARRIVAL、SHOP_QUOTE、QUOTE_REVIEW、INSURER_ASSESSMENT、REPAIR_AUTHORIZATION、REPAIR、RECEIPT、COMPLETE；未知历史语义返回UNKNOWN |
+| currentNode | CREATE、DISPATCH_ARRIVAL、SHOP_QUOTE、QUOTE_REVIEW、INSURER_ASSESSMENT、REPAIR、RECEIPT、FUNDS、COMPLETE；未知历史语义返回UNKNOWN |
 | actorRole / action | 当前主任务所需角色和动作，等待网点时仍明确任务对象；NONE表示终态或未知状态无推进动作 |
 | canAct | 当前账号有主任务办理权限，决定绿/黄，不取决于资料是否齐备 |
 | canContinue / missing | 已保存证据是否齐备及中文缺失项；不包含尚未提交表单值的校验结果，不是写接口授权 |
@@ -78,3 +96,11 @@
 PUT /api/v1/work-orders/{id}/dispatch-location 请求 expectedVersion、regionId、address、confirmed=true；仅ADMIN/CUSTOMER_SERVICE，派单/到店异常处理阶段；已到店仅ADMIN可在异常改派时核对，其他阶段拒绝；版本冲突409，成功审计不记录完整地址。派单未经核对地址返回409 DISPATCH_ADDRESS_REQUIRED。GET eligible-shops在确认后使用现有本地Mock编码与直线距离，分批读取服务区域候选，先全局按距离/网点ID稳定排序再分页，缺地址网点距离为null排末。响应新增distanceMetres；不调用真实地图、不自动选店。Mock全局排名仅用于本轮本地模拟；未来真实服务需缓存/批量编码，不应逐网点外呼。
 
 报价审核用SCENE_PHOTO代替NOTICE/缺失原因门禁，缺失返回409 MISSING_SCENE_PHOTO。旧通知单和原因保留。正式报价抬头保险公司/车主姓名允许空值，原快照不回写；PDF空值显示为空，避免编造资料。
+
+
+### D-056 资金节点
+POST /funds/cases/{id}/confirmations，Idempotency-Key；请求 {expectedVersion,direction: RECEIVE|PAY}。仅客服；当前收车有效、人工目标已定且净流水等于目标；PAY还须当前网点派单及先前到账确认有效。返回资金视图（flowStage、receiveConfirmed、payConfirmed、canConfirmReceive、canConfirmPay），仅员工可见。收车进入WAITING_INSURER_PAYMENT，到账确认进入WAITING_SHOP_SETTLEMENT，结算确认进入COMPLETED。修改依据自动重新打开资金步骤，幂等与版本冲突沿用资金协议。
+
+
+### D-057 资金页面使用约定
+无新增API。核损原件/最终采用金额复用GET quotations/cases/{id}与受控materials下载、PDF预览；仅员工页面请求。最终确认金额须sourceCurrent和客服确认均有效。方向由flowStage推导，不暴露选择框；备注可空，时间默认Asia/Shanghai当前日期时刻。targets.reason仍必填，由正常办理页面提供当前步骤操作说明；冲销reason仍人工必填。资金金额精度、幂等、版本和顺序检查不变。

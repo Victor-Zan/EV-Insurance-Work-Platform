@@ -154,6 +154,12 @@ public class WorkOrderService {
         return new WorkOrderViews.DuplicateConfiguration(request.possibleDuplicateDays());
     }
 
+    public PageResponse<WorkOrderRows.CityOption> dispatchCities(String query,int page,int size) {
+        requireStaff();int offset=PageResponse.offset(page,size);String search=query==null?"":query.trim();
+        if(search.length()>100)throw ApiException.invalid("城市搜索不能超过100个字符");
+        return new PageResponse<>(page,size,mapper.dispatchCityCount(search),mapper.dispatchCities(search,offset,size));
+    }
+
     @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public PageResponse<WorkOrderRows.ShopOption> eligibleShops(UUID id,int page,int size) {
         var actor=requireStaff();
@@ -682,7 +688,7 @@ public class WorkOrderService {
     private String nodeActor(WorkOrderEntity row,WorkOrderRows.Phase phase){if(java.util.Set.of("WAITING_INSURER_ASSESSMENT","WAITING_REPAIR_AUTHORIZATION").contains(row.getStatus())&&(phase==null||!phase.formalCurrent()))return phase!=null&&phase.rawCurrent()?"客服":"网点";return switch(row.getStatus()){
         case "DRAFT","PENDING_DISPATCH","ARRIVAL_EXCEPTION" -> "管理员或客服";
         case "PENDING_ACCEPTANCE","PENDING_ARRIVAL","ARRIVED","WAITING_QUOTE" -> "网点";
-        case "QUOTE_REVIEWING","WAITING_INSURER_ASSESSMENT" -> "客服";
+        case "QUOTE_REVIEWING","WAITING_INSURER_ASSESSMENT","WAITING_INSURER_PAYMENT","WAITING_SHOP_SETTLEMENT" -> "客服";
         case "WAITING_REPAIR_AUTHORIZATION" -> phase!=null&&phase.confirmed()&&phase.amountPresent()&&phase.lossPresent()?"网点":"客服";
         case "REPAIRING" -> "网点或客服";
         case "WAITING_OWNER_CONFIRMATION" -> "车主或客服";

@@ -29,6 +29,14 @@ public class FileService {
         return new View(f.id(),f.groupId(),f.category(),f.versionNo(),f.state(),name,f.contentType(),f.byteSize(),f.createdAt());
     }
     public FileRow accessible(UUID id) { var f=files.find(id); if(f==null) throw ApiException.missing("File"); access.readable(f); return f; }
+    public PdfPagePreview.Image preview(UUID id,int page) throws IOException {
+        if(!access.staff(CurrentUser.require()))throw ApiException.denied();
+        var file=download(id);
+        try(var stream=file.stream()){
+            if(!"application/pdf".equals(file.metadata().contentType()))throw ApiException.invalid("此预览入口仅适用于PDF");
+            return PdfPagePreview.render(stream.readAllBytes(),page);
+        }
+    }
     public PageResponse<View> list(UUID orderId,int page,int size) {
         var order=access.order(orderId,false); var a=CurrentUser.require(); int offset=PageResponse.offset(page,size);
         String scope=access.staff(a)?"STAFF":a.roles().contains(Role.OWNER)?"OWNER":"SHOP";

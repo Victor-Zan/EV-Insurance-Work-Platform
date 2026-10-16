@@ -26,7 +26,7 @@
  <sql id="tasks">
   WITH states AS (
    SELECT w.*,a.assignment_version,
-    CASE w.status WHEN 'PENDING_ACCEPTANCE' THEN 'ACCEPT_SHOP' WHEN 'PENDING_ARRIVAL' THEN 'ARRIVE_SHOP' WHEN 'ARRIVAL_EXCEPTION' THEN 'ARRIVE_SHOP' WHEN 'ARRIVED' THEN 'QUOTE_SHOP' WHEN 'WAITING_QUOTE' THEN 'QUOTE_SHOP' WHEN 'QUOTE_REVIEWING' THEN 'REVIEW_QUOTE' WHEN 'WAITING_INSURER_ASSESSMENT' THEN 'CONFIRM_ASSESSMENT' WHEN 'WAITING_REPAIR_AUTHORIZATION' THEN CASE WHEN q.insurer_confirmed AND q.service_confirmed AND q.assessment_id IS NOT NULL AND EXISTS(SELECT 1 FROM case_file f WHERE f.work_order_id=w.id AND f.category='LOSS_ASSESSMENT' AND f.state='ACTIVE') THEN 'START_REPAIR_SHOP' ELSE 'CONFIRM_ASSESSMENT' END WHEN 'REPAIRING' THEN 'REPAIR_SHOP' WHEN 'WAITING_OWNER_CONFIRMATION' THEN 'RECEIVE_OWNER' ELSE NULL END state_kind,
+    CASE w.status WHEN 'PENDING_ACCEPTANCE' THEN 'ACCEPT_SHOP' WHEN 'PENDING_ARRIVAL' THEN 'ARRIVE_SHOP' WHEN 'ARRIVAL_EXCEPTION' THEN 'ARRIVE_SHOP' WHEN 'ARRIVED' THEN 'QUOTE_SHOP' WHEN 'WAITING_QUOTE' THEN 'QUOTE_SHOP' WHEN 'QUOTE_REVIEWING' THEN 'REVIEW_QUOTE' WHEN 'WAITING_INSURER_ASSESSMENT' THEN 'CONFIRM_ASSESSMENT' WHEN 'WAITING_REPAIR_AUTHORIZATION' THEN CASE WHEN q.insurer_confirmed AND q.service_confirmed AND q.assessment_id IS NOT NULL AND EXISTS(SELECT 1 FROM case_file f WHERE f.work_order_id=w.id AND f.category='LOSS_ASSESSMENT' AND f.state='ACTIVE') THEN 'START_REPAIR_SHOP' ELSE 'CONFIRM_ASSESSMENT' END WHEN 'REPAIRING' THEN 'REPAIR_SHOP' WHEN 'WAITING_OWNER_CONFIRMATION' THEN 'RECEIVE_OWNER' WHEN 'WAITING_INSURER_PAYMENT' THEN 'COLLECT_FUNDS' WHEN 'WAITING_SHOP_SETTLEMENT' THEN 'PAY_SHOP' ELSE NULL END state_kind,
     r.id receive_target_id,r.amount receive_target,p.id pay_target_id,CASE WHEN p.shop_id=w.shop_id AND p.assignment_version=a.assignment_version THEN p.amount ELSE NULL END pay_target,
     (SELECT coalesce(sum(e.amount),0) FROM funds_entry e WHERE e.work_order_id=w.id AND e.direction='RECEIVE' AND NOT EXISTS(SELECT 1 FROM funds_reversal fr WHERE fr.entry_id=e.id)) net_receive,
     (SELECT coalesce(sum(e.amount),0) FROM funds_entry e WHERE e.work_order_id=w.id AND e.direction='PAY' AND NOT EXISTS(SELECT 1 FROM funds_reversal fr WHERE fr.entry_id=e.id)) net_pay
@@ -37,10 +37,10 @@
    WHERE w.status NOT IN ('DRAFT','CANCELLED','CLOSED') <if test="caseId != null">AND w.id=#{caseId}</if>
   ), tasks AS (
    SELECT id work_order_id,state_kind kind,id::text||':'||state_kind||':'||coalesce(assignment_version,0)::text||':'||extract(epoch from status_started_at)::text task_key,
-    CASE WHEN state_kind LIKE '%SHOP' THEN 'SHOP' WHEN state_kind='RECEIVE_OWNER' THEN 'OWNER_CS' ELSE 'CS' END role_scope,created_at FROM states WHERE state_kind IS NOT NULL
+    CASE WHEN state_kind='PAY_SHOP' THEN 'CS' WHEN state_kind LIKE '%SHOP' THEN 'SHOP' WHEN state_kind='RECEIVE_OWNER' THEN 'OWNER_CS' ELSE 'CS' END role_scope,created_at FROM states WHERE state_kind IS NOT NULL
    UNION ALL SELECT id,'SET_RECEIVABLE',id::text||':SET_RECEIVABLE','CS',created_at FROM states WHERE receive_target IS NULL
-   UNION ALL SELECT id,'COLLECT_FUNDS',id::text||':COLLECT_FUNDS:'||receive_target_id::text,'CS',created_at FROM states WHERE receive_target IS NOT NULL AND net_receive&lt;receive_target
-   UNION ALL SELECT id,'SET_PAYABLE',id::text||':SET_PAYABLE:'||coalesce(pay_target_id,0)::text,'CS',created_at FROM states WHERE status='COMPLETED' AND pay_target IS NULL
+   UNION ALL SELECT id,'COLLECT_FUNDS',id::text||':COLLECT_FUNDS:'||receive_target_id::text,'CS',created_at FROM states WHERE status&lt;&gt;'WAITING_INSURER_PAYMENT' AND receive_target IS NOT NULL AND net_receive&lt;receive_target
+   UNION ALL SELECT id,'SET_PAYABLE',id::text||':SET_PAYABLE:'||coalesce(pay_target_id,0)::text,'CS',created_at FROM states WHERE status IN ('COMPLETED','WAITING_SHOP_SETTLEMENT') AND pay_target IS NULL
    UNION ALL SELECT id,'PAY_SHOP',id::text||':PAY_SHOP:'||pay_target_id::text,'CS',created_at FROM states WHERE status='COMPLETED' AND pay_target IS NOT NULL AND net_pay&lt;pay_target AND receive_target IS NOT NULL AND net_receive=receive_target
    UNION ALL SELECT work_order_id,'HANDLE_COMPLAINT','COMPLAINT:'||id::text||':'||status,'ADMIN',created_at FROM complaint WHERE status&lt;&gt;'CLOSED' <if test="caseId != null">AND work_order_id=#{caseId}</if>
   )

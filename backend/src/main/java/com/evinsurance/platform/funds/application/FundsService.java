@@ -8,6 +8,7 @@ import com.evinsurance.platform.workorder.infrastructure.*;
 import com.evinsurance.platform.identity.domain.*;
 import com.evinsurance.platform.foundation.api.*;
 import com.evinsurance.platform.audit.application.AuditService;
+import com.evinsurance.platform.foundation.web.TraceContext;
 import java.util.*;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -35,6 +36,43 @@ public class FundsService {
     private String text(String value,String name,int limit,boolean required){if(value==null||value.isBlank()){if(required)throw ApiException.invalid(name+" is required");return "";}if(value.length()>limit)throw ApiException.invalid(name+" is too long");return value.trim();}
     private BigDecimal target(UUID id,String dir){var row=mapper.target(id,dir);return row==null?null:(BigDecimal)row.get("amount");}
     private BigDecimal net(UUID id,String dir){return mapper.net(id,dir,null,null).setScale(2);}
+    private String basis(UUID id,String dir){
+        var target=mapper.target(id,dir);var receive=dir.equals("PAY")?mapper.confirmation(id,"RECEIVE"):null;
+        return FileService.hash((mapper.receiptId(id)+":"+(target==null?"unset":target.get("id"))+":"+mapper.ledgerBasis(id,dir)+":"+(receive==null?"":receive.get("id"))).getBytes(StandardCharsets.UTF_8));
+    }
+    private boolean confirmed(UUID id,String dir){
+        var saved=mapper.confirmation(id,dir);
+        return saved!=null&&mapper.receiptId(id)!=null&&basis(id,dir).equals(saved.get("basis_hash"))&&(!dir.equals("PAY")||(confirmed(id,"RECEIVE")&&currentPay(id)));
+    }
+    private boolean currentPay(UUID id){
+        var pay=mapper.target(id,"PAY");var assignment=orders.activeAssignment(id);
+        return pay!=null&&assignment!=null&&"ACCEPTED".equals(assignment.getStatus())&&Objects.equals(assignment.getShopId(),((Number)pay.get("shop_id")).longValue())&&assignment.getAssignmentVersion()==((Number)pay.get("assignment_version")).intValue();
+    }
+    private boolean canConfirm(WorkOrderEntity order,String dir){
+        UUID id=order.getId();
+        return mapper.staged(id)&&mapper.received(id)&&order.getStatus().equals(dir.equals("RECEIVE")?"WAITING_INSURER_PAYMENT":"WAITING_SHOP_SETTLEMENT")
+            &&"SETTLED".equals(FundsMoney.status(target(id,dir),net(id,dir)))&&(!dir.equals("PAY")||(confirmed(id,"RECEIVE")&&currentPay(id)));
+    }
+    private boolean canPay(WorkOrderEntity order){
+        UUID id=order.getId();return mapper.received(id)&&(mapper.staged(id)?"WAITING_SHOP_SETTLEMENT".equals(order.getStatus())&&confirmed(id,"RECEIVE"):"COMPLETED".equals(order.getStatus()));
+    }
+    private void refreshStage(WorkOrderEntity order){
+        UUID id=order.getId();if(!mapper.staged(id)||!mapper.received(id)||!Set.of("WAITING_INSURER_PAYMENT","WAITING_SHOP_SETTLEMENT","COMPLETED").contains(order.getStatus()))return;
+        String next=!confirmed(id,"RECEIVE")?"WAITING_INSURER_PAYMENT":!confirmed(id,"PAY")?"WAITING_SHOP_SETTLEMENT":"COMPLETED";
+        if(next.equals(order.getStatus()))return;
+        var actor=CurrentUser.require();var now=Instant.now();var assignment=orders.activeAssignment(id);
+        if(orders.transition(id,order.getVersion(),order.getStatus(),next,order.getShopId(),false,actor.id(),now)!=1)throw ApiException.conflict("WORK_ORDER_STATE_CONFLICT","Work order changed concurrently");
+        orders.insertHistory(id,order.getStatus(),next,"FUNDS_WORKFLOW",null,actor.id(),"CUSTOMER_SERVICE",assignment==null?null:assignment.getAssignmentVersion(),TraceContext.currentTraceId()==null?UUID.randomUUID().toString():TraceContext.currentTraceId(),now);
+        order.setStatus(next);order.setVersion(order.getVersion()+1);
+    }
+    @Transactional public JsonNode confirm(UUID id,FundsRequests.Confirmation request,String key){
+        writer();var order=visible(id,true);return command(id,"CONFIRM",key,request,()->{
+            expected(id,request.expectedVersion());String dir=direction(request.direction());
+            if(!canConfirm(order,dir))throw ApiException.conflict("FUNDS_CONFIRMATION_BLOCKED","请先确认收车，按顺序补齐目标金额与流水，再确认该笔资金完成");
+            mapper.confirm(id,dir,basis(id,dir),version(id),CurrentUser.require().id());advance(id);refreshStage(order);
+            audit.record(CurrentUser.require(),AuditService.Action.FUNDS_CONFIRM,"WORK_ORDER",id,"Manually confirmed "+dir+"; amount="+net(id,dir).toPlainString()+"; receipt="+mapper.receiptId(id)+"; immutable target and entry snapshot retained; no real transfer");return view(order);
+        });
+    }
     private ObjectNode directionView(BigDecimal target,BigDecimal net){var out=json.createObjectNode().put("net",net.toPlainString()).put("status",FundsMoney.status(target,net));if(target==null)out.putNull("target");else out.put("target",target.toPlainString());return out;}
     private JsonNode view(WorkOrderEntity order){
         UUID id=order.getId();var out=json.createObjectNode().put("caseId",id.toString()).put("currency","CNY").put("unit","yuan").put("version",version(id));var actor=CurrentUser.require();
@@ -46,8 +84,9 @@ public class FundsService {
             var receivable=target(id,"RECEIVE");var received=net(id,"RECEIVE");var current=orders.activeAssignment(id);boolean mutable=!"CANCELLED".equals(order.getStatus());
             boolean currentPay=current!=null&&payable!=null&&Objects.equals(current.getShopId(),((Number)payable.get("shop_id")).longValue())&&current.getAssignmentVersion()==((Number)payable.get("assignment_version")).intValue();
             out.put("canSetPayTarget",mutable&&current!=null&&"ACCEPTED".equals(current.getStatus()));
-            out.put("canRecordReceive",mutable&&receivable!=null&&receivable.compareTo(received)>0);
-            out.put("canRecordPay",mutable&&"COMPLETED".equals(order.getStatus())&&mapper.received(id)&&currentPay&&amount!=null&&amount.compareTo(paid)>0&&"SETTLED".equals(FundsMoney.status(receivable,received)));
+            out.put("canRecordReceive",mutable&&(!mapper.staged(id)||"WAITING_INSURER_PAYMENT".equals(order.getStatus()))&&receivable!=null&&receivable.compareTo(received)>0);
+            out.put("canRecordPay",mutable&&canPay(order)&&currentPay&&amount!=null&&amount.compareTo(paid)>0&&"SETTLED".equals(FundsMoney.status(receivable,received)));
+            out.put("flowStage",order.getStatus()).put("stagedFlow",mapper.staged(id)).put("receiveConfirmed",confirmed(id,"RECEIVE")).put("payConfirmed",confirmed(id,"PAY")).put("canConfirmReceive",canConfirm(order,"RECEIVE")).put("canConfirmPay",canConfirm(order,"PAY"));
         }return out;
     }
     private String filter(String value) {if(value==null||value.isBlank())return null;if(value.length()>120)throw ApiException.invalid("Filter is too long");return value.trim();}
@@ -77,7 +116,7 @@ public class FundsService {
             BigDecimal amount=request.amount()==null||request.amount().isNull()?null:FundsMoney.parse(request.amount(),false);BigDecimal net=net(id,dir);
             if((amount==null&&(dir.equals("RECEIVE")||net.signum()!=0))||(amount!=null&&amount.compareTo(net)<0))throw ApiException.conflict("FUNDS_TARGET_CONFLICT","Reverse historical entries before reducing below net or clearing a paid target");
             var assignment=orders.activeAssignment(id);if(dir.equals("PAY")&&(assignment==null||!"ACCEPTED".equals(assignment.getStatus())))throw ApiException.conflict("FUNDS_ASSIGNMENT_REQUIRED","Payable requires a current accepted shop");
-            mapper.targetSave(id,dir,amount,dir.equals("PAY")?assignment.getShopId():null,dir.equals("PAY")?assignment.getAssignmentVersion():null,text(request.reason(),"Target version reason",2000,true),CurrentUser.require().id());advance(id);
+            mapper.targetSave(id,dir,amount,dir.equals("PAY")?assignment.getShopId():null,dir.equals("PAY")?assignment.getAssignmentVersion():null,text(request.reason(),"Target version reason",2000,true),CurrentUser.require().id());advance(id);refreshStage(order);
             audit.record(CurrentUser.require(),AuditService.Action.FUNDS_TARGET,"WORK_ORDER",id,"Manual "+dir+" target version appended");return view(order);
         });
     }
@@ -92,19 +131,20 @@ public class FundsService {
             BigDecimal target=target(id,dir);if(target==null)throw ApiException.conflict("FUNDS_TARGET_UNSET","Set a manual target first");
             if(net(id,dir).add(amount).compareTo(target)>0)throw ApiException.conflict("FUNDS_EXCESS","Actual entry would exceed the target");
             var assignment=orders.activeAssignment(id);
+            if(dir.equals("RECEIVE")&&mapper.staged(id)&&!"WAITING_INSURER_PAYMENT".equals(order.getStatus()))throw ApiException.conflict("FUNDS_SEQUENCE_REQUIRED","先回到保险到账步骤再补记到账流水");
             if(dir.equals("PAY")){
-                if(!"COMPLETED".equals(order.getStatus())||!mapper.received(id))throw ApiException.conflict("FUNDS_RECEIPT_REQUIRED","Current confirmed vehicle receipt is required");
+                if(!canPay(order))throw ApiException.conflict("FUNDS_RECEIPT_REQUIRED","Current confirmed vehicle receipt is required");
                 if(!"SETTLED".equals(FundsMoney.status(target(id,"RECEIVE"),net(id,"RECEIVE"))))throw ApiException.conflict("FUNDS_INSURER_UNSETTLED","Insurance receipts must be settled before recording shop payment");
                 var pay=mapper.target(id,"PAY");if(assignment==null||!Objects.equals(assignment.getShopId(),((Number)pay.get("shop_id")).longValue())||assignment.getAssignmentVersion()!=((Number)pay.get("assignment_version")).intValue())throw ApiException.conflict("FUNDS_ASSIGNMENT_CONFLICT","Payable version must belong to the current assignment");
             }
-            UUID record=UUID.randomUUID();mapper.entrySave(record,id,dir,number,amount,time,dir.equals("PAY")?assignment.getShopId():null,dir.equals("PAY")?assignment.getAssignmentVersion():null,note,hash,CurrentUser.require().id());advance(id);
+            UUID record=UUID.randomUUID();mapper.entrySave(record,id,dir,number,amount,time,dir.equals("PAY")?assignment.getShopId():null,dir.equals("PAY")?assignment.getAssignmentVersion():null,note,hash,CurrentUser.require().id());advance(id);refreshStage(order);
             audit.record(CurrentUser.require(),AuditService.Action.FUNDS_ENTRY,"FUNDS_ENTRY",record,"Recorded "+dir+"; no real transfer");return json.createObjectNode().put("entryId",record.toString()).put("duplicate",false).set("funds",view(order));
         });
     }
     @Transactional public JsonNode reverse(UUID id,UUID entry,FundsRequests.Reversal request,String key){
         writer();var order=visible(id,true);return command(id,"REVERSE",key,Map.of("entry",entry,"request",request),()->{
             expected(id,request.expectedVersion());var row=mapper.entry(entry);if(row==null||!id.equals(row.get("work_order_id")))throw ApiException.missing("Funds entry");if(mapper.reversed(entry))throw ApiException.conflict("FUNDS_ALREADY_REVERSED","Entry already reversed");
-            mapper.reverse(UUID.randomUUID(),entry,text(request.reason(),"Reversal reason",2000,true),CurrentUser.require().id());advance(id);audit.record(CurrentUser.require(),AuditService.Action.FUNDS_REVERSE,"FUNDS_ENTRY",entry,"Full reversal appended; original entry retained");return view(order);
+            mapper.reverse(UUID.randomUUID(),entry,text(request.reason(),"Reversal reason",2000,true),CurrentUser.require().id());advance(id);refreshStage(order);audit.record(CurrentUser.require(),AuditService.Action.FUNDS_REVERSE,"FUNDS_ENTRY",entry,"Full reversal appended; original entry retained");return view(order);
         });
     }
     private JsonNode entryView(Map<String,Object> row,boolean staff){

@@ -9,6 +9,8 @@ import org.apache.ibatis.annotations.Param;
 
 @Mapper
 public interface WorkOrderMapper {
+    long dispatchCityCount(@Param("query") String query);
+    List<WorkOrderRows.CityOption> dispatchCities(@Param("query") String query,@Param("offset") int offset,@Param("size") int size);
     java.util.List<WorkOrderRows.Phase> phases(@org.apache.ibatis.annotations.Param("ids") java.util.List<java.util.UUID> ids);
     void insertDraft(WorkOrderEntity row);
     int updateDraft(@Param("row") WorkOrderEntity row,@Param("actorId") long actorId,@Param("now") Instant now);

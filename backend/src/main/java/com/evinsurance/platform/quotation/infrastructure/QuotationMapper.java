@@ -12,6 +12,10 @@ public interface QuotationMapper {
     int nextVersion(@Param("id") UUID id,@Param("type") String type);
     Raw raw(UUID id);
     List<RawItem> rawItems(UUID id);
+    void snapshotRawFiles(@Param("quote") UUID quote,@Param("caseId") UUID caseId,@Param("shop") long shop,@Param("assignment") int assignment);
+    List<RawOriginal> rawOriginals(UUID id);
+    String formalReview(UUID id);
+    void insertFormalReview(@Param("quote") UUID quote,@Param("adopted") String adopted,@Param("actor") long actor);
     void insertRaw(@Param("id") UUID id,@Param("caseId") UUID caseId,@Param("version") int version,@Param("shop") long shop,@Param("assignment") int assignment,@Param("total") BigDecimal total,@Param("actor") long actor);
     void insertRawItem(@Param("id") UUID id,@Param("line") int line,@Param("description") String description,@Param("quantity") int quantity,@Param("unit") BigDecimal unit,@Param("amount") BigDecimal amount,@Param("snapshot") String snapshot);
     Formal formal(UUID id);
@@ -21,6 +25,7 @@ public interface QuotationMapper {
     void insertFormal(@Param("id") UUID id,@Param("caseId") UUID caseId,@Param("version") int version,@Param("raw") UUID raw,@Param("mode") String mode,@Param("value") BigDecimal value,@Param("original") BigDecimal original,@Param("markup") BigDecimal markup,@Param("total") BigDecimal total,@Param("actor") long actor);
     void insertFormalItem(@Param("id") UUID id,@Param("line") AllocatedLine line);
     Assessment assessment(UUID id);
+    AssessmentProof assessmentProof(UUID id);
     void insertAssessment(@Param("id") UUID id,@Param("caseId") UUID caseId,@Param("version") int version,@Param("formal") UUID formal,@Param("amount") BigDecimal amount,@Param("snapshot") String snapshot,@Param("actor") long actor);
     List<Map<String,Object>> activeLossFiles(UUID id);
     int confirmation(@Param("id") UUID id,@Param("c") Context context,@Param("kind") String kind,@Param("snapshot") String snapshot,@Param("actor") long actor);

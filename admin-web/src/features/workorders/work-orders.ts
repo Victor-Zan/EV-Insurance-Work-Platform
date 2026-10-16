@@ -53,6 +53,8 @@ export interface CriticalForm {
   insuranceCompany: string; claimNo: string; vehicleVin: string; vehiclePlate: string; vehicleOtherIdentifier: string; reason: string
 }
 export interface ShopOption { id: number; code: string; name: string; address?: string;distanceMetres?:number }
+export interface MapLocation {label:string;point:{latitude:number;longitude:number};mock:boolean}
+export interface MapShop {id:number;name:string;address?:string;distanceMetres?:number;mockLocation:MapLocation}
 export interface RegionOption { id: number; code: string; name: string; level: number }
 export interface History { id: number; fromStatus?: string; toStatus: string; action: string; reason?: string; occurredAt: string }
 export interface DuplicateConfiguration { possibleDuplicateDays: number }
@@ -92,6 +94,9 @@ export function workOrderApi(client: AxiosInstance) {
     list: (page=1,status='',query='') => data<Page<WorkOrder>>(client.get('/work-orders',{ params:{ page,size:20,status:status||undefined,query:query||undefined } })),
     reconciliation: (page=1,status='',query='') => client.get<Blob>('/funds/reconciliation/export',{params:{page,size:20,status:status||undefined,query:query||undefined},responseType:'blob'}).then(response=>response.data),
     regions: (page=1) => data<Page<RegionOption>>(client.get('/pricing/regions',{ params:{ page,size:20 } })),
+    mapCities:(query='',page=1)=>data<Page<RegionOption>>(client.get('/maps/cities',{params:{query,page,size:20}})),
+    mapLocation:(address:string)=>data<MapLocation>(client.get('/maps/geocode',{params:{address}})),
+    mapShops:(id:string,page=1)=>data<Page<MapShop>>(client.get(`/maps/cases/${id}/shops`,{params:{page,size:20}})),
     create: (form: DraftForm) => data<WorkOrder>(client.post('/work-orders/drafts',draftPayload(form))),
     update: (id: string,form: DraftForm) => data<WorkOrder>(client.put(`/work-orders/${id}/draft`,draftPayload(form))),
     deleteDraft: (id: string) => data<void>(client.delete(`/work-orders/${id}/draft`)),
