@@ -4,7 +4,10 @@ import java.util.UUID;
 import tools.jackson.databind.JsonNode;
 public final class QuotationRequests {
     private QuotationRequests() {}
-    public record Line(String description,JsonNode quantity,JsonNode unitPrice) {}
+    public record Ocr(UUID jobId,Integer revision,Integer itemIndex) {}
+    public record Line(String description,JsonNode quantity,JsonNode unitPrice,Ocr ocr) {
+        public Line(String description,JsonNode quantity,JsonNode unitPrice){this(description,quantity,unitPrice,null);}
+    }
     public record Raw(Integer expectedVersion,Integer assignmentVersion,List<Line> lines) {}
     public record Formal(Integer expectedVersion,UUID rawQuoteId,String mode,JsonNode fixedAmount,JsonNode percentage,List<Line> reviewedLines) {}
     public record Assessment(Integer expectedVersion,JsonNode amount) {}

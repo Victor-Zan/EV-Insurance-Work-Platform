@@ -67,7 +67,8 @@ public class FileService {
             if(!requestHash.equals(command.get("request_hash"))) throw ApiException.conflict("IDEMPOTENCY_CONFLICT","Key already used for different upload");
             return view(accessible((UUID)command.get("file_id")));
         }
-        quotationLifecycle.requireUploadStage(order,category);
+        if(a.roles().contains(Role.REPAIR_SHOP)&&category==FileCategory.ASSESSMENT)quotationLifecycle.requireEditable(order);
+        else quotationLifecycle.requireUploadStage(order,category);
         FileRow previous=replace==null?null:accessible(replace);
         if(previous!=null && (!previous.workOrderId().equals(orderId)||!previous.category().equals(category.name())||!"ACTIVE".equals(previous.state()))) throw ApiException.conflict("FILE_VERSION_CONFLICT","Only the current active version of the same category can be replaced");
         if(previous!=null)repairMaterials.requireChangeable(previous.id());

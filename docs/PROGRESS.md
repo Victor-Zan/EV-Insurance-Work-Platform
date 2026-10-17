@@ -1,3 +1,33 @@
+## 2026-10-15 网点报价表单手写OCR完成（D-047）
+
+- 基线：origin/main 674edf2431062288307bd14f2425ac8e5d6fa6e0，交付前再次fetch仍一致。独立分支 feature/sherr-shop-quotation-ocr；本机工作区 shop-quotation-ocr；原地图分支、旧OCR库及资料目录未覆盖/切换/重置。提交署名使用现有 Sherry070719 / Sherry7191088@outlook.com，不冒用队友。
+- 入口：维修网点H5 → 本店案件 → 案件详情 → 报价授权 → 提交原始报价新版本 → 上传手写清单识别。复用百度Provider、Token缓存、原任务/Worker/私有对象存储与候选历史，不新增供应商或独立OCR页面。
+- 新增限定作用域和服务端校验：当前本店ACCEPTED派单、允许报价状态、本次有效SHOP_QUOTE/ASSESSMENT。查询/原图/原文/重试/人工确认/提交再验范围；Worker调用前和写回复核。改派、完成、取消、源失效拒绝旧结果。通用 /ocr/** 没有给网点加角色；客服/管理员对网点任务只读，车主拒绝。
+- 项目、数量、单位、单价及单据行金额候选；费用仅作普通项目候选，缺数量/单价留空、不造1/0、l不转1、不新增汇总收费模型。原始金额/单据合计与程序计算分开。初始程序/原文/坐标/真实概率不可变，人工版本、确认和最终原始报价来源分层。明确标签或可靠表头/唯一行列才能整理，复杂自由手写仍需人工补充。
+- 空白预填、手填冲突添加/替换/忽略、等待期间输入保护、原图对照、人工增删候选和金额差异提示；重复采用/上传幂等，跨图同名不合并、合计不累加。原按钮提交，QuoteOcrLineage在原submitRaw事务内重验已确认内容及范围；只追加不可变网点原始报价，不写正式对外价/核损/价格库/资金。
+- 只新增 V18__shop_quote_ocr.sql：任务来源/页次、幂等命令、报价行→确认版本关联，历史追加不可改；V1—V16及dev SQL未改。V17由未合并地图分支保留，本分支不依赖地图。每次派单最多20张不同识别原件（两允许分类合计，重复/重试不占新名额），服务端稳定分配页次；不限制继续手填。字段映射、API、配置和边界见SHOP_QUOTE_OCR.md。
+
+### 实际验证
+
+| 检查 | 实际执行 | 最终结果 |
+| --- | --- | --- |
+| 后端全量 | JDK21下 backend/.\mvnw.cmd -B -ntp -Ppostgres-it verify；注入专用TEST_DB与TEST_MINIO环境 | PASS：43单元、85真实PostgreSQL17.6/私有MinIO集成测试，失败/错误/跳过全部0；Maven JAR成功。新增5候选单元和9网点OCR集成测试；既有身份/价格/文件/客服OCR/报价/工作流回归保留。最终日志在仓库外shop-ocr-runtime/backend-release-verify.log。 |
+| Flyway | 随机空schema迁移至V18、validate；普通/dev迁移、V15→V16原升级测试保留精确target16 | PASS：19份校验记录含schema记录，SQL版本含dev2.1共18份；旧迁移未改，未repair，旧OCR V15数据库未连接或升级。 |
+| H5 | npm ci --offline --no-audit --no-fund；npm run lint；npm run typecheck；npm run test；npm run build | 全部PASS，26测试，0失败/跳过。 |
+| 管理端 | 上述安装及四项完整门禁 | 全部PASS；网点任务标为内部只读，客服建单OCR原入口不改。 |
+| 供应商测试 | 既有16项BaiduOcrProvider本机HTTP模拟 + 新合成文字/坐标/单位/费用/缺失/金额差异测试 | PASS；没有真实密钥或额度依赖。 |
+| 权限/并发/历史 | 9项新增PG集成：四角色、跨店/案件/旧派单、ASSESSMENT、失效/冻结、禁用创建者、并发确认、重复提交/上传/多图、失败后手填、租约、原文和价格不可覆盖、确认内容与报价一致、OpenAPI | PASS。人工确认不写报价；原提交生成新版本并存OCR来源；旧版本更新被数据库拒绝。 |
+| 手机浏览器 | 新隔离Mock后端18086/H5 5188，shop_ocr_browser_20261015，合成图与两张本店到店案件，360/390像素 | PASS：原图实际加载，无横向溢出；保留手填3×8并明确采用/人工修正2×12.50，通过原按钮提交v1/49.00；另一空表自动预填后改数量4，经原按钮提交v1/40.00。只读API核对两版均有OCR来源，网点无formalQuote/assessment金额。截图在仓库外；最终构建更新同一隔离Mock预览且Flyway重启验证，不重启旧真实OCR进程。 |
+| Compose | 检查Docker CLI可用性 | 未验证：本机无Docker CLI。真实PG/MinIO验证不等于Compose验证；需有Docker环境执行原compose config/健康检查。 |
+
+首轮新增集成测试因合成网点编码超出既有VARCHAR(32)失败，修正夹具长度，未放宽数据库约束。H5首轮类型检查发现幂等键默认参数推断过窄，显式标注string，未降类型检查。浏览器同名输入框的自动定位冲突改为按报价/候选分区定位；开发热更新会重载临时表单，稳定代码后复用原任务重做并完成两条提交链路，不声称浏览器刷新可保存临时编辑。
+
+### 未验证与交付边界
+
+本轮真实百度鉴权/OCR均0次，没有读取或重新要求提供百度密钥，没有购买、开通付费或增加旧真实预算。功能实现及离线联动通过，不代表新的真实手写识别准确率验收；未来须另获次数/样本授权。物理手机、所有浏览器与生产并发/部署未验证。页面临时编辑刷新不持久化；同图重传可复用任务，已确认/正式提交历史在服务端保留。与未合并地图V17的完整部署迁移顺序未在本轮验证，应合并时用完整迁移集在隔离库复验，不修改历史或执行repair。
+
+需求、D-047、架构、API和本地说明已同步；下一步仅检查暂存安全、提交推送本功能分支并尝试Draft PR，不合并、不部署、不进入其他阶段。暂存安全检查：30个本任务文本文件，私密运行值/Token/私钥及私密文件模式扫描0命中；既有迁移变动0。Git交付结果在收尾记录补齐。
+
 # 项目进度
 
 ## 2026-10-16 本轮提交及main合并范围
@@ -1076,3 +1106,42 @@ Docker CLI/Desktop 不可用，Compose 本次未验证且文件未改；未执�
 ## GitHub交付准备（2026-10-10）
 
 用户授权将当前全部项目成果提交到Victor-Zan/EV-Insurance-Work-Platform；当前分支feature/phase8-funds-reminders。纳入第7—8阶段源码、迁移、测试、文档、合成截图与公开验证结果，并补齐报告引用的8份前端检查日志和3个辅助脚本。环境凭据、Token、数据库/MinIO运行数据、构建产物和工具缓存不提交。验证状态及局限按USABILITY_VISUAL_RECHECK保留，无部署或主分支合并。提交成功以远端分支和提交SHA核对为准。
+
+### Git交付收尾（2026-10-15）
+
+- 实现提交：76055c4a01b53cf108c4184224b15baf92bdec20，feat(quotation): add scoped shop handwriting OCR prefill。正常推送 feature/sherr-shop-quotation-ocr 成功，远端SHA核对一致。
+- GitHub集成 github_create_pull_request（base=main、head=feature/sherr-shop-quotation-ocr、draft=true）仅尝试一次，返回HTTP403 Resource not accessible by integration。没有创建PR；没有换渠道绕过或重复尝试，无自动合并/生产部署。
+- 分支：https://github.com/Victor-Zan/EV-Insurance-Work-Platform/tree/feature/sherr-shop-quotation-ocr 。人工创建入口：https://github.com/Victor-Zan/EV-Insurance-Work-Platform/compare/main...feature/sherr-shop-quotation-ocr?expand=1 ，由有权限的协作者选择Create draft pull request，目标main。
+- 本条纯文档收尾另行提交并推送，不改已通过门禁的源码。最终本任务工作区清洁；隔离Mock预览18086/5188、合成schema与原图/截图留在本机仓库外供复核，未提交截图或私密配置。旧真实OCR预算进程、旧数据库及地图工作区未改。任务在此停止。
+
+## 2026-10-15 网点报价OCR开始（D-047）
+
+已核对真实仓库main 674edf2；新独立工作区shop-quotation-ocr、分支feature/sherr-shop-quotation-ocr，原地图工作区及当前资料目录未修改。保留署名Sherry070719。复用百度链路，实施范围/映射/验收见SHOP_QUOTE_OCR.md；本轮不调用真实百度，不读取私密密钥。当前尚未完成，后续记录实际验证与交付。
+
+
+## 2026-10-17 main 合并冲突处理完成
+
+用户确认：网点端取远端，客服/管理员端取本地；OCR V18未在共享环境执行。9个文本冲突逐项整合，管理端页面恢复本地，网点QuotationPanel采用远端；共享报价服务保留本地原件快照/核损失效及权限门禁，接入OCR逐行来源。发现并处理自动合并遗漏的Flyway V18撞号，OCR迁移改为V22，旧迁移不变。范围仅本次合并；验收为两端门禁、后端单元及隔离PG/MinIO集成、全迁移与冲突索引检查；不推送、不部署、不调用真实百度。实际验证结果见下表。
+
+
+### 合并方案与验证结果
+
+- 本地父提交 5256bcf，合入父提交 a7d7a55（远端 main / PR #5）；不丢弃双方提交。管理端源码与本地父提交一致，H5 QuotationPanel 与远端父提交一致；共享后端只整合两端所需逻辑。
+- 通用 /ocr/** 网点权限采用远端规则，仅客服/管理员进入；网点走专用报价OCR入口。保留本地客服报价审核、原件快照、核损确认、维修授权、资金确认和敏感字段隔离。网点ASSESSMENT清单在可报价阶段允许上传，客服核损材料阶段规则保留。
+- OCR迁移仅由V18改编号为V22，SQL在Git中的内容与远端原文件一致；本地V1—V21未改。两边D-047决策撞号，保留本地建单D-047，远端OCR记录为D-061并注明历史编号。
+
+| 检查 | 实际命令/环境 | 结果 |
+| --- | --- | --- |
+| 后端完整门禁 | JDK21.0.11；backend/ .\mvnw.cmd -B -ntp -Dvalidation.build.directory=../tmp/merge-jdk21-full verify -Ppostgres-it；专用ev_insurance_workflow_stage1_test、随机schema、专用MinIO测试桶、OCR_PROVIDER=MOCK_V1 | PASS；55单元+102真实PG/MinIO集成，失败/错误/跳过均0，JAR构建成功；tmp/merge-backend-final.log |
+| 客服核损链路补充 | Maven test-compile failsafe:integration-test failsafe:verify -Ppostgres-it；-Dit.test=QuotationPostgresIT#shopUsesDedicatedOcrAndManualFailureFallbackWithoutSkippingGates，独立merge-assessment-final构建目录 | PASS；最终测试方法1项，含网点失败手填、幂等、原件快照、客服核损原件确认及开修链路；tmp/merge-assessment-final.log |
+| Flyway | 完整门禁内空schema迁移与validate，普通/dev重启及V15→V16精确升级回归 | PASS；完整SQL编号至V22，dev含V2.1，当前无重复编号；未repair、未改业务库 |
+| 管理端 | npm run lint；npm run typecheck；npm test；npm run build | PASS；97测试；tmp/merge-admin-{lint,types,tests,build}.log |
+| H5 | npm run lint；npm run typecheck；npm test；npm run build | PASS；26测试；tmp/merge-h5-{lint,types,tests,build}.log |
+| Compose与健康 | docker compose --env-file .env -f infra/docker-compose.yml config --quiet；docker ps读取已有PG/MinIO健康状态 | PASS；未启动/重建容器或重启应用 |
+| Git与端别核对 | git diff --check；git diff --cached --check；git ls-files -u；源码/迁移与两父提交比较 | PASS；9个文本冲突已解决，无残留标记，管理端保留本地、报价H5保留远端，22个正式迁移编号唯一 |
+
+首轮完整集成中，远端OCR夹具缺少本地已确认的查勘信息、物损照片和接车地址确认，9项在建单前置返回409。补齐测试数据/真实API前置操作，未放宽业务规则。随后网点通用OCR访问测试发现本地额外权限，按用户端别决定改回远端专用接口并保留越权断言；旧网点用例更新为当前入口及失败后手填，客服核损/开修后半链路原断言继续执行。原V18/V19迁移版本断言按精确目标V16及完整V22纠正。中途一次本机HTTP供应商模拟鉴权超时导致55单元中的1项失败，原样重跑通过，未修改超时或断言。首次默认JDK24及沙箱JDK21尝试因Mockito attach管道受限而中止；最终采用仓库指定JDK21在沙箱外完成验证，中止的测试JVM无残留。
+
+未验证：本次浏览器/物理手机视觉验收、生产部署及新真实手写识别准确率。未调用真实百度、未升级已有业务库、未连接旧个人OCR V18库，未执行资金划转。已有个人OCR V18库保留，后续联调应使用隔离空schema，不执行repair。构建既有字体/分包/耗时提醒保留，不屏蔽。
+
+方案和验证记录随本地merge提交保存；本轮不推送远端、不部署，不进入下一阶段。

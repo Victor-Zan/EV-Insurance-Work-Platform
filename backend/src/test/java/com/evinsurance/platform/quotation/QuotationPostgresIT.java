@@ -1,6 +1,7 @@
 package com.evinsurance.platform.quotation;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -845,30 +846,30 @@ class QuotationPostgresIT {
         var job=request(token,"ocr",Map.of("fileId",file),200);var claimed=ocrTasks.claim(3,60);assertThat(claimed.id().toString()).isEqualTo(job.path("id").asText());
         ocrTasks.finish(claimed,failed?null:json.writeValueAsString(Map.of("mock",true,"fields",Map.of("claimNo","SYNTHETIC"))),failed?"PROVIDER_OR_STORAGE_FAILURE":null);return job;
     }
-    @Test void recognizedShopQuoteSyncsImmutableSourceAndManualFailureWithoutSkippingGates() throws Exception {
-        String id=arrived();mvc.perform(get("/api/v1/ocr/configuration").header("Authorization","Bearer "+shop)).andExpect(status().isOk()).andExpect(jsonPath("$.data.processRequestCounts").doesNotExist());mvc.perform(get("/api/v1/funds/cases/{id}",id).header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andExpect(jsonPath("$.data.canRecordPay").value(false)).andExpect(jsonPath("$.data.canRecordReceive").value(false));mvc.perform(get("/api/v1/funds/cases/{id}",id).header("Authorization","Bearer "+shop)).andExpect(status().isOk()).andExpect(jsonPath("$.data.canRecordPay").doesNotExist()).andExpect(jsonPath("$.data.canRecordReceive").doesNotExist());var job=documentJob(id,shop,"SHOP_QUOTE",true);String jobId=job.path("id").asText();
-        List<Map<String,Object>> lines=List.of(Map.of("description","合成识别项目","quantity",2,"unitPrice","10.00"));
-        var quote=rawBody(id,lines);var body=Map.of("jobId",jobId,"revision",1,"quote",quote);
-        request(shop,path(id,"recognized-quote"),body,409);
-        request(shop,"ocr/"+jobId+"/confirm",Map.of("expectedVersion",0),409);
-        request(shop,"ocr/"+jobId+"/review",Map.of("expectedVersion",0,"candidate",Map.of("originalReviewed",true,"adopted",lines,"fields",Map.of("markupValue","PRIVATE-INTERNAL"),"platformProfit","PRIVATE-PROFIT")),200);
-        request(shop,"ocr/"+jobId+"/confirm",Map.of("expectedVersion",1),200);
-        mvc.perform(get("/api/v1/ocr/{id}",jobId).header("Authorization","Bearer "+shop)).andExpect(status().isOk()).andExpect(jsonPath("$.data.candidate.fields.markupValue").doesNotExist()).andExpect(jsonPath("$.data.candidate.platformProfit").doesNotExist());
-        String key=UUID.randomUUID().toString();var result=request(shop,path(id,"recognized-quote"),body,key,200);String business=result.path("rawQuote").path("id").asText();assertThat(result.path("rawQuote").path("total").asText()).isEqualTo("20.00");
-        mvc.perform(get("/api/v1/work-orders").param("query",id).header("Authorization","Bearer "+customerService)).andExpect(status().isOk());
-        assertThat(request(shop,path(id,"recognized-quote"),body,key,200)).isEqualTo(result);
-        request(shop,path(id,"recognized-quote"),Map.of("jobId",jobId,"revision",0,"quote",quote),key,409);
-        mvc.perform(get("/api/v1/quotations/cases/{id}/sources/{business}",id,business).header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andExpect(jsonPath("$.data.state").value("FAILED")).andExpect(jsonPath("$.data.review.adopted[0].unitPrice").value("10.00"));
-        mvc.perform(get("/api/v1/quotations/cases/{id}/sources/{business}",id,business).header("Authorization","Bearer "+shop)).andExpect(status().isOk()).andExpect(jsonPath("$.data.review.fields.markupValue").doesNotExist()).andExpect(jsonPath("$.data.review.platformProfit").doesNotExist());
-        var outsider=createUser("REPAIR_SHOP",createEligibleShop());String other=login(outsider.path("username").asText(),"H5");
-        mvc.perform(get("/api/v1/ocr/{id}",jobId).header("Authorization","Bearer "+other)).andExpect(status().isForbidden());
-        mvc.perform(get("/api/v1/ocr/{id}",jobId).header("Authorization","Bearer "+owner)).andExpect(status().isForbidden());
+    @Test void shopUsesDedicatedOcrAndManualFailureFallbackWithoutSkippingGates() throws Exception {
+        String id=arrived();
+        mvc.perform(get("/api/v1/ocr/configuration").header("Authorization","Bearer "+shop)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/v1/quotations/cases/{id}/ocr/configuration",id).header("Authorization","Bearer "+shop)).andExpect(status().isOk()).andExpect(jsonPath("$.data.processRequestCounts").doesNotExist());
+        mvc.perform(get("/api/v1/funds/cases/{id}",id).header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andExpect(jsonPath("$.data.canRecordPay").value(false)).andExpect(jsonPath("$.data.canRecordReceive").value(false));
+        mvc.perform(get("/api/v1/funds/cases/{id}",id).header("Authorization","Bearer "+shop)).andExpect(status().isOk()).andExpect(jsonPath("$.data.canRecordPay").doesNotExist()).andExpect(jsonPath("$.data.canRecordReceive").doesNotExist());
+        var bitmap=new java.awt.image.BufferedImage(30,30,java.awt.image.BufferedImage.TYPE_INT_RGB);bitmap.setRGB(1,1,0xffffff);var image=new java.io.ByteArrayOutputStream();javax.imageio.ImageIO.write(bitmap,"png",image);
+        var uploaded=mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/v1/quotations/cases/{id}/ocr",id).file(new org.springframework.mock.web.MockMultipartFile("file","synthetic.png","image/png",image.toByteArray())).param("assignmentVersion","1").header("Authorization","Bearer "+shop).header("Idempotency-Key",UUID.randomUUID().toString())).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String jobId=json.readTree(uploaded).path("data").path("id").asText();var claimed=ocrTasks.claim(3,60);assertThat(claimed.id().toString()).isEqualTo(jobId);ocrTasks.finish(claimed,null,"PROVIDER_OR_STORAGE_FAILURE");
+        mvc.perform(get("/api/v1/ocr/{id}",jobId).header("Authorization","Bearer "+shop)).andExpect(status().isForbidden());
+        request(shop,"ocr/"+jobId+"/review",Map.of("expectedVersion",0,"candidate",Map.of()),403);
+        request(shop,"ocr/"+jobId+"/confirm",Map.of("expectedVersion",0),403);
+        var quote=rawBody(id,List.of(Map.of("description","合成手填项目","quantity",2,"unitPrice","10.00")));String key=UUID.randomUUID().toString();
+        var result=request(shop,path(id,"raw-quotes"),quote,key,200);String business=result.path("rawQuote").path("id").asText();assertThat(result.path("rawQuote").path("total").asText()).isEqualTo("20.00");
+        assertThat(result.has("formalQuote")).isFalse();assertThat(result.has("assessment")).isFalse();assertThat(result.path("gate").path("allowed").asBoolean()).isFalse();
+        assertThat(request(shop,path(id,"raw-quotes"),quote,key,200)).isEqualTo(result);
+        request(shop,path(id,"raw-quotes"),rawBody(id,List.of(Map.of("description","变更","quantity",1,"unitPrice","1.00"))),key,409);
         assertThat(db.queryForObject("select state from ocr_job where id=?::uuid",String.class,jobId)).isEqualTo("FAILED");
-        assertThat(db.queryForObject("select count(*) from workflow_recognition_link where work_order_id=?::uuid",Long.class,id)).isEqualTo(1);
-        upload(id,"SHOP_QUOTE",job.path("fileId").asText(),200);
-        mvc.perform(get("/api/v1/quotations/cases/{id}/sources/{business}",id,business).header("Authorization","Bearer "+shop)).andExpect(status().isOk()).andExpect(jsonPath("$.data.file_id").value(job.path("fileId").asText()));
-        mvc.perform(get("/api/v1/materials/{id}/download",job.path("fileId").asText()).header("Authorization","Bearer "+shop)).andExpect(status().isOk());
-        request(shop,"ocr",Map.of("fileId",job.path("fileId").asText()),400);
+        assertThat(db.queryForObject("select count(*) from quote_raw where work_order_id=?::uuid",Integer.class,id)).isEqualTo(1);
+        mvc.perform(get("/api/v1/quotations/cases/{id}",id).header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andExpect(jsonPath("$.data.rawQuote.originals[0].id").exists());
+        var outsider=createUser("REPAIR_SHOP",createEligibleShop());String other=login(outsider.path("username").asText(),"H5");
+        mvc.perform(get("/api/v1/quotations/cases/{id}/ocr/{job}",id,jobId).header("Authorization","Bearer "+other)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/v1/quotations/cases/{id}/ocr/{job}",id,jobId).header("Authorization","Bearer "+owner)).andExpect(status().isForbidden());
+        assertThatThrownBy(()->db.update("update quote_raw set total=0 where id=?::uuid",business)).isInstanceOf(org.springframework.dao.DataAccessException.class);
         request(customerService,"materials/cases/"+id+"/missing-notice",Map.of("reason","合成通知单例外"),200);review(id,"FIXED_AMOUNT","0.00",200);
         var loss=documentJob(id,customerService,"LOSS_ASSESSMENT",false);String lossId=loss.path("id").asText();
         request(shop,"ocr",Map.of("fileId",loss.path("fileId").asText()),403);
@@ -881,6 +882,7 @@ class QuotationPostgresIT {
         mvc.perform(get("/api/v1/work-orders/{id}/workflow",id).header("Authorization","Bearer "+admin)).andExpect(status().isOk()).andExpect(jsonPath("$.data.currentNode").value("REPAIR"));
         assertThat(db.queryForObject("select claim_no from work_order where id=?::uuid",String.class,id)).doesNotContain("原件不同");
     }
+
     @Test void textDraftPreservesOriginalCandidateAndAdoptionWithNoOcrCall() throws Exception {
         long count=db.queryForObject("select count(*) from ocr_job",Long.class);String text="车主姓名：文字甲\n车主姓名：文字乙\n保险公司：合成保险\n报案号：TEXT-SYNTHETIC";
         var candidate=request(customerService,"work-orders/text/extract",Map.of("text",text),200);assertThat(candidate.path("fields").has("ownerName")).isFalse();assertThat(candidate.path("fields").path("claimNo").asText()).isEqualTo("TEXT-SYNTHETIC");

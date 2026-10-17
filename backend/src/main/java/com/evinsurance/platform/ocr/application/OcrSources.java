@@ -22,10 +22,12 @@ import org.springframework.web.multipart.MultipartFile;
 public class OcrSources {
     public record Source(String objectKey,String contentType,long size,String sha256,String category){}
     public record Raw(String text,String logId,int attempt){}
-    private final JdbcTemplate db;private final FileMapper files;private final FileService fileService;private final FileAccess access;private final ObjectStorageService storage;private final AuditService audit;private final com.evinsurance.platform.quotation.application.QuotationLifecycle lifecycle;
-    public OcrSources(JdbcTemplate db,FileMapper files,FileService fileService,FileAccess access,ObjectStorageService storage,AuditService audit,com.evinsurance.platform.quotation.application.QuotationLifecycle lifecycle){this.db=db;this.files=files;this.fileService=fileService;this.access=access;this.storage=storage;this.audit=audit;this.lifecycle=lifecycle;}
+    private final JdbcTemplate db;private final FileMapper files;private final FileService fileService;private final FileAccess access;private final ObjectStorageService storage;private final AuditService audit;private final com.evinsurance.platform.quotation.application.QuotationLifecycle lifecycle;private final ShopQuoteOcrPolicy shopPolicy;
+    public OcrSources(JdbcTemplate db,FileMapper files,FileService fileService,FileAccess access,ObjectStorageService storage,AuditService audit,com.evinsurance.platform.quotation.application.QuotationLifecycle lifecycle,ShopQuoteOcrPolicy shopPolicy){this.db=db;this.files=files;this.fileService=fileService;this.access=access;this.storage=storage;this.audit=audit;this.lifecycle=lifecycle;this.shopPolicy=shopPolicy;}
+    public boolean shopQuote(OcrRow job){return shopPolicy.scope(job.id())!=null;}
+    public Integer shopPage(OcrRow job){var scope=shopPolicy.scope(job.id());return scope==null?null:((Number)scope.get("page_no")).intValue();}
     public Source source(OcrRow job,boolean authorize){
-        if(authorize){var actor=CurrentUser.require();if(!access.staff(actor)){
+        if(authorize){var actor=CurrentUser.require();if(shopQuote(job))shopPolicy.authorize(job,false);else if(!access.staff(actor)){
             if(!actor.roles().contains(Role.REPAIR_SHOP)||job.fileId()==null)throw ApiException.denied();
             var file=fileService.accessible(job.fileId());if(!"SHOP_QUOTE".equals(file.category()))throw ApiException.denied();
         }if(job.intakeId()!=null&&!actor.roles().contains(Role.ADMIN)&&job.createdBy()!=actor.id())throw ApiException.denied();}
@@ -33,6 +35,7 @@ public class OcrSources {
         return db.query("SELECT * FROM ocr_intake_file WHERE id=?",(r,n)->new Source(r.getString("object_key"),r.getString("content_type"),r.getLong("byte_size"),r.getString("sha256"),"SHOP_QUOTE"),job.intakeId()).stream().findFirst().orElseThrow(()->ApiException.missing("OCR source"));
     }
     public void mutable(OcrRow job){
+        if(shopQuote(job)){shopPolicy.authorize(job,true);return;}
         var actor=CurrentUser.require();source(job,true);
         if(!actor.roles().contains(Role.CUSTOMER_SERVICE)){
             if(!actor.roles().contains(Role.REPAIR_SHOP)||job.fileId()==null)throw ApiException.denied();
@@ -44,6 +47,7 @@ public class OcrSources {
         else{var links=db.queryForList("SELECT work_order_id FROM ocr_draft_link WHERE job_id=?",job.id());if(!links.isEmpty())access.mutable(access.order((UUID)links.getFirst().get("work_order_id"),true));}
     }
     public boolean eligible(OcrRow job,boolean lock){
+        if(shopQuote(job))return shopPolicy.eligible(job,lock);
         if(lock){db.queryForList("SELECT id FROM app_user WHERE id=? FOR SHARE",job.createdBy());if(job.fileId()!=null)db.queryForList("SELECT w.id FROM work_order w JOIN case_file f ON f.work_order_id=w.id WHERE f.id=? FOR UPDATE OF w",job.fileId());}
         var enabled=db.queryForObject("SELECT count(*) FROM app_user u JOIN user_role ur ON ur.user_id=u.id JOIN app_role r ON r.id=ur.role_id WHERE u.id=? AND u.enabled AND (r.code='CUSTOMER_SERVICE' OR (r.code='REPAIR_SHOP' AND EXISTS(SELECT 1 FROM case_file f JOIN work_order w ON w.id=f.work_order_id JOIN work_order_assignment a ON a.work_order_id=w.id JOIN shop_account sa ON sa.user_id=u.id WHERE f.id=? AND f.category='SHOP_QUOTE' AND f.shop_id=sa.shop_id AND w.shop_id=sa.shop_id AND a.shop_id=sa.shop_id AND a.assignment_version=f.assignment_version AND a.status='ACCEPTED' AND w.status IN ('ARRIVED','WAITING_QUOTE','QUOTE_REVIEWING','WAITING_INSURER_ASSESSMENT','WAITING_REPAIR_AUTHORIZATION'))))",Long.class,job.createdBy(),job.fileId());
         if(enabled==null||enabled==0)return false;

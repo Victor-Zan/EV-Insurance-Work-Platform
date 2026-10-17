@@ -2,6 +2,8 @@
 
 照片上传返回`STORAGE_UNAVAILABLE`时，先核对后端进程是否加载`MINIO_ENDPOINT`、`MINIO_ACCESS_KEY`、`MINIO_SECRET_KEY`和`MINIO_BUCKET`。`MINIO_ROOT_USER/PASSWORD`仅供容器启动，不会自动映射到应用；已有`.env`不会随`.env.example`更新而自动补齐。仅本地开发可将应用访问凭据设为已创建的本地MinIO账户，禁止输出或提交真实值。修改后重启实际提供API的后端；容器healthy或`/actuator/health`为UP不能代替照片上传验证。上传失败时保留当前草稿和所选照片，配置恢复后在原页面重试，避免重复建单。
 
+网点报价表单OCR见[SHOP_QUOTE_OCR.md](SHOP_QUOTE_OCR.md)：启动配置与客服OCR共用，未新增供应商或前端Key变量。使用当前功能分支在新隔离schema迁移至V18；不得将本分支直接连接仍记录旧OCR V15的历史库或执行repair。V17为独立地图分支迁移，本分支不假设地图已合并。本轮验收使用MOCK_V1/模拟响应，不读取真实凭据、不增加此前真实调用预算；未来真实联调需另行确认。
+
 百度 OCR 与建单前表单配置/验收见 BAIDU_OCR.md。默认 OCR_PROVIDER=MOCK_V1，不发送真实请求；改为 BAIDU_HANDWRITING_V1 前注入重置后的后端环境变量，不能配置前端 VITE 密钥。scripts/Start-Local.ps1 的 EnvironmentFile 加载所有大写变量，不回显值，因此可读取 BAIDU_OCR_API_KEY / BAIDU_OCR_SECRET_KEY；私密文件须留在仓库外或被忽略的 .env。启动须提供本机真实 JDK 路径，不照搬他人绝对路径。真实任务建议 OCR_LEASE_SECONDS=180；缺凭据显式启动失败，不回退 Mock。不要把已有待执行任务改供应商；任务来源与供应商已不可变。
 
 ## 当前 Windows 工作区的便捷入口
@@ -260,3 +262,10 @@ HTTP复验使用专用数据库的随机schema及合成材料、临时18080端�
 后端8080；admin-web/h5-web各执行npm run dev，5173/5174。客服在案件详情设置目标、记账/冲销和导入；网点只读本次派单应付/实付；车主无资金入口。登录后站内通知折叠面板查看本人通知和待办，客服可填原因设置/清除期限，自动提醒保持关闭。
 
 HTTP脚本默认phase8-delivery-build JAR，专用验证数据库随机schema、私有合成CSV和图片、18080临时端口；结束停止自己的JAR，保留数据库/对象/报告，不删卷。复验目录若有Windows锁，用第二阶段local-validation新BuildDirectory并传-JarPath，不改ACL或手动清理。资金导出按页最多100行，全部需遍历页码。接口/结果见PHASE8_API.md与PHASE8_VERIFICATION.md。
+
+
+## 2026-10-17 合并方案（用户确认）
+
+网点端按远端 main 的网点报价OCR实现：可手填提交，识别结果人工确认后从原报价表单提交，保留多图与逐行来源；不再强制经过本地 DocumentRecognition 原件核对入口。客服、管理员端按本地 main 保留，报价审核、核损确认、维修授权及顺序资金确认规则不回退。共享后端保留本地原件快照和核损失效规则，同时接入远端OCR作用域及逐行来源。网点 ASSESSMENT 是允许报价阶段的网点清单，上传不要求先生成客服正式报价；客服核损材料仍执行本地阶段门禁。
+
+用户确认网点OCR V18只在个人本地验证，未进入共享环境，因此将该迁移改编号为 V22__shop_quote_ocr.sql；本地 V1—V21 不修改。旧文档中的OCR V18及未合并地图说明为历史分支记录，当前合并版本以完整 V1—V22 为准。已有个人OCR V18库不得直接连合并版本或执行repair，验证使用隔离空schema；原个人库另行保留。

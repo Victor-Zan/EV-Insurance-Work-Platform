@@ -21,27 +21,32 @@ final class CoordinateRepairTable {
         var names=boxes.stream().filter(b->(b.text().endsWith("名称")||Set.of("维修项目","品名").contains(b.text()))&&b.centerX()<headers.getFirst().centerX()&&Math.abs(b.centerY()-rowY)<height*1.5).toList();
         if(names.size()!=1){warnings.add("维修表格名称表头不唯一，未强行整理行列");return List.of();}
         headers.addFirst(names.getFirst());
-        for(int n=1;n<4;n++)if(headers.get(n).centerX()<=headers.get(n-1).centerX())return List.of();
+        var unitHeaders=boxes.stream().filter(b->b.text().equals("单位")&&Math.abs(b.centerY()-rowY)<=height).toList();
+        if(unitHeaders.size()==1&&unitHeaders.getFirst().centerX()>names.getFirst().centerX()&&unitHeaders.getFirst().centerX()<headers.getLast().centerX())headers.add(unitHeaders.getFirst());
+        else if(!unitHeaders.isEmpty())warnings.add("单位表头位置或数量不明确，单位保持空值待核对");
+        headers.sort(Comparator.comparingInt(Box::centerX));
+        int count=headers.size();
+        for(int n=1;n<count;n++)if(headers.get(n).centerX()<=headers.get(n-1).centerX())return List.of();
         int headerBottom=headers.stream().mapToInt(Box::bottom).max().orElse(0);
         var body=boxes.stream().filter(b->b.y()>=headerBottom).sorted(Comparator.comparingInt(Box::y).thenComparingInt(Box::x)).toList();
         var bounded=new ArrayList<Box>();int covered=headerBottom;
         for(var box:body){if(box.y()-covered>height*6||footer(box.text()))break;bounded.add(box);covered=Math.max(covered,box.bottom());}
-        double[] edges={headers.getFirst().x()-headers.getFirst().width(),(headers.get(0).centerX()+headers.get(1).centerX())/2.0,(headers.get(1).centerX()+headers.get(2).centerX())/2.0,(headers.get(2).centerX()+headers.get(3).centerX())/2.0,headers.get(3).centerX()+(headers.get(3).centerX()-headers.get(2).centerX())/2.0};
-        var columns=new ArrayList<List<Box>>();for(int n=0;n<4;n++)columns.add(new ArrayList<>());
-        for(var b:bounded)for(int c=0;c<4;c++)if(b.centerX()>edges[c]&&b.centerX()<edges[c+1]&&b.width()<1.6*(edges[c+1]-edges[c])){columns.get(c).add(b);break;}
+        double[] edges=new double[count+1];edges[0]=headers.getFirst().x()-headers.getFirst().width();for(int n=1;n<count;n++)edges[n]=(headers.get(n-1).centerX()+headers.get(n).centerX())/2.0;edges[count]=headers.getLast().centerX()+(headers.getLast().centerX()-headers.get(count-2).centerX())/2.0;
+        var columns=new ArrayList<List<Box>>();for(int n=0;n<count;n++)columns.add(new ArrayList<>());
+        for(var b:bounded)for(int c=0;c<count;c++)if(b.centerX()>edges[c]&&b.centerX()<edges[c+1]&&b.width()<1.6*(edges[c+1]-edges[c])){columns.get(c).add(b);break;}
         var descriptions=columns.getFirst().stream().filter(b->!b.text().isBlank()&&!b.text().matches("[0-9\\s.]+")&&!b.text().contains("合计")&&!b.text().contains("总计")).toList();
         if(descriptions.size()>200)throw new OcrFailure("BAIDU_RESULT_TOO_LARGE");
         var result=new ArrayList<Map<String,Object>>();
         for(var description:descriptions){
             var item=new LinkedHashMap<String,Object>();item.put("description",description.text());item.put("origin","PROGRAM_COORDINATE_TABLE_V1");
             var evidence=new ArrayList<Map<String,Object>>();evidence.add(description.source());
-            String[] fields={"quantity","unitPrice","lineAmount"};
-            for(int column=1;column<4;column++){
+            String[] fields=headers.stream().skip(1).map(b->switch(b.text()){case "数量"->"quantity";case "单位"->"unit";case "单价"->"unitPrice";default->"lineAmount";}).toArray(String[]::new);
+            for(int column=1;column<count;column++){
                 String field=fields[column-1];var candidates=columns.get(column).stream().filter(b->aligned(description,b)).toList();String value="";
                 if(candidates.size()==1&&descriptions.stream().filter(b->aligned(b,candidates.getFirst())).count()==1){
                     var cell=candidates.getFirst();evidence.add(cell.source());
-                    if(column==1)item.put("quantityOriginal",cell.text());
-                    if(cell.text().matches("[0-9]{1,16}(?:\\.[0-9]{1,2})?"))value=new BigDecimal(cell.text()).toPlainString();else warnings.add("明细数字单元格模糊，保持空值；字母不转换为数字");
+                    if(field.equals("quantity"))item.put("quantityOriginal",cell.text());
+                    if(field.equals("unit"))value=cell.text();else if(cell.text().matches("[0-9]{1,16}(?:\\.[0-9]{1,2})?"))value=new BigDecimal(cell.text()).toPlainString();else warnings.add("明细数字单元格模糊，保持空值；字母不转换为数字");
                 }else warnings.add("明细存在缺失或跨行歧义，数量/单价/金额保持空值待核对");
                 item.put(field,value);
             }

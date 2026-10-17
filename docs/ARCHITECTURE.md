@@ -6,6 +6,12 @@
 
 V17仅新增text_draft_source、workflow_recognition_link及workflow_recognition_command，均有不可变保护；原文/候选/采用值或原件/确认修订/业务版本关联，OCR失败与Mock标识保留。文字提取复用标签规则，不走OCR供应商；网点仅获得当前报价文档识别权，客服核损复用原OcrProvider，管理员没有新增写权。原服务端精度、报价单价隔离、四项开修和真实资金只记录边界沿用。
 
+## 2026-10-15 网点报价OCR限定扩展（D-061，原远端 D-047）
+
+ShopQuoteOcrPolicy 校验当前本店ACCEPTED派单、QuotationLifecycle.EDITABLE和本次有效SHOP_QUOTE/ASSESSMENT；专用Controller位于quotations/cases/{id}/ocr，通用OCR角色不扩张。复用OcrService/OcrSources、原Provider/Worker/租约/私有对象，Worker调用前及写回重验网点归属/创建者启用/原件。外呼仍在业务事务外。客服/管理员对网点作用域只读，OWNER无入口；服务端为最终边界。
+
+V18仅追加不可变作用域、幂等绑定及报价行来源关联，不依赖未合并地图V17，原迁移与旧OCR库不变。原始响应和程序候选、人工修订、确认与不可变报价版本分层。QuoteOcrLineage在原submitRaw事务和案件锁内检查确认快照/作用域/内容/重复引用，然后写原报价及来源关联；计算仍由QuoteCalculator完成，不增加费用汇总或自动采价。H5原QuotationPanel嵌入QuoteOcrPanel，以最新表单逐行保护冲突，BigInt分计算仅辅助显示，金额权威仍后端BigDecimal。详细映射/API/限制见SHOP_QUOTE_OCR.md。
+
 ## 2026-10-13 OCR 扩展（D-045）
 
 沿用模块化单体与 PostgreSQL Worker，新增 V16（PR #4 解决与 main V15 的版本撞号，经用户批准由原 OCR V15 仅重编号，SQL 内容不变；既有 main 迁移不变）。ocr_job 的来源为 case_file 或 ocr_intake_file 二选一；建单前材料没有案件、仅创建者客服和管理员可读，客服写入、管理员只读。供应商/API/适配版本和来源一经创建不可更改，按配置供应商领取任务，旧 Mock 任务不会被百度执行。
@@ -262,3 +268,10 @@ repair领域API/application/domain/infrastructure复用workorder锁和CAS、quot
 V12审计触发器同事务生成notification_event。Worker用FOR UPDATE SKIP LOCKED有界领取50事件，唯一键防重复投影；崩溃事务回滚后可恢复，不引入消息队列。个人通知读取重验角色和当前业务范围，固定安全消息不传播内部审计文本。待办基于正式业务状态SQL查询；deadline有独立CAS与历史，修改时锁案件/必要投诉记录并复核仍有效。
 
 资金权限入口与字段输出均服务端执行；网点PAY查询限定当前派单，车主403，导入批次创建人限定。通知scope独立检查，导出私有no-store并防CSV公式注入。短信仅SmsProvider/DisabledSmsProvider，自动超时/重复/升级均关闭，无真实外部连接。
+
+
+## 2026-10-17 合并方案（用户确认）
+
+网点端按远端 main 的网点报价OCR实现：可手填提交，识别结果人工确认后从原报价表单提交，保留多图与逐行来源；不再强制经过本地 DocumentRecognition 原件核对入口。客服、管理员端按本地 main 保留，报价审核、核损确认、维修授权及顺序资金确认规则不回退。共享后端保留本地原件快照和核损失效规则，同时接入远端OCR作用域及逐行来源。网点 ASSESSMENT 是允许报价阶段的网点清单，上传不要求先生成客服正式报价；客服核损材料仍执行本地阶段门禁。
+
+用户确认网点OCR V18只在个人本地验证，未进入共享环境，因此将该迁移改编号为 V22__shop_quote_ocr.sql；本地 V1—V21 不修改。旧文档中的OCR V18及未合并地图说明为历史分支记录，当前合并版本以完整 V1—V22 为准。已有个人OCR V18库不得直接连合并版本或执行repair，验证使用隔离空schema；原个人库另行保留。

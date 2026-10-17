@@ -54,9 +54,9 @@ class OcrIntakePostgresIT {
             assertThat(db.queryForObject("SELECT count(*) FROM "+schema+".owner_contact_event",Long.class)).isZero();
             assertThat(db.queryForObject("SELECT to_regclass(?) IS NULL",Boolean.class,schema+".ocr_intake_file")).isTrue();
             Flyway integrated=Flyway.configure().dataSource(url,user,password).schemas(schema).defaultSchema(schema)
-                .locations("classpath:db/migration").load();
+                .locations("classpath:db/migration").target("16").load();
             integrated.migrate();integrated.validate();
-            assertThat(integrated.info().current().getVersion().toString()).isEqualTo("19");
+            assertThat(integrated.info().current().getVersion().toString()).isEqualTo("16");
             assertThat(db.queryForObject("SELECT checksum FROM "+schema+".flyway_schema_history WHERE version='15'",Integer.class)).isEqualTo(checksum);
             assertThat(db.queryForObject("SELECT count(*) FROM "+schema+".ocr_intake_file",Long.class)).isZero();
         } finally {db.execute("DROP SCHEMA IF EXISTS "+schema+" CASCADE");}
