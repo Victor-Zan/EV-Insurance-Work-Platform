@@ -1174,3 +1174,14 @@ Docker CLI/Desktop 不可用，Compose 本次未验证且文件未改；未执�
 验证中曾因原本地测试库未运行而连接失败，后恢复测试；一次运行进程中断，未计为通过。最终改用本任务专用新数据库实例与schema，不升级/重置旧库。曾修复新账号准备中JdbcTemplate与MyBatis会话缓存导致待激活状态读取滞后，以及登录页旧会话阻拦交接的问题；对应回归保留。验证仅用合成资料及本地对象存储，未调用真实百度/高德，不使用历史泄露密钥。
 
 未验证：生产公开域名/HTTPS反向代理、生产首管受控初始化、实体手机与真人联系方式交付。短信/邮件自动发送及系统实名验证不在本轮范围。使用入口、后台URL配置、密码规则、邀请状态/限流/API见[ACCOUNT_ACTIVATION.md](ACCOUNT_ACTIVATION.md)与[LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md)。Git提交/推送及Draft PR结果在下方交付记录补记。
+
+#### GitHub交付结果（2026-10-19）
+
+实现提交：`df58fff7b4d4e1e7b3bfa312cf511ff4c0b568e3`，`feat(identity): add invited activation and unified login`，作者沿用本机Sherry070719。已推送并核对远端`codex/account-activation-login`与实现提交一致。
+
+GitHub集成已尝试创建以main为目标的Draft PR，返回准确错误：`403 Resource not accessible by integration`（FORBIDDEN）。本轮未创建PR，未改用其他凭据、CLI或网页绕过；未合并、未部署。此文档收尾提交随后推送同一分支。
+
+- 分支：https://github.com/Victor-Zan/EV-Insurance-Work-Platform/tree/codex/account-activation-login
+- 手动比较/创建PR：https://github.com/Victor-Zan/EV-Insurance-Work-Platform/compare/main...codex/account-activation-login?expand=1
+
+有权限人员可从比较页选择Draft创建。任务在此停止，不继续其他阶段。
