@@ -85,6 +85,7 @@ class MaterialsPostgresIT {
 
     @BeforeEach
     void authenticate() throws Exception {
+        db.update("DELETE FROM account_rate_limit");
         admin=login("dev_admin","ADMIN");
         customerService=login("dev_customer_service","ADMIN");
         shop=login("dev_repair_shop","H5");

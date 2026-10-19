@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref,onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { api } from '@/shared/http/client'
+import { httpClient,authSession } from '@/shared/http/client'
+import {unifiedLogin,consumeHandoff} from '@/shared/auth/account-login'
 import { Button, Field, Form, Icon } from 'vant'
 import chargingScene from '@/assets/e-scooter-charging-login.webp'
 const router = useRouter()
@@ -10,14 +11,15 @@ async function login() {
   if (loading.value) return
   if (!username.value.trim() || !password.value) { error.value = '请输入账号和密码'; return }
   loading.value = true; error.value = ''
-  try { await api.login(username.value.trim(), password.value); password.value = ''; await router.replace('/') }
+  try { const redirect=await unifiedLogin(httpClient,authSession,username.value.trim(),password.value);password.value='';if(redirect)location.assign(redirect);else await router.replace('/') }
   catch (cause) { error.value = cause instanceof Error ? cause.message : '登录失败，请重试'; password.value = '' }
   finally { loading.value = false }
 }
+onMounted(async()=>{try{if(await consumeHandoff(httpClient,authSession))await router.replace('/')}catch(e){error.value=e instanceof Error?e.message:'登录交接失效，请重新登录'}})
 </script>
 <template>
   <main class="login-page"><section class="login-hero"><img class="charging-scene" :src="chargingScene" alt="" aria-hidden="true"><div class="hero-shade" aria-hidden="true"></div><div class="login-brand"><span><Icon name="shield-o"/></span><p><strong>e保</strong><small>保险协作台 · 设计占位</small></p></div><div class="login-copy"><p class="eyebrow">MOBILE CASE OPERATIONS</p><h1>把当前案件，<br>稳稳推进到下一步。</h1><p>网点处理接单、材料和维修进度；车主查看本人案件、照片、收车与投诉。</p></div><span class="scene-caption" aria-hidden="true">ELECTRIC · SERVICE · CASE</span></section>
-    <section class="login-form"><h2>账号登录</h2><p>仅维修网点与车主可进入移动端。</p><p v-if="error" class="error-message" role="alert">{{ error }}</p>
+    <section class="login-form"><h2>账号登录</h2><p>统一账号密码登录，按后台授权进入对应端。受邀账号请先通过邀请链接开通，无公众注册。</p><p v-if="error" class="error-message" role="alert">{{ error }}</p>
     <Form label-align="top" @submit="login">
       <Field v-model="username" name="username" label="账号" autocomplete="username" maxlength="64" placeholder="请输入账号" />
       <Field v-model="password" name="password" type="password" label="密码" autocomplete="current-password" placeholder="请输入密码" />

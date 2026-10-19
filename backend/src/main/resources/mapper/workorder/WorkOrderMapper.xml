@@ -108,9 +108,9 @@
     WHERE id=#{id} AND status=#{fromStatus} AND version=#{version}
   </update>
   <select id="ownersByPhone" resultType="long">
-    SELECT op.user_id FROM owner_profile op JOIN app_user u ON u.id=op.user_id AND u.enabled
+    SELECT op.user_id FROM owner_profile op JOIN app_user u ON u.id=op.user_id AND u.enabled AND u.activated
       JOIN user_role ur ON ur.user_id=u.id JOIN app_role r ON r.id=ur.role_id AND r.code='OWNER'
-    WHERE op.contact_phone=#{phone} ORDER BY op.user_id LIMIT 2
+    WHERE op.contact_phone=#{phone} AND NOT op.invitation_managed ORDER BY op.user_id LIMIT 2
   </select>
   <select id="dispatchCityCount" resultType="long">
     SELECT count(*) FROM region WHERE enabled AND level=2 AND position(lower(#{query}) in lower(name))>0

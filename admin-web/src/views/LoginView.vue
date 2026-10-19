@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref,onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { api } from '@/shared/http/client'
+import { httpClient,authSession } from '@/shared/http/client'
+import {unifiedLogin,consumeHandoff} from '@/shared/auth/account-login'
 import { ElButton, ElCard, ElForm, ElFormItem, ElInput, ElAlert } from 'element-plus'
 import engineeringExploded from '@/assets/e-scooter-exploded-login.webp'
 import { vMagnetic } from '@/shared/ui/magnetic'
@@ -11,15 +12,16 @@ async function login() {
   if (loading.value) return
   if (!username.value.trim() || !password.value) { error.value = '请输入账号和密码'; return }
   loading.value = true; error.value = ''
-  try { await api.login(username.value.trim(), password.value); password.value = ''; await router.replace('/') }
+  try { const redirect=await unifiedLogin(httpClient,authSession,username.value.trim(),password.value);password.value='';if(redirect)location.assign(redirect);else await router.replace('/') }
   catch (cause) { error.value = cause instanceof Error ? cause.message : '登录失败，请重试'; password.value = '' }
   finally { loading.value = false }
 }
+onMounted(async()=>{try{if(await consumeHandoff(httpClient,authSession))await router.replace('/')}catch(e){error.value=e instanceof Error?e.message:'登录交接失效，请重新登录'}})
 </script>
 
 <template>
   <main class="login-page"><div class="login-illustration"><p class="login-kicker">INSURANCE CASE OPERATIONS</p><div class="login-copy"><span class="brand-caption">e保 / 保险协作台 · 设计占位</span><h1>让案件处理<br/>清晰、有序、可追溯。</h1><p>从建单、报价核损到维修交付，在一个克制的工作空间里衔接每一步。</p></div><img class="engineering-blueprint engineering-exploded" :src="engineeringExploded" alt="" aria-hidden="true"><span class="dimension dimension-a" aria-hidden="true">3200</span><span class="dimension dimension-b" aria-hidden="true">1420</span></div><ElCard class="login-card" shadow="never">
-    <span class="login-kicker">ADMIN & CUSTOMER SERVICE</span><h2>登录管理端</h2><p>仅管理员与客服可进入；网点和车主请使用移动端。</p>
+    <span class="login-kicker">ADMIN & CUSTOMER SERVICE</span><h2>统一登录</h2><p>统一账号密码登录，按后台授权进入管理端或移动端。受邀账号请先打开工作人员发来的开通链接。</p>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" role="alert" />
     <ElForm label-position="top" @submit.prevent="login">
       <ElFormItem label="账号"><ElInput v-model="username" autocomplete="username" maxlength="64" /></ElFormItem>

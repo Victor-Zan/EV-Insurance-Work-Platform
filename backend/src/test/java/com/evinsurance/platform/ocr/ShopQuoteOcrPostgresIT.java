@@ -40,6 +40,7 @@ class ShopQuoteOcrPostgresIT {
     @MockitoBean OcrProvider provider;
     String admin,cs,shop,owner;long shopId,region;byte[] image,raw;
     @BeforeEach void setup() throws Exception {
+        db.update("DELETE FROM account_rate_limit");
         db.update("UPDATE app_user SET enabled=true WHERE username='dev_repair_shop'");
         when(provider.id()).thenReturn("BAIDU_HANDWRITING_V1");when(provider.api()).thenReturn("ocr/v1/handwriting");when(provider.version()).thenReturn("offline-shop-test");
         raw="{\"log_id\":18446744073709551615,\"words_result\":[{\"words\":\"配件名称：合成轮胎 数量：2 单位：条 单价：12.50 金额：25.00\",\"location\":{\"left\":5,\"top\":5,\"width\":200,\"height\":20},\"probability\":{\"average\":0.8}},{\"words\":\"人工费：30.00\"},{\"words\":\"合计：55.00\"}]}".getBytes(StandardCharsets.UTF_8);
@@ -74,7 +75,7 @@ class ShopQuoteOcrPostgresIT {
         assertThat(db.queryForObject("SELECT count(*) FROM quote_raw WHERE work_order_id=?::uuid",Long.class,c)).isEqualTo(2);assertThat(db.queryForObject("SELECT count(*) FROM quote_raw_ocr_line WHERE raw_quote_id=?::uuid",Long.class,quote)).isEqualTo(1);
         assertThatThrownBy(()->db.update("UPDATE quote_raw_item SET unit_price=1 WHERE raw_quote_id=?::uuid",quote)).isInstanceOf(org.springframework.dao.DataAccessException.class);
         assertThat(get(shop,base(c)+"/"+j+"/raw",200).path("text").asString()).isEqualTo(new String(raw,StandardCharsets.UTF_8));assertThat(get(shop,base(c)+"/"+j+"/program",200).at("/items/0/description").asString()).isEqualTo("合成轮胎");
-        var audit=json.writeValueAsString(db.queryForList("SELECT summary FROM audit_log WHERE object_id=?",j));assertThat(audit).doesNotContain("人工核对合成轮胎","access_token","13800000000","words_result");flyway.validate();assertThat(flyway.info().current().getVersion().toString()).isEqualTo("22");
+        var audit=json.writeValueAsString(db.queryForList("SELECT summary FROM audit_log WHERE object_id=?",j));assertThat(audit).doesNotContain("人工核对合成轮胎","access_token","13800000000","words_result");flyway.validate();assertThat(flyway.info().current().getVersion().toString()).isEqualTo("23");
     }
     @Test void roleCaseAssignmentAndFileCategoryBoundaries() throws Exception {
         String c=arrived(),j=upload(c);tick();for(String token:List.of(admin,cs)){get(token,base(c)+"/"+j,200);upload(token,c,1,"SHOP_QUOTE",image,UUID.randomUUID().toString(),403);post(token,base(c)+"/"+j+"/retry",Map.of(),403);post(token,base(c)+"/"+j+"/apply",Map.of("expectedVersion",0,"items",List.of(item("x","2","12.50"))),403);}

@@ -67,6 +67,7 @@ class OcrIntakePostgresIT {
     }
     private OcrWorker worker(){return new OcrWorker(tasks,sources,storage,provider,json,3,180);}
     @BeforeEach void setup() throws Exception {
+        db.update("DELETE FROM account_rate_limit");
         db.update("UPDATE app_user SET enabled=true WHERE username='dev_customer_service'");
         when(provider.id()).thenReturn("BAIDU_HANDWRITING_V1");when(provider.api()).thenReturn("ocr/v1/handwriting");when(provider.version()).thenReturn("adapter-test");
         byte[] raw="{\"log_id\":18446744073709551615,\"words_result\":[{\"words\":\"客户姓名：合成客户甲\",\"location\":{\"left\":10,\"top\":10,\"width\":80,\"height\":15},\"probability\":{\"average\":0.8}},{\"words\":\"维修单号：SYNTHETIC-DOC\"}]}".getBytes(StandardCharsets.UTF_8);

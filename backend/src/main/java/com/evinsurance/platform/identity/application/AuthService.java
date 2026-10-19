@@ -22,13 +22,7 @@ public class AuthService {
         this.dummyHash=encoder.encode(java.util.UUID.randomUUID().toString());
     }
     public LoginResult login(IdentityRequests.Login request) {
-        AccessRow row=users.accessByUsername(request.username());
-        boolean fitsBcrypt=request.password().getBytes(java.nio.charset.StandardCharsets.UTF_8).length<=72;
-        boolean matches=fitsBcrypt && encoder.matches(request.password(), row == null ? dummyHash : row.passwordHash());
-        if (row == null || !matches || !row.enabled() || row.roles().isEmpty()) {
-            audit.record(null,Action.LOGIN_FAILURE,"USER",row == null ? null : row.id(),"Credentials rejected");
-            throw new ApiException(HttpStatus.UNAUTHORIZED,"INVALID_CREDENTIALS","Account or password is incorrect");
-        }
+        AccessRow row=authenticate(request.username(),request.password());
         if (!request.portal().allows(row.roles())) {
             audit.record(row.current(),Action.LOGIN_FAILURE,"USER",row.id(),"Portal denied: " + request.portal());
             throw new ApiException(HttpStatus.FORBIDDEN,"PORTAL_MISMATCH","该账号不能登录当前端，请使用对应端登录");
@@ -36,6 +30,16 @@ public class AuthService {
         var token=jwt.issue(row.current());
         audit.record(row.current(),Action.LOGIN,"USER",row.id(),"Portal: " + request.portal());
         return new LoginResult(token.accessToken(),token.expiresAt(),UserView.from(row));
+    }
+    public AccessRow authenticate(String username,String password){
+        AccessRow row=users.accessByUsername(username);
+        boolean fitsBcrypt=password.getBytes(java.nio.charset.StandardCharsets.UTF_8).length<=72;
+        boolean matches=fitsBcrypt && encoder.matches(password, row == null ? dummyHash : row.passwordHash());
+        if (row == null || !matches || !row.enabled() || !row.activated() || !row.bindingValid() || row.roles().isEmpty()) {
+            audit.record(null,Action.LOGIN_FAILURE,"USER",row == null ? null : row.id(),"Credentials rejected");
+            throw new ApiException(HttpStatus.UNAUTHORIZED,"INVALID_CREDENTIALS","Account or password is incorrect");
+        }
+        return row;
     }
     public record LoginResult(String accessToken, Instant expiresAt, UserView user) {}
 }
