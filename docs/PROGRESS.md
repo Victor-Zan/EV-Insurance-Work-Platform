@@ -1,5 +1,7 @@
 ## 2026-10-22 最新main整合与V25迁移（自动验证通过，真实预算保持关闭）
 
+- GitHub交付：分支`codex/amap-main-integration`已正常推送，代码7cb469e、验证记录4066783。推送前再次fetch确认main仍94173d2，无V25新撞号。GitHub集成创建指向main的Draft PR返回`403 Resource not accessible by integration`；未用其他通道绕过、未重试创建或合并。可[手动创建Draft PR](https://github.com/Victor-Zan/EV-Insurance-Work-Platform/compare/main...codex/amap-main-integration?expand=1)。当前main仍未合入本轮整合，关键真实验收未执行也不满足合并条件。
+
 - 最终代码提交`7cb469ed24529770157f585075a5db273ab6f1cd`，运行与迁移证据见[AMAP_MIGRATION_VALIDATION](AMAP_MIGRATION_VALIDATION.md)。新schema `amap_main_final_20261022`首次启动完整迁移、第二次启动27资源校验/无需迁移均通过；仅停止清单内本轮两个旧预览进程，旧V23/V17库、旧JAR、其他服务保留。
 - 实际前端`http://127.0.0.1:5194`，后端`http://127.0.0.1:18089`，运行7cb469e、AMAP_WEB_V1、mock=false、callsEnabled=false。新库预算run/slot0；旧权威run仍关闭/真实尝试0。新schema不会重分配额度；本轮真实调用仍0/8，未执行真实道路距离及派单验收，不合并main。
 - 浏览器以合成客服从统一登录进入现有派单页：分别展示事故区县与停车位置；人工核对南山区、明确原因/确认后保存，版本1→2且审计正确，事故地址未变、停车字段仍空。三个虚构网点在原人工列表明确“距离未计算”，定位/路线按钮禁用。合成案件a2a6e74d-ffdf-4301-b943-730de307c5bd保持PENDING_DISPATCH、assignment0；截图在仓库外runtime保留。并未把此页面核对记为真实地图/派单验收。

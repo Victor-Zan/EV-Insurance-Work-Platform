@@ -51,3 +51,5 @@
 最终合成案件`a2a6e74d-ffdf-4301-b943-730de307c5bd`（EVR-20261022-000001）仍PENDING_DISPATCH、assignment数0。三个测试网点仅配合成车型/南山区服务关系，无学校联系人/电话/坐标，学校不是维修合作方。正式运营前管理员停用测试网点，按正常入口新建真实合作方与来源明确位置；保留被引用历史，不物理删除。没有通知学校、真实客户或外部业务系统；无付费、生产部署或JS地图。
 
 代码审查已检查迁移差异、原角色边界、原派单服务复核、共享预算不重置、历史数据保留、坐标短期内存、过期/并发校验和暂存秘密。PR仍需仓库要求检查及人工审批；真实验收未完成，禁止自行合并。
+
+GitHub交付：功能分支已正常推送，代码7cb469e、首份验证记录4066783。推送前main仍94173d2。创建Draft PR时集成返回`403 Resource not accessible by integration`，PR未创建，未换通道或绕过权限；[手动创建Draft PR](https://github.com/Victor-Zan/EV-Insurance-Work-Platform/compare/main...codex/amap-main-integration?expand=1)。没有修改远程main或自动合并。后续文档交付补记不改变当前运行代码7cb469e。
