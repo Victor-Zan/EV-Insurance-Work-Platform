@@ -1,0 +1,74 @@
+{
+  "before": {
+    "gearTransform": "matrix(0.938036, 0.346538, -0.346538, 0.938036, 0, 0)",
+    "wrench": {
+      "animation": "none",
+      "rect": {
+        "bottom": 173.81645679473877,
+        "height": 181.39529418945312,
+        "left": 641.913330078125,
+        "right": 879.4324645996094,
+        "top": -7.5788373947143555,
+        "width": 237.5191345214844,
+        "x": 641.913330078125,
+        "y": -7.5788373947143555
+      },
+      "transform": "matrix(0.866025, -0.5, 0.5, 0.866025, 0, 0)"
+    }
+  },
+  "after": {
+    "gearTransform": "matrix(-0.897617, -0.440776, 0.440776, -0.897617, 0, 0)",
+    "wrench": {
+      "animation": "none",
+      "rect": {
+        "bottom": 173.81645679473877,
+        "height": 181.39529418945312,
+        "left": 641.913330078125,
+        "right": 879.4324645996094,
+        "top": -7.5788373947143555,
+        "width": 237.5191345214844,
+        "x": 641.913330078125,
+        "y": -7.5788373947143555
+      },
+      "transform": "matrix(0.866025, -0.5, 0.5, 0.866025, 0, 0)"
+    }
+  },
+  "layouts": [
+    {
+      "gearGroupDisplay": "block",
+      "height": 640,
+      "scrollWidth": 900,
+      "width": 900,
+      "wrenchAnimation": "none",
+      "wrenchInsideGearGroup": "metal-gears",
+      "wrenchTransform": "matrix(0.866025, -0.5, 0.5, 0.866025, 0, 0)"
+    },
+    {
+      "gearGroupDisplay": "block",
+      "height": 640,
+      "scrollWidth": 1280,
+      "width": 1280,
+      "wrenchAnimation": "none",
+      "wrenchInsideGearGroup": "metal-gears",
+      "wrenchTransform": "matrix(0.866025, -0.5, 0.5, 0.866025, 0, 0)"
+    },
+    {
+      "gearGroupDisplay": "block",
+      "height": 640,
+      "scrollWidth": 1280,
+      "width": 1280,
+      "wrenchAnimation": "none",
+      "wrenchInsideGearGroup": "metal-gears",
+      "wrenchTransform": "matrix(0.866025, -0.5, 0.5, 0.866025, 0, 0)"
+    },
+    {
+      "gearGroupDisplay": "none",
+      "height": 844,
+      "scrollWidth": 390,
+      "width": 390,
+      "wrenchAnimation": "none",
+      "wrenchInsideGearGroup": "metal-gears",
+      "wrenchTransform": "none"
+    }
+  ]
+}

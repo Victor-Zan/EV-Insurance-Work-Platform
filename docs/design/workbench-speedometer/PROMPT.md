@@ -1,0 +1,7 @@
+# 工作台仪表盘素材
+
+使用内置 imagegen 编辑用户提供的仪表盘JPG，未覆盖原图；输出透明PNG保存在 `admin-web/src/assets/workbench-speedometer.png`（1254×1254，RGBA）。此PNG作为静态底图，速度条和数字由页面同步绘制动画，不代表真实车速或业务指标。
+
+## 完整提示词
+
+Use case: precise-object-edit plus background-extraction. Edit target: the supplied square photograph of a silver circular e-scooter speedometer. Produce a transparent PNG animation base asset. Preserve the exact instrument, front-facing perspective, proportions, circular metal housing, screws, brushed metal highlights, battery icon and 100%, directional arrows, headlight, ECO, warning symbol, km/h label, TRIP A and 128.6 km. Remove the outer pale gray backdrop and ground shadow to actual alpha transparency, retaining full instrument edges and original square canvas framing. For animation preparation ONLY, cleanly erase the central fixed digits '45' and erase the entire segmented semicircular speed-bar band (both white filled segments and their outline cells), replacing those two interior areas with continuous matching dark brushed instrument-face texture. Keep the surrounding thin concentric guide rings and tick marks. Thus the center above km/h is blank, and the 270-degree speed arc from bottom-left via top to bottom-right is blank dark backing for a later vector overlay. Keep all other details unchanged, no new labels, no new parts, no checkerboard baked into pixels. Exact neutral silver and graphite style from source.

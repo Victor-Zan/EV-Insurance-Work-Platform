@@ -56,6 +56,25 @@ class HealthControllerTest {
     }
 
     @Test
+    void allowsBothManagementLoopbackNamesWhileKeepingAuthenticationAndOriginChecks() throws Exception {
+        for (var origin : new String[]{"http://localhost:5173", "http://127.0.0.1:5173"}) {
+            mockMvc.perform(options("/api/v1/auth/login")
+                    .header("Origin", origin)
+                    .header("Access-Control-Request-Method", "POST"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", origin));
+            mockMvc.perform(get("/api/v1/admin/session").header("Origin", origin))
+                .andExpect(status().isUnauthorized());
+        }
+        for (var origin : new String[]{"http://127.0.0.1:5199", "https://untrusted.invalid"}) {
+            mockMvc.perform(options("/api/v1/auth/login")
+                    .header("Origin", origin)
+                    .header("Access-Control-Request-Method", "POST"))
+                .andExpect(status().isForbidden());
+        }
+    }
+
+    @Test
     void allowsCurrentLocalH5OriginWithoutOpeningCorsToOtherOrigins() throws Exception {
         mockMvc.perform(options("/api/v1/auth/login")
                 .header("Origin", "http://localhost:5175")
