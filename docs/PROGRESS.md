@@ -1,3 +1,143 @@
+## 2026-10-21 本次改动提交、同步远端及合并发布
+
+- 用户明确授权提交本次完成的改动，抓取远端，无冲突时合入main并上传GitHub。本轮只做集成与发布，不新增界面或业务功能。
+- 分支 `codex/workbench-login-notifications-20261021`，提交 `2a17f98`，包含最终金属登录页、工作台快捷入口／仪表盘、导航图标配色、未读通知及登录可用性修复与相应测试／文档。`.env`、私密凭据、运行包、状态文件和临时日志均被忽略，未提交。
+- 提交后执行 `git fetch --prune origin`，发现远端main从 `d3e887b`更新至 `6888816`，新增车主H5修复 `6f2b566`及整合提交。合并预演无冲突；本地main先fast-forward至远端，再以no-ff合入本次分支，合并提交 `bd2fd0f`。文档自动合并，无手动冲突处理。核验远端main、本次分支均为新main祖先，H5、远端管理端案件详情小修及DECISIONS与抓取版本一致，未覆盖远端成果。
+
+| 合并后检查 | 实际结果 |
+| --- | --- |
+| 管理端 | `npm run lint`、`npm run typecheck`、`npm test`、`npm run build`全部通过；106项测试0失败／跳过，构建1.68秒 |
+| H5 | 同四项命令全部通过；27项测试0失败／跳过，构建6.03秒；保留既有构建回调耗时提示，未屏蔽 |
+| 后端 | 本轮合并未再改后端；本次对话中已执行56项单元＋2项PG／MinIO集成及Maven verify通过，详见前文；没有把它们写成此次重新运行。未重复执行全量后端集成 |
+| 本机健康 | 并行构建时3秒Status后端探针一次False，其余True；随后15秒只读数据库健康探针返回UP，未据此重启或修改服务 |
+| Git | `git diff --check`通过；合并后工作区干净；原私密配置和运行数据仍被忽略 |
+
+最终执行 `git push --atomic -u origin main codex/workbench-login-notifications-20261021`成功，没有强制推送。`git ls-remote --heads`确认远端main为 `bd2fd0f88df8072a537faffe73cf749fa1089e64`，功能分支为 `2a17f98ed495b9defa6d29fd724a0795df4e25e7`。本条发布记录随后单独提交到main并普通推送，最终main以Git记录和本次最终汇报为准。日志在本机忽略目录 `tmp/github-final-{admin,h5}-{lint,typecheck,test,build}.log`。
+
+本阶段完成并停止。没有创建PR、生产部署、清库或修改业务记录；本机页面与服务保持运行。跨浏览器、物理设备及生产环境未新增验证。
+
+## 2026-10-21 工作台深色快捷入口与仪表盘动效完成
+
+- 用户授权两处前端调整：工作台四个快捷入口统一为第一个按钮的深色；将所给金属仪表盘处理为PNG，并放在标题卡片右侧留白，让速度条与中央数字对应变化。范围、装饰属性及验收写入 REQUIREMENTS；不改其他区域。
+- `HomeView.vue` 仅增加三处按钮的primary样式、仪表盘引用及标题区局部定位。现有按钮跳转、客服资金入口条件、待办／案件／通知内容和背景图保持原样。新增 `WorkbenchSpeedometer.vue`，同一速度值驱动双位数码和16段速度条，10秒0→60→0循环；卸载取消动画和监听，系统减少动效偏好下静态30／8段，动态偏好变更即时生效。没有新接口或依赖。
+- 内置 imagegen 从用户JPG编辑透明PNG动画底图，保留金属外壳及其余仪表细节，移除固定45和固定速度条后由SVG叠加同步动画。资源 `admin-web/src/assets/workbench-speedometer.png`，1254×1254 RGBA，1,837,715字节；原图未覆盖，完整提示词及方式见 [素材记录](design/workbench-speedometer/PROMPT.md)。
+- 浏览器实际核验常规桌面、900×640、1440×900及390×844。所有素材加载成功，四个按钮背景均 `rgb(53,56,59)`，无横向溢出；桌面仪表128px，在按钮上方不相交；窄屏112px放在按钮下方靠右，避免遮挡。读取真实SVG：38对应10段、31对应8段，与同一速度计算一致，数字随时间变化。截图 `tmp/local-website/workbench-speedometer-desktop.png`；临时视口覆盖已清除，保留客服工作台。未提交或修改业务记录。
+
+| 检查 | 本轮结果 |
+| --- | --- |
+| 管理端lint／类型 | `npm run lint`、`npm run typecheck`通过 |
+| 自动测试 | `npm test`通过，106项0失败／跳过；新增两项直接执行实际仪表组件，覆盖0／30／60／30／0整循环、数字与条段同步、卸载取消、减少动效静态及偏好变化 |
+| 生产构建 | `npm run build`通过，1.95秒，PNG进入产物 |
+| 文件检查 | `git diff --check`通过，仅既有换行提醒；登录组件blob仍 `b53e8a4d6d9a8b2acdd9394604c2b7d637d295e5` |
+
+日志 `tmp/workbench-speedometer-{lint,typecheck,test,build}.log`。系统减少动效通过自动测试验证，未切换操作系统实际偏好；未验证跨浏览器／物理设备／弱网。后端、数据库、H5、登录页及其他区域无改动，相应门禁不适用。本阶段完成并停止；未提交、推送或部署。
+
+## 2026-10-21 左侧导航图标语义配色完成
+
+- 用户仅授权登录后左侧导航图标上色；客服工作台右侧留白只提供动效建议，暂不实现。范围和验收：仅图标线条按功能区分颜色，文字、选中背景、尺寸、导航行为及通知红色数字不变；登录页、工作台内容、后端和H5不改。
+- 生产代码只在 `AppShell.vue` 的导航SVG添加模块颜色类，在 `styles.css` 添加图标颜色。工作台蓝、案件暖橙、价格库紫、资金绿、通知金、管理员管理图标灰蓝；选中时用同色系浅色适配原深色背景。无新资源／依赖，无新测试（可逆的纯外观变更）。
+- 实际浏览器用用户此前提供的客服账号正常登录，核对五个导航图标颜色、文字保持原色；工作台选中为浅蓝，通知选中为浅金，红色39条未读角标保持原色／计数。没有标记通知已读或更改业务数据，检查后返回客服工作台。截图 `tmp/local-website/rail-icon-colors.png`；管理员专有第六项的配色已定义，但未登录管理员做本轮视觉验证。
+- `admin-web` 下 `npm run lint`、`npm run typecheck`、`npm test`、`npm run build` 全部通过；104项测试0失败／跳过，生产构建1.20秒。日志 `tmp/rail-icon-color-{lint,typecheck,test,build}.log`。`git diff --check`通过，仅既有换行提示；登录组件blob仍为 `b53e8a4d6d9a8b2acdd9394604c2b7d637d295e5`。
+- 动效建议优先为银灰电动车＋小型诊断仪，局部指示灯／扫描线变化；其他候选为保险盾牌＋勾选或客服耳机＋消息气泡。等待用户选择素材，本轮未编辑工作台右侧。
+
+本阶段完成并停止，未提交、推送或部署。后端／数据库／H5无改动，相应门禁不适用；未进行跨浏览器或物理设备验证。
+
+## 2026-10-21 纠正回退目标，按用户截图恢复金属素材登录页
+
+- 上一次把“对话前”错误理解为已提交的工程线稿版本。用户随后上传截图并明确：恢复截图中的前端登录页，登录后的页面／后端内容与登录故障修复不改变。本轮以该截图及此前金属素材验收图为依据，不再以HEAD作为外观目标。
+- 仅恢复 `admin-web/src/views/LoginView.vue` 和三张既有PNG：顶部双齿轮持续反向转动、扳手静止钳住右齿轮中心、左下整车拆解图、右侧表单、右下横向电池充放电，无暂停按钮。素材从本机保留目录复制回原资源路径，未重新生成。组件Git blob为 `b53e8a4d6d9a8b2acdd9394604c2b7d637d295e5`，与误回退前的金属素材版本一致。
+- 登录提交及错误处理函数与原版逐段比较一致；未改登录请求、CORS、账号权限、服务守护、后端源码／运行包、登录后页面、通知角标或H5。REQUIREMENTS 已按用户最新截图纠正。
+- 浏览器1440×900实际核验与此前金属素材桌面验收图一致，所有图片成功加载、无横向溢出、暂停按钮0；两次读取确认齿轮矩阵变化、扳手矩阵相同且animation为none、电芯透明度变化。截图 `tmp/local-website/login-screenshot-restored.png`；检查后清除临时视口覆盖，保留登录页供查看。未提交真实账号或改业务数据。
+- 本轮管理端 `npm run lint`、`npm run typecheck`、`npm test`、`npm run build` 全部通过；104测试，0失败／跳过。日志 `tmp/login-screenshot-restore-{lint,typecheck,test,build}.log`；构建有既有回调耗时提示，未屏蔽。`git diff --check`通过，仅换行提醒。
+
+本阶段完成并停止。仅恢复登录前端，后端／数据库／H5无改动，不重复执行相应门禁；未提交、推送或部署。下方上一次回退记录作为过程历史保留，其外观目标已由本节纠正。
+
+## 2026-10-21 登录页恢复至本次对话前，通知角标完成
+
+- 用户最新要求回退登录页。范围限定为本次对话的登录视觉改动；验收为登录组件与对话前已提交版本一致、原工程线稿／布局／暂停控制恢复、页面不溢出。通过 `git show HEAD:admin-web/src/views/LoginView.vue` 恢复该组件，`git diff --numstat -- admin-web/src/views/LoginView.vue` 为空。三张新增金属 PNG 移至本机忽略目录 `tmp/login-metal-assets-reverted/` 保留，生产资源不再引用；原始用户图片未改。金属素材的历史验收记录保留，REQUIREMENTS 已标记撤回。登录故障修复与已授权通知功能保留。
+- 浏览器实际访问5173登录页，确认原三处 SVG、暂停控制存在，金属装饰数量0，无横向溢出。截图 `tmp/local-website/login-before-conversation.png`。导航至登录页仅为查看，不主动退出或修改账号。
+- 同时完成此前已进行的通知角标：左侧通知及顶部站内通知显示当前用户有权查看的未读数；0隐藏，超过99显示99+，可访问名称保留完整数字。进入站内通知列表，不自动标记已读；显式标记成功后刷新，页面可见时每30秒及聚焦／重新可见／路由变化时检查。账号变化和组件卸载使旧请求失效，失败保留最后确认值。
+- 新增 `GET /api/v1/notifications/unread-count`，仅返回 `{count}`，复用现有收件人／实时权限查询，不接受其他用户参数。无数据库迁移、H5修改、角色扩大或金额逻辑变更。工作台右侧动效仅给素材建议，尚未添加。
+
+| 检查 | 本轮实际结果 |
+| --- | --- |
+| 管理端门禁 | 回退后 `admin-web` 下 `npm run lint`、`npm run typecheck`、`npm test`、`npm run build` 全通过；104测试，0失败／跳过。日志 `tmp/login-rollback-{lint,typecheck,test,build}.log` |
+| 前端角标回归 | 新增4项测试覆盖0／正常／99+、标记后新计数、乱序响应、账号重置、失败保留最后确认值；包含在104项内 |
+| 后端单元与真实集成 | Java21，`backend` 下 `.\mvnw.cmd -B -ntp '-Dvalidation.build.directory=../tmp/unread-badge-backend-build' '-Dit.test=QuotationPostgresIT#stationNotificationsAreRecipientScopedReadIdempotentAndContainNoFinancialOrInternalFields+reassignmentInvalidatesOldShopNotificationsAndProjectorsDeduplicateConcurrently' verify -Ppostgres-it`通过；56单元、2项PG／MinIO集成，均0失败／错误／跳过。隔离测试数据库／随机schema，覆盖匿名401、跨用户隔离、失去车主／网点归属权限、改派失权、重复已读不重复扣数。日志 `tmp/unread-badge-backend-verify-rerun.log` |
+| 失败如实记录 | 首次PS5测试包装器将Mockito的stderr警告当作异常中断；直接运行后，既有OCR超时测试因模拟认证超时失败（期望识别超时，实际认证超时）。未修改测试、超时或跳过检查；同一完整命令重跑后以上56+2全部通过，保留首次日志 `tmp/unread-badge-backend-verify.log` |
+| 本机生效 | 核验后端PID、命令路径及启动时间后替换已验证JAR，旧包保留；守护恢复新后端26592，数据库健康UP。23条迁移校验、public仍V22、无新迁移；新包来源及SHA256见 LOCAL_RUNTIME |
+| 实际页面 | 原客服会话仍有效，两处角标均为39，实际背景色为红色；点击顶部入口进入 `/notifications?tab=notices` 的站内通知列表，未标记真实通知已读。截图 `tmp/local-website/unread-badge.png`。0／99+及已读同步经自动测试，未人为修改真实通知验证这两种画面 |
+| 文件检查 | `git diff --check`通过，仅换行提醒 |
+
+最终页面留在恢复后的登录页供用户查看。本阶段完成并停止；未提交、推送或生产部署。未执行H5门禁、全量后端集成、跨浏览器／物理设备验证；这些不作为通过项。
+
+## 2026-10-21 客服登录403与管理端Origin遗漏修复
+
+- 用户反馈现有客服账号登录提示“没有访问权限”。同一账号／用户提供的密码实际对照：无Origin直连8080、Origin=`http://localhost:5173`均200／CUSTOMER_SERVICE；Origin=`http://127.0.0.1:5173`经5173代理返回403。账号／密码／启用状态和角色正常，原因是本机显式CORS白名单和源码默认值只有localhost，上一轮切到127.0.0.1时未覆盖真实浏览器Origin。此前无Origin的HTTP验证不能证明浏览器登录可用。
+- 本机私密 `.env` 仅补充准确的 `http://127.0.0.1:5173` 与已存在5191预览地址，原来源保留；通过守护重启已核验后端加载配置（37696→6748，31.7秒），未改密码／账号／角色／数据范围。源码默认值及 `.env.example` 增加准确的127.0.0.1:5173，5191只留在本机显式配置，不用通配符。运行仍为前一已验证JAR，显式环境配置已生效；本轮新默认源码另经完整单元与构建验证。
+- 当前页面真实输入用户提供的账号／密码并点击登录，已从 `/login` 进入 `/`，看到“客服工作台”、案件队列与待办，保留已登录页面。没有代办案件、修改资金或变更业务权限。验证截图仅取工作台顶部、不含密码／Token／案件列表，保存在本机忽略目录 `tmp/local-website/customer-service-login.png`，不提交。
+- 启动器的API代理健康探针增加与实际地址相符的Origin，常驻脚本源码也检查管理端带Origin代理结果，防止以后再次误报无Origin健康即可登录。新Status实测六项全True；现有守护进程下一次启动加载新探针，不为此打断用户已登录会话。
+
+| 检查 | 实际结果 |
+| --- | --- |
+| 回归先红后绿 | 新增HealthControllerTest同时验证localhost／127管理端预检、认证仍必需、未知本机端口／外部Origin拒绝；旧默认5项中1项失败（127预检403），修复后通过。首次未给Maven `-D` 参数加引号被PowerShell拆分，未运行测试，改为带引号后才得到上述有效复现 |
+| 后端单元与构建 | Java21.0.11；`backend`下 `.\mvnw.cmd -B -ntp '-Dvalidation.build.directory=../tmp/login-cors-red' verify`通过；56测试，0失败／错误／跳过，JAR构建成功。日志 `tmp/login-cors-verify.log`；先红日志 `tmp/login-cors-red.log` |
+| 真实登录 | 5173代理带127.0.0.1 Origin登录200／SUCCESS，角色CUSTOMER_SERVICE，Access-Control-Allow-Origin为准确请求地址；实际浏览器进入客服工作台 |
+| 权限边界 | 同一客服Token访问管理端session200；管理员专用users、H5专用session仍403。未知127端口5199及untrusted.invalid来源的实际代理POST和直连后端预检均403；前端Vite可能自行响应OPTIONS，故不把其预检状态代替后端授权 |
+| 运行与文件 | 数据库健康UP，重启校验原23条Flyway／V22，无新迁移；`git diff --check`通过，仅既有换行提示；`.env`保持Git忽略 |
+
+本轮只改后端CORS默认值／回归测试、示例配置、启动探针及对应文档。本机配置不含于提交；未重新执行未改动的前端／H5门禁、完整PG／MinIO集成、生产或跨设备验证，未重置密码、主动调用真实OCR、提交、推送或部署。本阶段完成，保留用户已登录客服工作台并停止。
+
+## 2026-10-21 反复登录“请求未完成”修复与本机自动恢复
+
+- 故障现场：8080拒绝连接、5191页面可打开但API代理返回502；没有Java后端进程，Docker Linux引擎管道不存在。Docker 4.79启动日志明确报 `dockerInference`，随后 `docker-secrets-engine/engine.sock` 失效通信端点访问错误1920。旧临时后端日志的时钟跳变不足以证明原Java进程退出原因，未把休眠或本轮登录图片认定为其退出原因。
+- 非破坏恢复：单socket改名／删除、重解析标记修复均被Windows拒绝；仅将已核对、只含零字节socket的两个临时通信目录原地改名保留，让Docker自行创建新目录。最终Docker29.5.3引擎正常，原 `ev-insurance-platform` PostgreSQL／MinIO healthy；没有factory reset、prune、WSL注销、卷删除、清库或账号重置。保留目录在原用户Docker临时路径下。外部同类故障参考与处理边界见 [当前电脑运行说明](LOCAL_RUNTIME.md)。
+- 修正本机入口：原启动说明依赖另一台机器不存在的 `.env.phase5`、D盘路径和Android JDK。新增 `scripts/Manage-LocalWebsite.ps1` 与根目录启动／检查／停止三个CMD，读取本仓库 `.env`，使用已验证发布构建的JAR副本及Corretto21；固定Flyway target22、只监听本机。依赖及数据库健康后才启动5173管理端；守护10秒检查，身份同时核对命令路径和启动时间，不停止未知进程。状态／运行包／日志均保留在Git忽略的 `tmp/local-website/`。
+- 注册当前用户普通权限任务 `EVInsurance-LocalWebsite`：登录后启动、每分钟兜底触发、重复实例忽略、不保存密码。停止入口移除启用标记并仅停止本项目登记进程，后续任务直接退出；不停止Docker、不删除业务数据。5191仍为独立预览，建议用户固定使用5173正式托管入口。
+- 管理端新增502／503／504明确后台不可用提示，兼容HTML／空响应，保留503具体中文业务错误和错误码；不自动重试登录或业务写请求，不因网关故障清除会话。新增测试先复现原泛化提示失败，再修复通过。H5、后端业务代码、权限、金额与迁移文件未改。
+
+| 检查 | 本轮实际结果 |
+| --- | --- |
+| 真实登录 | 管理员／客服通过5191当前代理首次恢复验证成功；最终通过5173及5191分别再次登录均SUCCESS且角色正确。凭据及Token只在内存使用，不输出／落盘；仅正常认证审计 |
+| 后端／数据库 | `/actuator/health` UP；Flyway成功校验23条、public版本22、No migration necessary，无新迁移 |
+| 后端退出恢复 | 最终任务配置下，仅停止经身份核验的后端，44408→37696，23.3秒自动恢复数据库健康；未手动重启代替验证，结果 `tmp/local-website/recovery-check.json` |
+| 守护退出兜底 | 仅停止已核验守护，19504→38620，30.4秒被定时任务自动恢复；后端37696保持健康，任务Running；结果 `watch-recovery-check.json` |
+| 重复启动 | 连续执行两次 Windows PowerShell `Manage-LocalWebsite.ps1 -Action Start`，backend／admin／watch PID均不变；Backend、Admin、AdminApi、PreviewApi、WatchRunning、AutoRecoveryEnabled全部True |
+| 管理端 | `npm run lint`、`npm run typecheck`、`npm test`、`npm run build`全部通过；100测试，0失败／跳过，构建2.40秒；`tmp/login-availability-*.log` |
+| 运行／文件 | PowerShell语法解析通过；`docker compose --env-file .env -f infra/docker-compose.yml config --quiet`通过；`git diff --check`通过，仅既有换行提醒 |
+
+首轮启动遇到Windows PowerShell5把Docker正常stderr进度当作异常，已隔离原生命令返回码处理；第一次恢复验证暴露守护本身退出（任务退出码0xC000013A）而未恢复，保留超时失败记录，补充每分钟兜底后重跑以上两项真实退出测试通过。外部PowerShell7的CIM时间表示与Windows PowerShell5不同，严格身份检查曾拒绝停止；没有放宽断言或结束未知PID，最终所有入口和生命周期验收均使用同一Windows PowerShell5。
+
+最终浏览器已从独立5191预览切换至常驻5173登录页；确认没有用户已输入内容后才导航。页面正常，截图在本地忽略目录 `tmp/local-website/login-restored.png`。最终任务Running、Limited权限、两个触发器、IgnoreNew；六项运行状态均True，原PG／MinIO均healthy。
+
+未验证：真实注销／重启电脑、断电、休眠恢复、Docker再次发生系统级通信损坏、跨浏览器／物理手机及生产部署。自动恢复覆盖本项目进程退出，不承诺外部系统故障永不发生，也不循环删除系统文件。本轮使用先前已验证后端构建，未修改后端源码，未重复跑完整后端／PG集成或H5门禁，不引用历史通过冒充本轮通过。未主动触发真实OCR、未提交／推送／部署或进入其他阶段。任务计划、数据库、后端、5173和既有5191预览保留运行。本阶段完成并停止。
+
+## 2026-10-21 登录页扳手钳合右侧齿轮调整完成
+
+- 用户追加要求：扳手虎口钳住右边齿轮，齿轮转动时扳手不动。仅调整登录组件的装饰结构／样式：将扳手放入齿轮组合，虎口锚定右齿轮中心轴，手柄固定向右上倾斜 30 度；动画继续只施加在两张齿轮图上。移除旧独立扳手的定位和矮窗口覆盖规则，窄屏随齿轮组合一起隐藏。没有重新生成图片或新增依赖。
+- 浏览器核验同一 1280×640 视口两次读数：齿轮 transform 已变化，扳手 transform 与完整边界矩形相同，animation 为 none。900×640 错误状态、1280×640 错误状态、1440×900 正常状态及390×844窄屏已复查，实际画面无文字／表单遮挡或横向溢出。旋转后图片的透明留白矩形可能与表单矩形相交，判断以可见像素和实际截图为准。截图与读数见 [组合验收](design/login-metal-assets/README.md)。
+- 管理端 `npm run lint`、`npm run typecheck`、`npm test`、`npm run build` 均通过；98 项测试，0 失败／跳过；最终角度调整后重跑构建通过（1.26 秒），`git diff --check` 通过。日志 `tmp/login-wrench-clamp-{lint,typecheck,test,build}.log`。
+- 未修改 H5、后端、权限、资金、数据库或基础设施，相应门禁不适用；系统偏好／跨浏览器／物理设备未新增验证，未实际登录。本机 5191 预览保留；未提交、推送、部署或进入下一阶段。
+
+## 2026-10-21 登录页金属 PNG 素材与动效完成
+
+- 用户确认本阶段方案：仅客服／管理员登录页；齿轮可调整视角；不需要暂停按钮。范围和验收已写入 REQUIREMENTS。
+- 使用内置 ImageGen 将用户提供的三张 JPG 编辑为透明 PNG，保存至 `admin-web/src/assets/login-battery.png`（1774×887）、`login-gear.png`（1254×1254）、`login-wrench.png`（2172×724）；透明通道、图片加载及实际显示均检查。原图未覆盖，生成提示词见 [PROMPTS](design/login-metal-assets/PROMPTS.md)。
+- 电池正极朝右，内部五段以低饱和绿色叠加电量，8 秒从左到右充满、从右到左减少，外壳静止。近正面齿轮素材复用为两只同尺寸齿轮，各自围绕中心以 28 秒周期反向旋转；扳手静态展示。移除原暂停按钮及其状态、样式和旧 SVG 装饰，不新增运行依赖。保留系统减少动效 CSS 规则、整车主图及登录逻辑。
+- 浏览器正式页面检查 1280×640、1280×701、1280×761、1440×900、900×640、640×720、390×844；空账号提交显示既有校验提示，全部装饰边界不与卡片重叠，无横向溢出。矮桌面在错误状态下曾挡住电池，已通过对应尺寸的表单间距／电池大小修正并复查；窄屏沿用收起齿轮和扳手的方式，仅保留小电池。实际读取齿轮矩阵和电芯透明度随时间变化，扳手 animation 为 none，暂停按钮数量为 0，装饰不接收指针事件；控制台 error 为空。截图及几何记录见 [验收说明](design/login-metal-assets/README.md)。
+
+| 检查 | 实际命令与结果 |
+| --- | --- |
+| 管理端 lint | `admin-web` 下 `npm run lint` 通过；最终样式修正后重跑通过 |
+| 类型检查 | `npm run typecheck` 通过 |
+| 前端测试 | `npm test` 通过；98 项，0 失败／跳过 |
+| 生产构建 | `npm run build` 通过；最终样式修正后重跑，1.13 秒；三张 PNG 均进入产物 |
+| 改动检查 | `git diff --check` 通过；生产代码仅登录组件和三张新图片 |
+
+日志在本地忽略目录 `tmp/login-metal-{lint,typecheck,test,build}.log`。浏览器仅检验空输入校验，没有提交真实账号或创建业务记录。系统减少动效仅核对 CSS，未实际切换系统偏好；跨浏览器、物理设备及弱网性能未验证。三张原始透明 PNG 合计约 4.56 MB，未进行有损压缩。
+
+本轮未改 H5、后端、业务权限、数据库或基础设施，相应门禁不适用，未重复声明其通过。仅本机预览 `http://127.0.0.1:5191/login` 保留供用户查看；未提交、推送或部署，不进入其他阶段。
+
 ## 2026-10-21 最新更新 GitHub 发布与 main 合并验证
 
 - 用户明确授权将最新更新上传 GitHub 并合并 `main`。范围为工作区已有桌面端视觉升级、登录页配图与工程动效、已完成案件归档入口及服务端分页筛选，以及对应测试、设计样板、截图与文档；本轮没有新增业务功能或进入后续升级阶段。
@@ -1383,3 +1523,5 @@ GitHub集成已尝试创建以main为目标的Draft PR，返回准确错误：`4
 合并时保留主线的当前页面、案件工作流与派单地址确认，并整合受邀开通及网点推荐界面；账号决策改用 D-064，地图决策改用 D-065，避开主线既有编号。地图迁移从分支 V17 调整为 V24，保留主线工作流 V17、账号 V23 及之前迁移。旧 Mock 地图查询继续允许管理员和客服；新增位置、推荐接口按其原有角色范围控制。地图集成测试夹具补齐主线要求的查勘信息、现场照片，并在每个用例前清理隔离 schema 的登录限流计数；未放宽业务校验。完整迁移断言更新到 V24。
 
 验收：管理端 lint、typecheck、test、build 通过；H5 lint、typecheck、test、build 通过；后端单元测试 76 项通过。隔离 PostgreSQL/MinIO 的完整集成回归中，地图推荐以外的 114 项通过；地图推荐夹具先因缺现场照片、隔离 MinIO 配置、派单接车地址确认失败，按主线前置条件补齐后单独重跑 11 项全部通过（`local-validation/amap-merge-focused/failsafe-reports`）。Flyway 在新 schema 迁移及 validate 均到 V24。完整回归与地图专项分两轮执行，没有将一次失败回归写成全量通过。GitHub 推送状态以本节后续记录为准。未调用真实高德、百度，不更新既有业务数据库，也未部署。
+
+推送前发现远端 main 已增加工作台、金属登录图和通知未读数修复（`d28d19e`），本次继续合入该远端提交，保留工作台与登录视觉，同时保留受邀开通的统一登录及交接码路径；通知集成测试保留异步投影等待和新增未读数权限断言。合并后管理端 lint、typecheck、test、build 均通过；后端隔离回归（`local-validation/workflow-fixes-20261021-231104`）compose 配置通过、76 项单元及 125 项 PostgreSQL/MinIO 集成测试 0 失败/错误/跳过，JAR 构建成功，完整迁移及 validate 到 V24。H5 没有受该远端提交改动，前述门禁对应最终 H5 源码。

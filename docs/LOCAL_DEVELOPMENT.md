@@ -1,5 +1,7 @@
 # 本地开发与启动
 
+当前 `C:\Users\zd070\Desktop\电动车保险工作平台` 的常驻入口与登录故障处理见 [当前电脑运行说明](LOCAL_RUNTIME.md)：根目录 `.env`、现有15432数据库／9000对象存储、Java21已验证运行包、5173管理端以及普通用户自启动／恢复任务。根目录提供启动、检查、停止三个 `.cmd`。下方 `local-validation/.env.phase5` 和 D 盘相关说明属于原环境，不能用于当前电脑。
+
 照片上传返回`STORAGE_UNAVAILABLE`时，先核对后端进程是否加载`MINIO_ENDPOINT`、`MINIO_ACCESS_KEY`、`MINIO_SECRET_KEY`和`MINIO_BUCKET`。`MINIO_ROOT_USER/PASSWORD`仅供容器启动，不会自动映射到应用；已有`.env`不会随`.env.example`更新而自动补齐。仅本地开发可将应用访问凭据设为已创建的本地MinIO账户，禁止输出或提交真实值。修改后重启实际提供API的后端；容器healthy或`/actuator/health`为UP不能代替照片上传验证。上传失败时保留当前草稿和所选照片，配置恢复后在原页面重试，避免重复建单。
 
 网点报价表单OCR见[SHOP_QUOTE_OCR.md](SHOP_QUOTE_OCR.md)：启动配置与客服OCR共用，未新增供应商或前端Key变量。使用当前功能分支在新隔离schema迁移至V18；不得将本分支直接连接仍记录旧OCR V15的历史库或执行repair。此段为网点 OCR 功能分支的历史说明；当前集成版本已将地图迁移排为 V24，账号激活迁移为 V23。本轮验收使用MOCK_V1/模拟响应，不读取真实凭据、不增加此前真实调用预算；未来真实联调需另行确认。

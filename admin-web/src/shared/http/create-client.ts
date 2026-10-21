@@ -20,9 +20,10 @@ export function createClient(session: AuthSession, baseURL: string) {
     const status = error.response?.status
     if (status === 401) session.clear()
     const message = status === 401 ? (['/auth/login','/auth/sign-in'].some(path=>error.config?.url?.endsWith(path)) ? '账号或密码错误' : '登录失效，请重新登录')
-      : status === 403 ? (error.response?.data.code === 'PORTAL_MISMATCH' ? '该账号不能登录当前端，请使用对应端登录' : '没有访问权限')
-      : !error.response ? '网络连接失败，请检查后重试' : (/[\u3400-\u9fff]/.test(error.response.data.message ?? '') ? error.response.data.message : status === 409 ? '记录或状态已变化，请刷新后核对再提交' : status === 400 ? '输入不符合要求，请核对必填项、金额、文件和所选记录' : status === 404 ? '记录不存在或已不可访问，请刷新后重试' : '请求未完成，请稍后重试或联系管理员')
-    return Promise.reject(new ApiError(message, error.response?.data.code ?? 'NETWORK_ERROR', status))
+      : status === 403 ? (error.response?.data?.code === 'PORTAL_MISMATCH' ? '该账号不能登录当前端，请使用对应端登录' : '没有访问权限')
+      : status === 502 || status === 504 ? '后台服务暂不可用，请等待服务恢复后重试'
+      : !error.response ? '网络连接失败，请检查后重试' : (/[\u3400-\u9fff]/.test(error.response.data?.message ?? '') ? error.response.data.message : status === 503 ? '后台服务暂不可用，请等待服务恢复后重试' : status === 409 ? '记录或状态已变化，请刷新后核对再提交' : status === 400 ? '输入不符合要求，请核对必填项、金额、文件和所选记录' : status === 404 ? '记录不存在或已不可访问，请刷新后重试' : '请求未完成，请稍后重试或联系管理员')
+    return Promise.reject(new ApiError(message, error.response?.data?.code ?? 'NETWORK_ERROR', status))
   })
   return {
     client,

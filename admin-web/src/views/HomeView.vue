@@ -8,6 +8,7 @@ import { statusLabels, workOrderApi, type WorkOrder } from '@/features/workorder
 import engineeringBlueprint from '@/assets/e-scooter-blueprint-panorama.webp'
 import emptyParts from '@/assets/e-scooter-parts-empty.webp'
 import { vMagnetic } from '@/shared/ui/magnetic'
+import WorkbenchSpeedometer from '@/shared/ui/WorkbenchSpeedometer.vue'
 
 interface Task { taskKey: string; caseId: string; title: string; deadline: string | null; overdue: boolean }
 interface Notice { id: number; caseId: string; title: string; createdAt: string; read: boolean }
@@ -26,7 +27,7 @@ onMounted(() => { void loadTasks(); void loadNotices(); void loadOrders() })
 
 <template>
   <div class="workbench">
-    <header class="workbench-hero"><div class="hero-copy"><p class="eyebrow">INSURANCE CASE OPERATIONS</p><h1>{{ currentUser?.roles.includes('ADMIN') ? '管理工作台' : '客服工作台' }}</h1><div class="quick-links"><h2>快捷入口</h2><ElButton v-magnetic type="primary" @click="router.push('/work-orders?create=1')">新建案件草稿</ElButton><ElButton @click="router.push('/pricing')">价格数据库</ElButton><ElButton v-if="currentUser?.roles.includes('CUSTOMER_SERVICE')" @click="router.push('/funds/imports')">资金导入</ElButton><ElButton @click="router.push('/notifications?tab=todos')">投诉相关待办</ElButton></div></div><img class="engineering-bike" :src="engineeringBlueprint" alt="" aria-hidden="true"><span class="hero-axis" aria-hidden="true"></span></header>
+    <header class="workbench-hero"><div class="hero-copy"><p class="eyebrow">INSURANCE CASE OPERATIONS</p><h1>{{ currentUser?.roles.includes('ADMIN') ? '管理工作台' : '客服工作台' }}</h1><div class="quick-links"><h2>快捷入口</h2><ElButton v-magnetic type="primary" @click="router.push('/work-orders?create=1')">新建案件草稿</ElButton><ElButton type="primary" @click="router.push('/pricing')">价格数据库</ElButton><ElButton v-if="currentUser?.roles.includes('CUSTOMER_SERVICE')" type="primary" @click="router.push('/funds/imports')">资金导入</ElButton><ElButton type="primary" @click="router.push('/notifications?tab=todos')">投诉相关待办</ElButton></div><WorkbenchSpeedometer /></div><img class="engineering-bike" :src="engineeringBlueprint" alt="" aria-hidden="true"><span class="hero-axis" aria-hidden="true"></span></header>
     <section class="wb-section" aria-labelledby="todos-title"><div class="section-heading"><div><p class="eyebrow">01 / PRIORITY</p><h2 id="todos-title">我的待办 <span v-if="!taskLoading">{{ taskTotal }}</span></h2></div><ElButton text @click="router.push('/notifications?tab=todos')">查看全部 →</ElButton></div>
       <p v-if="taskError" role="alert" class="section-error">{{ taskError }} <button @click="loadTasks">重试</button></p><div v-else-if="taskLoading" class="skeleton-rows" aria-busy="true">正在读取待办…</div><div v-else-if="!tasks.length" class="empty-copy"><img :src="emptyParts" alt="" aria-hidden="true"><p>目前没有待处理任务。</p></div>
       <div v-else class="task-list"><button v-for="task in tasks" :key="task.taskKey" class="task-row" @click="router.push(`/work-orders/${task.caseId}`)"><span class="task-dot" :class="{ overdue: task.overdue }"/><strong>{{ task.title }}</strong><span class="mono">案件 {{ task.caseId }}</span><span :class="{ overdue: task.overdue }">{{ task.deadline ? `截止 ${localTime(task.deadline)}` : '不限期' }}</span><span class="task-action">进入处理 →</span></button></div>
@@ -46,4 +47,7 @@ onMounted(() => { void loadTasks(); void loadNotices(); void loadOrders() })
 @keyframes blueprint-drift-in{from{opacity:0;transform:translate3d(28px,8px,0)}to{opacity:.45;transform:translate3d(0,0,0)}}@keyframes axis-in{from{opacity:0;transform:scaleX(.72)}to{opacity:1;transform:scaleX(1)}}@keyframes list-arrive{from{opacity:0;transform:translate3d(0,6px,0)}to{opacity:1;transform:translate3d(0,0,0)}}
 @media(max-width:1250px){.wb-grid{grid-template-columns:1fr}.task-row{grid-template-columns:12px 1fr 1fr auto}.task-row span:nth-child(4){display:none}}@media(max-width:700px){.workbench-hero{min-height:180px}.hero-copy{padding:16px;background:rgba(255,255,255,.74)}.engineering-bike{right:-24%;width:520px;opacity:.25}.wb-section{padding:18px}.task-row{grid-template-columns:12px 1fr auto}.task-row .mono{display:none}.case-preview-row{grid-template-columns:1fr auto}.case-preview-row>span:nth-child(2),.case-preview-row>span:last-child{display:none}}
 @media(prefers-reduced-transparency:reduce){.hero-copy{background:#fff;backdrop-filter:none}}@media(prefers-reduced-motion:reduce){.engineering-bike,.hero-axis,.task-row,.case-preview-row,.notice-preview{animation:none}.task-row:hover,.case-preview-row:hover,.notice-preview:hover{transform:none}}
+.hero-copy>.eyebrow,.hero-copy>h1{padding-right:144px}
+.hero-copy>.workbench-speedometer{position:absolute;right:20px;top:0;width:128px}
+@media(max-width:700px){.hero-copy>.eyebrow,.hero-copy>h1{padding-right:0}.hero-copy>.workbench-speedometer{position:relative;right:auto;top:auto;width:112px;margin:12px 0 0 auto}}
 </style>

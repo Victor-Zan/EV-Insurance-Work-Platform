@@ -21,6 +21,7 @@
     OR (n.recipient_role='REPAIR_SHOP' AND ((e.kind='CASE_CANCELLED' AND cancellation.notify_shop AND cancellation.shop_id=e.shop_id AND cancellation.assignment_version=e.assignment_version) OR (e.kind&lt;&gt;'CASE_CANCELLED' AND a.assignment_version=e.assignment_version AND a.shop_id=e.shop_id AND w.shop_id=e.shop_id)) AND EXISTS(SELECT 1 FROM shop_account sa WHERE sa.user_id=#{user} AND sa.shop_id=e.shop_id)))
  </sql>
  <select id="count" resultType="long">SELECT count(*) <include refid="notificationFrom"/></select>
+ <select id="unreadCount" resultType="long">SELECT count(*) <include refid="notificationFrom"/> AND nr.notification_id IS NULL</select>
  <select id="inbox" resultType="map">SELECT n.id,e.work_order_id,e.kind,n.created_at,nr.read_at,CASE WHEN e.kind='CASE_CANCELLED' THEN w.business_no ELSE NULL END business_no,cancellation.public_reason cancellation_reason <include refid="notificationFrom"/> ORDER BY n.id DESC LIMIT #{size} OFFSET #{offset}</select>
  <select id="visible" resultType="map">SELECT n.id,e.work_order_id,e.kind,n.created_at,nr.read_at,CASE WHEN e.kind='CASE_CANCELLED' THEN w.business_no ELSE NULL END business_no,cancellation.public_reason cancellation_reason <include refid="notificationFrom"/> AND n.id=#{id}</select>
  <sql id="tasks">

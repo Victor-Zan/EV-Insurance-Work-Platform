@@ -21,6 +21,7 @@
 
 - [本地启动说明](docs/LOCAL_DEVELOPMENT.md)
 - [现有Windows网站启动、停止与恢复](docs/本地网站使用说明.md)
+- [当前桌面工作区的一键启动与自动恢复](docs/LOCAL_RUNTIME.md)
 - [需求基线](docs/REQUIREMENTS.md)
 - [业务流程与状态流](docs/WORKFLOW.md)
 - [数据字典](docs/DATA_DICTIONARY.md)

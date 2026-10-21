@@ -49,6 +49,7 @@ FLOW-001,RECEIVE,CLAIM-001,WORK-001,100.00,2026-10-10T10:00:00+08:00,合成样�
 | 方法/路径 | 说明 |
 | --- | --- |
 | GET / | 本人、当前仍有权限的历史通知分页 |
+| GET /unread-count | 当前登录用户仍可见且未读的通知数，返回 `{count: number}`；复用通知列表数据范围，不接受他人用户ID |
 | POST /{id}/read | 个人已读；重复调用只保留一次记录；他人/失去权限403 |
 | GET /todos | 当前有效待办分页；可选caseId查看有权案件 |
 | POST /deadlines | 客服taskKey,expectedVersion,deadline,reason；deadline为ISO +08:00或null清除 |

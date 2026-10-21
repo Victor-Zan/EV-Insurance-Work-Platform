@@ -814,11 +814,16 @@ class QuotationPostgresIT {
     private JsonNode findTask(String token,String id,String kind) throws Exception {var rows=getData(token,"notifications/todos?caseId="+id+"&size=100").path("records");for(var row:rows)if(kind.equals(row.path("kind").asText()))return row;throw new AssertionError("Missing active task "+kind);}
     @Test void stationNotificationsAreRecipientScopedReadIdempotentAndContainNoFinancialOrInternalFields() throws Exception {
         String id=receivedRepair();fundsTarget(id,"RECEIVE","100.00",200);fundsTarget(id,"PAY","80.00",200);org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(10)).untilAsserted(()->{notificationProjector.project();assertThat(db.queryForObject("SELECT count(*) FROM notification_event WHERE projected_at IS NULL",Long.class)).isZero();});
-        var ownerInbox=getData(owner,"notifications?size=100").path("records");JsonNode ownNotice=null;for(var row:ownerInbox)if(id.equals(row.path("caseId").asText())){ownNotice=row;assertThat(row.toString()).doesNotContain("amount","markup","originalTotal","internalNote","FUNDS_UPDATED","PAY_UPDATED");}
+        var ownerInbox=getData(owner,"notifications?size=100").path("records");JsonNode ownNotice=null;long caseUnread=0;for(var row:ownerInbox)if(id.equals(row.path("caseId").asText())){ownNotice=row;if(!row.path("read").asBoolean())caseUnread++;assertThat(row.toString()).doesNotContain("amount","markup","originalTotal","internalNote","FUNDS_UPDATED","PAY_UPDATED");}
+        mvc.perform(get("/api/v1/notifications/unread-count")).andExpect(status().isUnauthorized());
+        var unread=getData(owner,"notifications/unread-count");assertThat(unread.size()).isEqualTo(1);long beforeRead=unread.path("count").asLong();assertThat(beforeRead).isPositive();
         assertThat(ownNotice).isNotNull();long noticeId=ownNotice.path("id").asLong();request(owner,"notifications/"+noticeId+"/read",Map.of(),200);request(owner,"notifications/"+noticeId+"/read",Map.of(),200);request(shop,"notifications/"+noticeId+"/read",Map.of(),403);assertThat(db.queryForObject("select count(*) from notification_read where notification_id=?",Integer.class,noticeId)).isEqualTo(1);
+        assertThat(getData(owner,"notifications/unread-count").path("count").asLong()).isEqualTo(beforeRead-1);
         var settings=getData(owner,"notifications/settings");assertThat(settings.path("automaticTimeoutEnabled").asBoolean()).isFalse();assertThat(settings.path("smsEnabled").asBoolean()).isFalse();
         var stranger=createUser("OWNER",null);String strangerToken=login(stranger.path("username").asText(),"H5");assertThat(getData(strangerToken,"notifications?size=100").path("total").asInt()).isZero();request(strangerToken,"notifications/"+noticeId+"/read",Map.of(),403);
+        assertThat(getData(strangerToken,"notifications/unread-count?userId=1").path("count").asLong()).isZero();
         db.update("update work_order set owner_user_id=? where id=?::uuid",stranger.path("id").asLong(),id);request(owner,"notifications/"+noticeId+"/read",Map.of(),403);
+        assertThat(getData(owner,"notifications/unread-count").path("count").asLong()).isEqualTo(beforeRead-caseUnread);
         org.junit.jupiter.api.Assertions.assertThrows(org.springframework.dao.DataAccessException.class,()->db.update("update in_app_notification set recipient_role='ADMIN' where id=?",noticeId));
     }
     @Test void deadlinesAreOptionalVersionedChinaTimeAndExpireOnlyAsLabelsWhileCompletedTasksRejectChanges() throws Exception {
@@ -833,7 +838,9 @@ class QuotationPostgresIT {
     @Test void reassignmentInvalidatesOldShopNotificationsAndProjectorsDeduplicateConcurrently() throws Exception {
         String id=formal(customerService,"NOTIFY-"+UUID.randomUUID(),OWNER_PHONE,"VIN-"+UUID.randomUUID(),Instant.now()).path("id").asText();var assigned=dispatch(customerService,id,shopId,true,"合成通知派单",UUID.randomUUID().toString(),200).path("data");int assignment=assignmentVersion(assigned);notificationProjector.project();
         JsonNode notice=null;for(var row:getData(shop,"notifications?size=100").path("records"))if(id.equals(row.path("caseId").asText()))notice=row;assertThat(notice).isNotNull();long oldNotice=notice.path("id").asLong();
+        long beforeReassign=getData(shop,"notifications/unread-count").path("count").asLong();
         long nextShop=createEligibleShop();request(customerService,"work-orders/"+id+"/reassign",Map.of("shopId",nextShop,"assignmentVersion",assignment,"reason","合成改派隔离","vehicleNotArrivedConfirmed",true,"confirmPossibleDuplicate",true),200);request(shop,"notifications/"+oldNotice+"/read",Map.of(),403);
+        assertThat(getData(shop,"notifications/unread-count").path("count").asLong()).isLessThan(beforeReassign);
         try(var pool=Executors.newFixedThreadPool(2)){var results=pool.invokeAll(List.<Callable<Void>>of(()->{notificationProjector.project();return null;},()->{notificationProjector.project();return null;}));for(var result:results)result.get();}
         assertThat(db.queryForObject("select count(*) from (select event_id,recipient_id,recipient_role from in_app_notification group by event_id,recipient_id,recipient_role having count(*)>1) x",Integer.class)).isZero();
         mvc.perform(get("/api/v1/notifications/todos").param("caseId",id).header("Authorization","Bearer "+shop)).andExpect(status().isForbidden());
