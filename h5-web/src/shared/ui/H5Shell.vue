@@ -7,17 +7,17 @@ import { currentUser } from '@/shared/http/client'
 const route = useRoute(), router = useRouter(), online = ref(navigator.onLine)
 const isShop = computed(() => currentUser.value?.roles.includes('REPAIR_SHOP') === true)
 const tabs = computed(() => isShop.value
-  ? [{to:'/',label:'任务',icon:'todo-list-o'},{to:'/work-orders',label:'案件',icon:'orders-o'},{to:'/notifications',label:'通知',icon:'bell-o'},{to:'/me',label:'我的',icon:'user-o'}]
-  : [{to:'/',label:'案件',icon:'orders-o'},{to:'/notifications',label:'通知',icon:'bell-o'},{to:'/complaints',label:'投诉',icon:'comment-o'},{to:'/me',label:'我的',icon:'user-o'}])
+  ? [{to:'/',label:'任务',icon:'todo-list-o'},{to:'/work-orders',label:'案件',icon:'orders-o'},{to:'/notifications',label:'通知',icon:'volume-o'},{to:'/me',label:'我的',icon:'user-o'}]
+  : [{to:'/',label:'案件',icon:'orders-o'},{to:'/notifications',label:'通知',icon:'volume-o'},{to:'/me',label:'我的',icon:'user-o'}])
 const active = computed(() => {
   if (route.path.startsWith('/notifications')) return '/notifications'
-  if (route.path.startsWith('/complaints')) return '/complaints'
+  if (['/complaints','/help','/guide'].some(path=>route.path.startsWith(path))) return '/me'
   if (route.path.startsWith('/me')) return '/me'
   if (route.path.startsWith('/work-orders')) return isShop.value ? '/work-orders' : '/'
   return '/'
 })
 function updateOnline(){online.value=navigator.onLine}
-function navigate(path:string){if(path!==active.value)void router.push(path)}
+function navigate(path:string){if(path!==route.path)void router.push(path)}
 onMounted(()=>{window.addEventListener('online',updateOnline);window.addEventListener('offline',updateOnline)})
 onBeforeUnmount(()=>{window.removeEventListener('online',updateOnline);window.removeEventListener('offline',updateOnline)})
 </script>
@@ -26,13 +26,13 @@ onBeforeUnmount(()=>{window.removeEventListener('online',updateOnline);window.re
   <div class="h5-shell">
     <a class="skip-link" href="#main-content">跳到主要内容</a>
     <header class="h5-context">
-      <button class="brand" aria-label="返回角色首页" @click="router.push('/')"><span class="brand-mark"><Icon name="shield-o" /></span><span><strong>e保</strong><small>保险协作台 · 设计占位</small></span></button>
+      <button class="brand" aria-label="返回角色首页" @click="router.push('/')"><span class="brand-mark"><Icon name="shield-o" /></span><span><strong>e保</strong><small>保险维修服务</small></span></button>
       <span class="role-chip">{{ isShop ? '维修网点' : '车主' }}</span>
     </header>
     <p v-if="!online" class="offline-banner" role="alert">连接已断开。已填写内容会保留，请恢复网络后手动重试。</p>
     <main id="main-content" class="h5-content" tabindex="-1"><slot /></main>
-    <Tabbar :model-value="active" safe-area-inset-bottom placeholder @change="navigate">
-      <TabbarItem v-for="tab in tabs" :key="tab.to" :name="tab.to" :icon="tab.icon">{{ tab.label }}</TabbarItem>
+    <Tabbar :model-value="active" safe-area-inset-bottom placeholder>
+      <TabbarItem v-for="tab in tabs" :key="tab.to" :name="tab.to" :icon="tab.icon" @click="navigate(tab.to)">{{ tab.label }}</TabbarItem>
     </Tabbar>
   </div>
 </template>

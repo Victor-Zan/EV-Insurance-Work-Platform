@@ -19,8 +19,8 @@ const roleHero=computed(()=>isShop.value?shopHero:ownerHero)
 const assignmentVersion=computed(()=>order.value?.currentAssignment?.assignmentVersion)
 const sections=computed(()=>isShop.value
   ? [{key:'overview',label:'概览与动作'},{key:'quotation',label:'报价授权'},{key:'materials',label:'上传反馈'},{key:'repair',label:'维修进度'},{key:'settlement',label:'结算'},{key:'complaint',label:'投诉'},{key:'history',label:'历史'}]
-  : [{key:'overview',label:'案件进度'},{key:'progress',label:'维修进度'},{key:'photos',label:'维修照片'},{key:'receipt',label:'收车评价'},{key:'complaint',label:'投诉'},{key:'history',label:'历史'}])
-const activeSection=computed(()=>sections.value.some(item=>item.key===String(route.query.section))?String(route.query.section):'overview')
+  : [{key:'overview',label:'案件进度'},{key:'progress',label:'维修进度'},{key:'photos',label:'维修照片'},{key:'receipt',label:['WAITING_INSURER_PAYMENT','WAITING_SHOP_SETTLEMENT','COMPLETED'].includes(order.value?.status||'')?'评价':'收车确认'},{key:'history',label:'历史'}])
+const activeSection=computed(()=>!isShop.value&&route.query.section==='complaint'?'complaint':sections.value.some(item=>item.key===String(route.query.section))?String(route.query.section):'overview')
 function goSection(section:string){void router.replace({path:route.path,query:{section}})}
 async function load(){loading.value=true;error.value='';try{order.value=await api.detail(id);const result=await api.history(id,1);history.value=result.records;historyTotal.value=result.total}catch(e){error.value=e instanceof Error?e.message:'案件加载失败'}finally{loading.value=false}}
 async function action(operation:'accept'|'reject'|'exception'|'continue'|'arrive'){
@@ -36,7 +36,7 @@ async function action(operation:'accept'|'reject'|'exception'|'continue'|'arrive
     reason.value='';showSuccessToast('操作成功');await load()
   }catch(e){showToast(e instanceof Error?e.message:'操作失败')}finally{busy.value=false}
 }
-watch(()=>route.query.section,value=>{if(value&&!sections.value.some(item=>item.key===String(value)))void router.replace({path:route.path,query:{section:'overview'}})},{immediate:true})
+watch(()=>route.query.section,value=>{if(value&&value!=='complaint'&&!sections.value.some(item=>item.key===String(value)))void router.replace({path:route.path,query:{section:'overview'}})},{immediate:true})
 onMounted(load)
 </script>
 
@@ -46,7 +46,7 @@ onMounted(load)
 
     <section v-if="activeSection==='overview'" class="overview-panel"><CellGroup inset><Cell title="当前状态" :value="statusLabels[order.status]"/><Cell v-if="isShop" title="车主" :value="order.ownerName||'未填写'"/><Cell v-if="isShop" title="联系信息" :value="order.ownerPhone||'未提供'"/><Cell title="车辆" :value="`${order.vehicleBrand||''} ${order.vehicleModel||''}`.trim()||'未填写'"/><Cell title="事故位置" :value="order.accidentAddress||'未填写详细地址'"/><Cell title="事故说明" :label="order.accidentDescription||'未填写'"/></CellGroup>
       <section v-if="isShop&&['PENDING_ACCEPTANCE','PENDING_ARRIVAL','ARRIVAL_EXCEPTION'].includes(order.status)" class="surface-section action-panel"><h2>{{ order.status==='PENDING_ACCEPTANCE'?'接单处理':order.status==='PENDING_ARRIVAL'?'车辆到店':'到店异常处理' }}</h2><Field v-model="reason" :label="order.status==='PENDING_ACCEPTANCE'?'拒绝原因':'处理说明'" type="textarea" :placeholder="order.status==='PENDING_ACCEPTANCE'?'拒绝时必填':'异常时填写原因'"/><Button v-if="order.status==='PENDING_ACCEPTANCE'" block plain :loading="busy" @click="action('reject')">拒绝接单</Button><Button v-if="order.status==='PENDING_ACCEPTANCE'" block type="primary" :loading="busy" @click="action('accept')">接受案件</Button><Button v-if="order.status==='PENDING_ARRIVAL'" block plain :loading="busy" @click="action('exception')">记录到店异常</Button><Button v-if="order.status==='ARRIVAL_EXCEPTION'" block plain :loading="busy" @click="action('continue')">继续等待</Button><Button v-if="['PENDING_ARRIVAL','ARRIVAL_EXCEPTION'].includes(order.status)" block type="primary" :loading="busy" @click="action('arrive')">确认车辆到店</Button></section>
-      <section v-else class="surface-section"><h2>{{ isShop?'下一步处理':'案件说明' }}</h2><p>{{ isShop?'从上方分区进入报价授权、材料上传、维修进度或结算；页面只开放当前状态允许的操作。':'可从上方查看维修进度、服务端允许的照片、收车评价与投诉。' }}</p><Button v-if="actionFor(order.status,isShop?'REPAIR_SHOP':'OWNER').section!=='overview'" block type="primary" @click="goSection(actionFor(order.status,isShop?'REPAIR_SHOP':'OWNER').section)">{{ actionFor(order.status,isShop?'REPAIR_SHOP':'OWNER').label }}</Button></section>
+      <section v-else class="surface-section"><h2>案件服务</h2><Button v-if="actionFor(order.status,isShop?'REPAIR_SHOP':'OWNER').section!=='overview'" block type="primary" @click="goSection(actionFor(order.status,isShop?'REPAIR_SHOP':'OWNER').section)">{{ actionFor(order.status,isShop?'REPAIR_SHOP':'OWNER').label }}</Button></section>
     </section>
 
     <QuotationPanel v-if="isShop&&activeSection==='quotation'" :case-id="id" :refresh-token="materialRevision" @changed="materialRevision++;load()"/>

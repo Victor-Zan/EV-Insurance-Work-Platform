@@ -13,9 +13,9 @@ async function load(reset=false){if(reset){page.value=1;rows.value=[];refreshing
 onMounted(()=>load(true))
 </script>
 
-<template><div class="mobile-page"><NavBar :title="isShop?'本店案件':'我的案件'"/><Search v-model="query" show-action placeholder="案件号、报案号或车辆" aria-label="搜索案件" @search="load(true)" @clear="load(true)"><template #action><button class="search-action" @click="load(true)">搜索</button></template></Search>
+<template><div class="mobile-page"><NavBar :title="isShop?'本店案件':'我的案件'"/><Search v-model="query" show-action placeholder="工单号或报案号" aria-label="搜索案件" @search="load(true)" @clear="load(true)"><template #action><button class="search-action" @click="load(true)">搜索</button></template></Search>
   <p v-if="error" class="inline-error" role="alert">{{ error }} <Button size="small" @click="load(rows.length===0)">重试</Button></p>
   <PullRefresh v-model="refreshing" @refresh="load(true)"><List v-model:loading="loading" :finished="finished" :immediate-check="false" :finished-text="rows.length?'已显示全部案件':''" @load="load(false)"><button v-for="item in rows" :key="item.id" class="case-row" @click="router.push(destination(item))"><span><strong>{{ item.businessNo||'案件' }}</strong><small>{{ item.vehicleBrand||'未填写品牌' }} {{ item.vehicleModel }} · {{ actionFor(item.status,isShop?'REPAIR_SHOP':'OWNER').label }}</small><small v-if="isShop">{{ item.ownerName||'未填写车主' }}</small></span><Tag plain type="primary">{{ statusLabels[item.status] }}</Tag></button><Empty v-if="!rows.length&&!loading&&!error" image-size="72" :description="query?'没有符合条件的案件':'当前没有可查看的案件'"/></List></PullRefresh>
-  <p v-if="rows.length" class="list-total">稳定排序 · 已显示 {{ rows.length }} / {{ total }} 条</p></div></template>
+  <p v-if="rows.length" class="list-total">已显示 {{ rows.length }} / {{ total }} 条</p></div></template>
 
 <style scoped>.search-action{min-width:48px;min-height:40px;padding:0;border:0;background:transparent;color:var(--color-accent)}.list-total{margin:14px 16px;color:var(--color-text-secondary);font-size:12px;text-align:center}.case-row .van-tag{flex:0 0 auto}</style>

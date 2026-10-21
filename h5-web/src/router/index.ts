@@ -6,6 +6,7 @@ import WorkOrdersView from '@/features/workorders/WorkOrdersView.vue'
 import WorkOrderDetailView from '@/features/workorders/WorkOrderDetailView.vue'
 import NotificationsView from '@/views/NotificationsView.vue'
 import MeView from '@/views/MeView.vue'
+import HelpView from '@/views/HelpView.vue'
 import ComplaintEntryView from '@/views/ComplaintEntryView.vue'
 
 import { authSession, api } from '@/shared/http/client'
@@ -21,6 +22,8 @@ const router = createRouter({
     { path: '/work-orders/:id', component: WorkOrderDetailView, meta: { roles: ['REPAIR_SHOP', 'OWNER'] } },
     { path: '/notifications', component: NotificationsView, meta: { roles: ['REPAIR_SHOP', 'OWNER'] } },
     { path: '/complaints', component: ComplaintEntryView, meta: { roles: ['OWNER'] } },
+    { path: '/help', component: HelpView, meta: { roles: ['REPAIR_SHOP', 'OWNER'] } },
+    { path: '/guide', component: HelpView, meta: { roles: ['REPAIR_SHOP', 'OWNER'] } },
     { path: '/me', component: MeView, meta: { roles: ['REPAIR_SHOP', 'OWNER'] } },
 
     { path: '/forbidden', component: AccessView, props: { message: '没有访问权限', retry: false }, meta: { shell: false } },

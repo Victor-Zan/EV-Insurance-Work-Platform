@@ -16,7 +16,7 @@ async function login() {
 }
 </script>
 <template>
-  <main class="login-page"><section class="login-hero"><img class="charging-scene" :src="chargingScene" alt="" aria-hidden="true"><div class="hero-shade" aria-hidden="true"></div><div class="login-brand"><span><Icon name="shield-o"/></span><p><strong>e保</strong><small>保险协作台 · 设计占位</small></p></div><div class="login-copy"><p class="eyebrow">MOBILE CASE OPERATIONS</p><h1>把当前案件，<br>稳稳推进到下一步。</h1><p>网点处理接单、材料和维修进度；车主查看本人案件、照片、收车与投诉。</p></div><span class="scene-caption" aria-hidden="true">ELECTRIC · SERVICE · CASE</span></section>
+  <main class="login-page"><section class="login-hero"><img class="charging-scene" :src="chargingScene" alt="" aria-hidden="true"><div class="hero-shade" aria-hidden="true"></div><div class="login-brand"><span><Icon name="shield-o"/></span><p><strong>e保</strong><small>保险维修服务</small></p></div><div class="login-copy"><p class="eyebrow">MOBILE CASE OPERATIONS</p><h1>把当前案件，<br>稳稳推进到下一步。</h1><p>维修进度随时查，车辆交付更安心。</p></div><span class="scene-caption" aria-hidden="true">ELECTRIC · SERVICE · CASE</span></section>
     <section class="login-form"><h2>账号登录</h2><p>仅维修网点与车主可进入移动端。</p><p v-if="error" class="error-message" role="alert">{{ error }}</p>
     <Form label-align="top" @submit="login">
       <Field v-model="username" name="username" label="账号" autocomplete="username" maxlength="64" placeholder="请输入账号" />

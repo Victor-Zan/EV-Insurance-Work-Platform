@@ -18,7 +18,7 @@ async function login() {
 </script>
 
 <template>
-  <main class="login-page"><div class="login-illustration"><p class="login-kicker">INSURANCE CASE OPERATIONS</p><div class="login-copy"><span class="brand-caption">e保 / 保险协作台 · 设计占位</span><h1>让案件处理<br/>清晰、有序、可追溯。</h1><p>从建单、报价核损到维修交付，在一个克制的工作空间里衔接每一步。</p></div><img class="engineering-blueprint engineering-exploded" :src="engineeringExploded" alt="" aria-hidden="true"><span class="dimension dimension-a" aria-hidden="true">3200</span><span class="dimension dimension-b" aria-hidden="true">1420</span></div><ElCard class="login-card" shadow="never">
+  <main class="login-page"><div class="login-illustration"><p class="login-kicker">INSURANCE CASE OPERATIONS</p><div class="login-copy"><span class="brand-caption">e保 / 保险维修服务</span><h1>让案件处理<br/>清晰、有序、可追溯。</h1><p>从建单、报价核损到维修交付，在一个克制的工作空间里衔接每一步。</p></div><img class="engineering-blueprint engineering-exploded" :src="engineeringExploded" alt="" aria-hidden="true"><span class="dimension dimension-a" aria-hidden="true">3200</span><span class="dimension dimension-b" aria-hidden="true">1420</span></div><ElCard class="login-card" shadow="never">
     <span class="login-kicker">ADMIN & CUSTOMER SERVICE</span><h2>登录管理端</h2><p>仅管理员与客服可进入；网点和车主请使用移动端。</p>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" role="alert" />
     <ElForm label-position="top" @submit.prevent="login">
