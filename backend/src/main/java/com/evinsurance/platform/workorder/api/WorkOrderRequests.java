@@ -32,6 +32,7 @@ public final class WorkOrderRequests {
         @Size(max=2000) String accidentDescription) {}
 
     public record DispatchLocation(@NotNull Long expectedVersion,@NotNull Long regionId,@NotBlank @Size(max=255) String address,boolean confirmed) {}
+    public record AccidentDistrict(@NotNull Long expectedVersion,@NotNull Long regionId,@NotBlank @Size(max=500) String reason,boolean confirmed) {}
 
     public record Submit(boolean confirmPossibleDuplicate, @Size(max=500) String duplicateReason) {}
 

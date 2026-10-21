@@ -48,6 +48,14 @@ public interface WorkOrderMapper {
     @org.apache.ibatis.annotations.Update("UPDATE work_order_command SET request_hash=#{hash} WHERE actor_id=#{actor} AND operation='OWNER_BIND' AND idempotency_key=#{key}") void bindingCommandHashSave(@Param("actor") long actor,@Param("key") String key,@Param("hash") String hash);
     List<Long> ownersByPhone(@Param("phone") String phone);
     long regionEnabled(@Param("id") long id);
+    @org.apache.ibatis.annotations.Select("SELECT count(*) FROM region d JOIN region c ON c.id=d.parent_id AND c.level=2 AND c.enabled JOIN region p ON p.id=c.parent_id AND p.level=1 AND p.enabled WHERE d.id=#{id} AND d.level=3 AND d.enabled")
+    long enabledDistrict(@Param("id") long id);
+    @org.apache.ibatis.annotations.Select("SELECT count(*) FROM region d JOIN region c ON c.id=d.parent_id AND c.level=2 AND c.enabled JOIN region p ON p.id=c.parent_id AND p.level=1 AND p.enabled WHERE d.level=3 AND d.enabled AND (#{query}='' OR concat(p.name,'/',c.name,'/',d.name) ILIKE '%'||#{query}||'%' OR d.code ILIKE '%'||#{query}||'%')")
+    long districtCount(@Param("query") String query);
+    @org.apache.ibatis.annotations.Select("SELECT d.id,d.code,concat(p.name,' / ',c.name,' / ',d.name) AS name FROM region d JOIN region c ON c.id=d.parent_id AND c.level=2 AND c.enabled JOIN region p ON p.id=c.parent_id AND p.level=1 AND p.enabled WHERE d.level=3 AND d.enabled AND (#{query}='' OR concat(p.name,'/',c.name,'/',d.name) ILIKE '%'||#{query}||'%' OR d.code ILIKE '%'||#{query}||'%') ORDER BY p.sort_order,p.id,c.sort_order,c.id,d.sort_order,d.id LIMIT #{size} OFFSET #{offset}")
+    List<WorkOrderRows.CityOption> districts(@Param("query") String query,@Param("offset") int offset,@Param("size") int size);
+    @org.apache.ibatis.annotations.Update("UPDATE work_order SET accident_region_id=#{regionId},version=version+1,updated_by=#{actor},updated_at=now() WHERE id=#{id} AND version=#{version}")
+    int accidentDistrict(@Param("id") UUID id,@Param("version") long version,@Param("regionId") long regionId,@Param("actor") long actor);
     long shopEligible(@Param("shopId") long shopId,@Param("regionId") long regionId);
     long eligibleShopCount(@Param("regionId") long regionId);
     List<WorkOrderRows.ShopOption> eligibleShops(@Param("regionId") long regionId,@Param("offset") int offset,@Param("size") int size);

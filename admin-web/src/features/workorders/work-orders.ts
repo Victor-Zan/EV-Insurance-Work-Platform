@@ -109,6 +109,8 @@ export function workOrderApi(client: AxiosInstance) {
     critical: (id: string,value: CriticalForm) => data<WorkOrder>(client.put(`/work-orders/${id}/critical-fields`,value)),
     shops: (id: string,page=1) => data<Page<ShopOption>>(client.get(`/work-orders/${id}/eligible-shops`,{ params:{ page,size:20 } })),
     dispatchLocation:(id:string,expectedVersion:number,regionId:number,address:string)=>data<WorkOrder>(client.put(`/work-orders/${id}/dispatch-location`,{expectedVersion,regionId,address,confirmed:true})),
+    accidentDistricts:(query='',page=1)=>data<Page<{id:number;code:string;name:string}>>(client.get('/work-orders/accident-districts',{params:{query,page,size:20}})),
+    accidentDistrict:(id:string,expectedVersion:number,regionId:number,reason:string)=>data<WorkOrder>(client.put(`/work-orders/${id}/accident-district`,{expectedVersion,regionId,reason,confirmed:true})),
     dispatch: (id: string,shopId: number,confirmPossibleDuplicate=false,duplicateReason: string|null=null,queryId?:string) =>
       data<WorkOrder>(client.post(queryId?`/maps/recommendations/${queryId}/dispatch`:`/work-orders/${id}/dispatch`,{ shopId,confirmPossibleDuplicate,duplicateReason },{ headers:{ 'Idempotency-Key':idempotencyKey('dispatch') } })),
     reassign: (id: string,value: { shopId:number; assignmentVersion:number; reason:string; vehicleNotArrivedConfirmed:boolean; transferDescription:string|null; confirmPossibleDuplicate:boolean },queryId?:string) =>

@@ -44,3 +44,8 @@ GET ocr/{id} 增加 intakeId、providerApi、providerVersion、retryable；失�
 七分类及角色矩阵见D-030。完成/取消案件禁止上传、替换、作废、缺失原因和OCR变更。鉴权失败403；缺失404；无效文件/参数400；版本、数量、只读、幂等冲突409；存储不可用503。错误和审计不包含文档正文、凭据或完整个人信息。
 
 Mock OCR的数字均是合成候选字符串，不代表真实OCR输出；置信度为空。两端详情页可验证附件；管理员用任务ID只读查看；客服可建立、刷新、重试、编辑JSON并确认快照。地图页面明确为模拟网格，不接收费服务。
+# 2026-10-22 独立事故区县人工核对
+
+- `GET /api/v1/work-orders/accident-districts?query=&page=1&size=20`：ADMIN/客服分页查询启用的完整省市区县树中区县，稳定省/市/区县排序，名称包含完整路径，最大100条。
+- `PUT /api/v1/work-orders/{id}/accident-district`：`expectedVersion, regionId, reason(必填≤500), confirmed=true`。沿用案件范围、ADMIN/客服及派单阶段权限；拒绝城市/停用区县、旧版本、未核实、只读阶段，以及会使当前派单网点不合格的变更。仅更新事故区县和版本/更新人时间，审计旧/新值、版本、原因；不改停车、事故地址或状态。
+- `PUT /api/v1/work-orders/{id}/dispatch-location`只保存车辆当前停放位置及确认状态，不补写事故地址/区县。缺失事故区县时推荐提示先人工核实，不自动从停车推断；城市级服务关系不扩展成区县。

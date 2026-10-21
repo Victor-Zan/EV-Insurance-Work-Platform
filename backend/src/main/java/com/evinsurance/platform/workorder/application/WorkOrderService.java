@@ -535,6 +535,25 @@ public class WorkOrderService {
     }
 
     @Transactional
+    public WorkOrderViews.WorkOrder confirmAccidentDistrict(UUID id,WorkOrderRequests.AccidentDistrict request) {
+        var actor=requireStaff();var row=lock(id);requireVisibleRow(row,actor);
+        if(!Set.of("PENDING_DISPATCH","PENDING_ACCEPTANCE","PENDING_ARRIVAL","ARRIVAL_EXCEPTION").contains(row.getStatus()))throw state("当前阶段不能核对事故区县");
+        if(!request.confirmed()||trim(request.reason())==null)throw ApiException.invalid("请人工核实事故区县并填写原因；不得为匹配网点修改事故事实");
+        if(!Objects.equals(row.getVersion(),request.expectedVersion()))throw state("案件版本已变化，请刷新后重新核对事故区县");
+        if(mapper.enabledDistrict(request.regionId())!=1)throw ApiException.invalid("请选择启用的事故区县，不得使用城市代替区县");
+        if(row.getShopId()!=null&&mapper.shopEligible(row.getShopId(),request.regionId())!=1)throw ApiException.conflict("SHOP_NOT_ELIGIBLE","该变更会使当前派单网点失去服务资格，请先按既有流程处理派单");
+        if(mapper.accidentDistrict(id,row.getVersion(),request.regionId(),actor.id())!=1)throw state("案件已被其他操作更新，请刷新");
+        audit.record(actor,Action.WORK_ORDER_DRAFT_UPDATE,"WORK_ORDER",id,"Accident district manually reviewed; old="+row.getAccidentRegionId()+"; new="+request.regionId()+"; version="+row.getVersion()+"->"+(row.getVersion()+1)+"; reason="+request.reason().trim());
+        return view(mapper.find(id),true,actor);
+    }
+
+    public PageResponse<WorkOrderRows.CityOption> accidentDistricts(String query,int page,int size) {
+        requireStaff();int offset=PageResponse.offset(page,size);String search=query==null?"":query.trim();
+        if(search.length()>100)throw ApiException.invalid("区县搜索内容不能超过100字符");
+        return new PageResponse<>(page,size,mapper.districtCount(search),mapper.districts(search,offset,size));
+    }
+
+    @Transactional
     public WorkOrderViews.WorkOrder confirmDispatchLocation(UUID id,WorkOrderRequests.DispatchLocation request) {
         var actor=requireStaff();var row=lock(id);requireVisibleRow(row,actor);
         if(!Set.of("PENDING_DISPATCH","PENDING_ACCEPTANCE","PENDING_ARRIVAL","ARRIVAL_EXCEPTION","ARRIVED").contains(row.getStatus()))throw state("当前阶段不能修改接车地址");
