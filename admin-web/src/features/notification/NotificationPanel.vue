@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import RecordList from '@/shared/ui/RecordList.vue'
 import {localTime,chinaInput,deadlinePayload} from '@/shared/ui/presentation'
-import {computed,onMounted,ref} from 'vue'
+import {computed,inject,onMounted,ref} from 'vue'
+import {unreadNotificationsKey} from './unread-counter'
 import {useRoute,useRouter} from 'vue-router'
 import {currentUser,httpClient} from '@/shared/http/client'
 interface Notice {kind?:string;businessNo?:string;reason?:string;id:number;caseId:string;title:string;read:boolean;createdAt:string}
@@ -9,9 +10,10 @@ interface Task {taskKey:string;caseId:string;title:string;version:number;deadlin
 const route=useRoute(),router=useRouter(),tab=computed(()=>route.query.tab==='notices'?'notices':'todos')
 const notices=ref<Notice[]>([]),tasks=ref<Task[]>([]),noticeTotal=ref(0),taskTotal=ref(0),noticePage=ref(1),taskPage=ref(1),busy=ref(false),message=ref(''),selected=ref<Task>(),deadline=ref(''),reason=ref(''),history=ref(''),historyPage=ref(1),historyTotal=ref(0)
 const cs=computed(()=>currentUser.value?.roles.includes('CUSTOMER_SERVICE'))
+const unread=inject(unreadNotificationsKey)
 async function run(action:()=>Promise<void>){busy.value=true;message.value='';try{await action()}catch(error){message.value=error instanceof Error?error.message:'操作失败'}finally{busy.value=false}}
 async function load(){const inbox=(await httpClient.get<{data:{records:Notice[];total:number}}>('/notifications',{params:{page:noticePage.value,size:20}})).data.data;notices.value=inbox.records;noticeTotal.value=inbox.total;const todo=(await httpClient.get<{data:{records:Task[];total:number}}>('/notifications/todos',{params:{page:taskPage.value,size:20}})).data.data;tasks.value=todo.records;taskTotal.value=todo.total}
-async function read(id:number){await httpClient.post(`/notifications/${id}/read`,{});await load()}
+async function read(id:number){await httpClient.post(`/notifications/${id}/read`,{});await unread?.refresh();await load()}
 function choose(task:Task){selected.value=task;deadline.value=chinaInput(task.deadline);reason.value='';history.value='';historyPage.value=1}
 async function save(){if(!selected.value)return;if(!reason.value.trim())throw Error('请填写期限变更原因');selected.value=(await httpClient.post<{data:Task}>('/notifications/deadlines',{taskKey:selected.value.taskKey,expectedVersion:selected.value.version,deadline:deadlinePayload(deadline.value),reason:reason.value})).data.data;message.value='期限变更已留历史；自动提醒未开启';await load()}
 async function loadHistory(){if(!selected.value)return;const result=(await httpClient.get<{data:{records:unknown[];total:number}}>('/notifications/deadlines/history',{params:{taskKey:selected.value.taskKey,page:historyPage.value,size:20}})).data.data;history.value=JSON.stringify(result.records,null,2);historyTotal.value=result.total}

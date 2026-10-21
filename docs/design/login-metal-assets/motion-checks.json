@@ -1,0 +1,53 @@
+{
+  "cells": [
+    {
+      "duration": "8s",
+      "iterations": "infinite",
+      "name": "engineering-charge-one-45f5edd7",
+      "opacity": "0.65"
+    },
+    {
+      "duration": "8s",
+      "iterations": "infinite",
+      "name": "engineering-charge-two-45f5edd7",
+      "opacity": "0.65"
+    },
+    {
+      "duration": "8s",
+      "iterations": "infinite",
+      "name": "engineering-charge-three-45f5edd7",
+      "opacity": "0.65"
+    },
+    {
+      "duration": "8s",
+      "iterations": "infinite",
+      "name": "engineering-charge-four-45f5edd7",
+      "opacity": "0.16602"
+    },
+    {
+      "duration": "8s",
+      "iterations": "infinite",
+      "name": "engineering-charge-five-45f5edd7",
+      "opacity": "0.06"
+    }
+  ],
+  "decorationPointerEvents": "none",
+  "gears": [
+    {
+      "direction": "normal",
+      "duration": "28s",
+      "iterations": "infinite",
+      "origin": "54px 54px",
+      "transform": "matrix(0.933975, -0.357338, 0.357338, 0.933975, 0, 0)"
+    },
+    {
+      "direction": "reverse",
+      "duration": "28s",
+      "iterations": "infinite",
+      "origin": "54px 54px",
+      "transform": "matrix(0.999585, 0.0288129, -0.0288129, 0.999585, 0, 0)"
+    }
+  ],
+  "pauseControls": 0,
+  "wrenchAnimation": "none"
+}

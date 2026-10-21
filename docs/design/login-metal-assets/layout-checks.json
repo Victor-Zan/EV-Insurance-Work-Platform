@@ -1,0 +1,527 @@
+[
+  {
+    "card": {
+      "bottom": 548.25,
+      "height": 456.5,
+      "left": 807.59375,
+      "right": 1227.59375,
+      "top": 91.75,
+      "width": 420,
+      "x": 807.59375,
+      "y": 91.75
+    },
+    "cells": [
+      "0.65",
+      "0.65",
+      "0.608461",
+      "0.06",
+      "0.06"
+    ],
+    "decorations": [
+      {
+        "name": "metal-gears",
+        "overlapsCard": false,
+        "rect": {
+          "bottom": 176,
+          "height": 148,
+          "left": 547.1979370117188,
+          "right": 731.1979370117188,
+          "top": 28,
+          "width": 184,
+          "x": 547.1979370117188,
+          "y": 28
+        },
+        "visible": true
+      },
+      {
+        "name": "metal-wrench",
+        "overlapsCard": false,
+        "rect": {
+          "bottom": 84,
+          "height": 70,
+          "left": 912.6041870117188,
+          "right": 1122.6041870117188,
+          "top": 14,
+          "width": 210,
+          "x": 912.6041870117188,
+          "y": 14
+        },
+        "visible": true
+      },
+      {
+        "name": "metal-battery",
+        "overlapsCard": false,
+        "rect": {
+          "bottom": 640,
+          "height": 90,
+          "left": 927.6041870117188,
+          "right": 1107.6041870117188,
+          "top": 550,
+          "width": 180,
+          "x": 927.6041870117188,
+          "y": 550
+        },
+        "visible": true
+      }
+    ],
+    "gearTransforms": [
+      "matrix(-0.628044, 0.778178, -0.778178, -0.628044, 0, 0)",
+      "matrix(-0.849816, -0.52708, 0.52708, -0.849816, 0, 0)"
+    ],
+    "height": 640,
+    "scrollHeight": 640,
+    "scrollWidth": 1280,
+    "width": 1280,
+    "wrenchAnimation": "none"
+  },
+  {
+    "card": {
+      "bottom": 578.9166717529297,
+      "height": 456.5,
+      "left": 807.59375,
+      "right": 1227.59375,
+      "top": 122.41667175292967,
+      "width": 420,
+      "x": 807.59375,
+      "y": 122.41667175292967
+    },
+    "cells": [
+      "0.65",
+      "0.65",
+      "0.639832",
+      "0.06",
+      "0.06"
+    ],
+    "decorations": [
+      {
+        "name": "metal-gears",
+        "overlapsCard": false,
+        "rect": {
+          "bottom": 176,
+          "height": 148,
+          "left": 547.1979370117188,
+          "right": 731.1979370117188,
+          "top": 28,
+          "width": 184,
+          "x": 547.1979370117188,
+          "y": 28
+        },
+        "visible": true
+      },
+      {
+        "name": "metal-wrench",
+        "overlapsCard": false,
+        "rect": {
+          "bottom": 84,
+          "height": 70,
+          "left": 912.6041870117188,
+          "right": 1122.6041870117188,
+          "top": 14,
+          "width": 210,
+          "x": 912.6041870117188,
+          "y": 14
+        },
+        "visible": true
+      },
+      {
+        "name": "metal-battery",
+        "overlapsCard": false,
+        "rect": {
+          "bottom": 691.3333740234375,
+          "height": 110,
+          "left": 907.6041870117188,
+          "right": 1127.6041870117188,
+          "top": 581.3333740234375,
+          "width": 220,
+          "x": 907.6041870117188,
+          "y": 581.3333740234375
+        },
+        "visible": true
+      }
+    ],
+    "gearTransforms": [
+      "matrix(-0.639602, 0.768706, -0.768706, -0.639602, 0, 0)",
+      "matrix(-0.857597, -0.514322, 0.514322, -0.857597, 0, 0)"
+    ],
+    "height": 701,
+    "scrollHeight": 701,
+    "scrollWidth": 1280,
+    "width": 1280,
+    "wrenchAnimation": "none"
+  },
+  {
+    "card": {
+      "bottom": 627.9166717529297,
+      "height": 494.5,
+      "left": 807.59375,
+      "right": 1227.59375,
+      "top": 133.4166717529297,
+      "width": 420,
+      "x": 807.59375,
+      "y": 133.4166717529297
+    },
+    "cells": [
+      "0.65",
+      "0.65",
+      "0.647443",
+      "0.06",
+      "0.06"
+    ],
+    "decorations": [
+      {
+        "name": "metal-gears",
+        "overlapsCard": false,
+        "rect": {
+          "bottom": 176,
+          "height": 148,
+          "left": 547.1979370117188,
+          "right": 731.1979370117188,
+          "top": 28,
+          "width": 184,
+          "x": 547.1979370117188,
+          "y": 28
+        },
+        "visible": true
+      },
+      {
+        "name": "metal-wrench",
+        "overlapsCard": false,
+        "rect": {
+          "bottom": 84,
+          "height": 70,
+          "left": 912.6041870117188,
+          "right": 1122.6041870117188,
+          "top": 14,
+          "width": 210,
+          "x": 912.6041870117188,
+          "y": 14
+        },
+        "visible": true
+      },
+      {
+        "name": "metal-battery",
+        "overlapsCard": false,
+        "rect": {
+          "bottom": 751.3333740234375,
+          "height": 110,
+          "left": 907.6041870117188,
+          "right": 1127.6041870117188,
+          "top": 641.3333740234375,
+          "width": 220,
+          "x": 907.6041870117188,
+          "y": 641.3333740234375
+        },
+        "visible": true
+      }
+    ],
+    "gearTransforms": [
+      "matrix(-0.645323, 0.76391, -0.76391, -0.645323, 0, 0)",
+      "matrix(-0.861413, -0.507905, 0.507905, -0.861413, 0, 0)"
+    ],
+    "height": 761,
+    "scrollHeight": 761,
+    "scrollWidth": 1280,
+    "width": 1280,
+    "wrenchAnimation": "none"
+  },
+  {
+    "card": {
+      "bottom": 697.25,
+      "height": 494.5,
+      "left": 934.7916870117188,
+      "right": 1354.7916870117188,
+      "top": 202.75,
+      "width": 420,
+      "x": 934.7916870117188,
+      "y": 202.75
+    },
+    "cells": [
+      "0.65",
+      "0.65",
+      "0.649999",
+      "0.06",
+      "0.06"
+    ],
+    "decorations": [
+      {
+        "name": "metal-gears",
+        "overlapsCard": false,
+        "rect": {
+          "bottom": 176,
+          "height": 148,
+          "left": 641.59375,
+          "right": 825.59375,
+          "top": 28,
+          "width": 184,
+          "x": 641.59375,
+          "y": 28
+        },
+        "visible": true
+      },
+      {
+        "name": "metal-wrench",
+        "overlapsCard": false,
+        "rect": {
+          "bottom": 108.66667175292967,
+          "height": 76.66667175292969,
+          "left": 1029.8021240234375,
+          "right": 1259.8021240234375,
+          "top": 32,
+          "width": 230,
+          "x": 1029.8021240234375,
+          "y": 32
+        },
+        "visible": true
+      },
+      {
+        "name": "metal-battery",
+        "overlapsCard": false,
+        "rect": {
+          "bottom": 874,
+          "height": 130,
+          "left": 1014.8021240234376,
+          "right": 1274.8021240234375,
+          "top": 744,
+          "width": 260,
+          "x": 1014.8021240234376,
+          "y": 744
+        },
+        "visible": true
+      }
+    ],
+    "gearTransforms": [
+      "matrix(-0.65103, 0.759052, -0.759052, -0.65103, 0, 0)",
+      "matrix(-0.865195, -0.501435, 0.501435, -0.865195, 0, 0)"
+    ],
+    "height": 900,
+    "scrollHeight": 900,
+    "scrollWidth": 1440,
+    "width": 1440,
+    "wrenchAnimation": "none"
+  },
+  {
+    "card": {
+      "bottom": 548.25,
+      "height": 456.5,
+      "left": 543.9896240234375,
+      "right": 875.9896240234375,
+      "top": 91.75,
+      "width": 332,
+      "x": 543.9896240234375,
+      "y": 91.75
+    },
+    "cells": [
+      "0.65",
+      "0.65",
+      "0.65",
+      "0.0617627",
+      "0.06"
+    ],
+    "decorations": [
+      {
+        "name": "metal-gears",
+        "overlapsCard": false,
+        "rect": {
+          "bottom": 146.40000915527344,
+          "height": 118.40000915527344,
+          "left": 356.9895935058594,
+          "right": 476.9895935058594,
+          "top": 28,
+          "width": 120,
+          "x": 356.9895935058594,
+          "y": 28
+        },
+        "visible": true
+      },
+      {
+        "name": "metal-wrench",
+        "overlapsCard": false,
+        "rect": {
+          "bottom": 84,
+          "height": 70,
+          "left": 610.5,
+          "right": 820.5,
+          "top": 14,
+          "width": 210,
+          "x": 610.5,
+          "y": 14
+        },
+        "visible": true
+      },
+      {
+        "name": "metal-battery",
+        "overlapsCard": false,
+        "rect": {
+          "bottom": 640,
+          "height": 90,
+          "left": 625.5,
+          "right": 805.5,
+          "top": 550,
+          "width": 180,
+          "x": 625.5,
+          "y": 550
+        },
+        "visible": true
+      }
+    ],
+    "gearTransforms": [
+      "matrix(-0.655973, 0.754785, -0.754785, -0.655973, 0, 0)",
+      "matrix(-0.868451, -0.495775, 0.495775, -0.868451, 0, 0)"
+    ],
+    "height": 640,
+    "scrollHeight": 640,
+    "scrollWidth": 900,
+    "width": 900,
+    "wrenchAnimation": "none"
+  },
+  {
+    "card": {
+      "bottom": 856.5,
+      "height": 494.5,
+      "left": 102.33333587646484,
+      "right": 522.3333358764648,
+      "top": 362,
+      "width": 420,
+      "x": 102.33333587646484,
+      "y": 362
+    },
+    "cells": [
+      "0.65",
+      "0.65",
+      "0.65",
+      "0.0684993",
+      "0.06"
+    ],
+    "decorations": [
+      {
+        "name": "metal-gears",
+        "overlapsCard": false,
+        "rect": {
+          "bottom": 0,
+          "height": 0,
+          "left": 0,
+          "right": 0,
+          "top": 0,
+          "width": 0,
+          "x": 0,
+          "y": 0
+        },
+        "visible": false
+      },
+      {
+        "name": "metal-wrench",
+        "overlapsCard": false,
+        "rect": {
+          "bottom": 0,
+          "height": 0,
+          "left": 0,
+          "right": 0,
+          "top": 0,
+          "width": 0,
+          "x": 0,
+          "y": 0
+        },
+        "visible": false
+      },
+      {
+        "name": "metal-battery",
+        "overlapsCard": false,
+        "rect": {
+          "bottom": 87,
+          "height": 75,
+          "left": 454.6666870117187,
+          "right": 604.6666870117188,
+          "top": 12,
+          "width": 150,
+          "x": 454.6666870117187,
+          "y": 12
+        },
+        "visible": true
+      }
+    ],
+    "gearTransforms": [
+      "none",
+      "none"
+    ],
+    "height": 720,
+    "scrollHeight": 889,
+    "scrollWidth": 625,
+    "width": 640,
+    "wrenchAnimation": "none"
+  },
+  {
+    "card": {
+      "bottom": 811.625,
+      "height": 478.5,
+      "left": 24,
+      "right": 366,
+      "top": 333.125,
+      "width": 342,
+      "x": 24,
+      "y": 333.125
+    },
+    "cells": [
+      "0.65",
+      "0.65",
+      "0.65",
+      "0.0738367",
+      "0.06"
+    ],
+    "decorations": [
+      {
+        "name": "metal-gears",
+        "overlapsCard": false,
+        "rect": {
+          "bottom": 0,
+          "height": 0,
+          "left": 0,
+          "right": 0,
+          "top": 0,
+          "width": 0,
+          "x": 0,
+          "y": 0
+        },
+        "visible": false
+      },
+      {
+        "name": "metal-wrench",
+        "overlapsCard": false,
+        "rect": {
+          "bottom": 0,
+          "height": 0,
+          "left": 0,
+          "right": 0,
+          "top": 0,
+          "width": 0,
+          "x": 0,
+          "y": 0
+        },
+        "visible": false
+      },
+      {
+        "name": "metal-battery",
+        "overlapsCard": false,
+        "rect": {
+          "bottom": 87,
+          "height": 75,
+          "left": 220,
+          "right": 370,
+          "top": 12,
+          "width": 150,
+          "x": 220,
+          "y": 12
+        },
+        "visible": true
+      }
+    ],
+    "gearTransforms": [
+      "none",
+      "none"
+    ],
+    "height": 844,
+    "scrollHeight": 844,
+    "scrollWidth": 390,
+    "width": 390,
+    "wrenchAnimation": "none"
+  }
+]

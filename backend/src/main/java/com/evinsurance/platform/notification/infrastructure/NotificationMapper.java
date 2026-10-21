@@ -9,6 +9,7 @@ public interface NotificationMapper {
     @Insert("INSERT INTO in_app_notification(event_id,recipient_id,recipient_role) VALUES(#{event},#{user},#{role}) ON CONFLICT DO NOTHING") void deliver(@Param("event") long event,@Param("user") long user,@Param("role") String role);
     List<Map<String,Object>> recipients(@Param("id") UUID id,@Param("kind") String kind);
     long count(@Param("user") long user);
+    long unreadCount(@Param("user") long user);
     List<Map<String,Object>> inbox(@Param("user") long user,@Param("offset") int offset,@Param("size") int size);
     Map<String,Object> visible(@Param("user") long user,@Param("id") long id);
     @Insert("INSERT INTO notification_read(notification_id,user_id) VALUES(#{id},#{user}) ON CONFLICT DO NOTHING") int read(@Param("id") long id,@Param("user") long user);

@@ -61,6 +61,21 @@ test('English failures show Chinese guidance while preserving status and code',a
  assert.equal(session.valid(),true)
 })
 
+test('gateway failures explain backend availability without retrying login or clearing the session',async()=>{
+ for(const status of [502,503,504])for(const body of ['Bad Gateway',null]){
+  const session=new AuthSession(storage());session.set(result());const api=createClient(session,'/api/v1');let requests=0
+  api.client.defaults.adapter=async config=>{requests++;throw new AxiosError('gateway failure','ERR_BAD_RESPONSE',config,{}, {status,statusText:'',headers:{},config,data:body})}
+  await assert.rejects(api.login('test_account',randomUUID()),error=>error instanceof ApiError && error.status===status && /后台服务暂不可用/.test(error.message))
+  assert.equal(requests,1);assert.equal(session.valid(),true)
+ }
+})
+
+test('service unavailable retains the specific business message and code',async()=>{
+ const session=new AuthSession(storage());const api=createClient(session,'/api/v1')
+ api.client.defaults.adapter=async config=>{throw new AxiosError('unavailable','ERR_BAD_RESPONSE',config,{}, {status:503,statusText:'',headers:{},config,data:{code:'STORAGE_UNAVAILABLE',message:'文件服务暂不可用'}})}
+ await assert.rejects(api.me(),error=>error instanceof ApiError && error.status===503 && error.code==='STORAGE_UNAVAILABLE' && error.message==='文件服务暂不可用')
+})
+
 test('multipart uploads preserve file bytes instead of JSON serialization',async()=>{
  const api=createClient(new AuthSession(storage()),'/api/v1'),form=new FormData()
  form.append('file',new Blob(['SYNTHETIC,1.00\n'],{type:'text/csv'}),'synthetic.csv')

@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 public class NotificationController {
     private final NotificationService service;public NotificationController(NotificationService service){this.service=service;}
     @GetMapping public ApiResponse<PageResponse<JsonNode>> list(@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size){return ApiResponse.success(service.inbox(page,size));}
+    @GetMapping("/unread-count") public ApiResponse<JsonNode> unreadCount(){return ApiResponse.success(service.unreadCount());}
     @PostMapping("/{id}/read") public ApiResponse<JsonNode> read(@PathVariable long id){return ApiResponse.success(service.read(id));}
     @GetMapping("/todos") public ApiResponse<PageResponse<JsonNode>> todos(@RequestParam(required=false) UUID caseId,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size){return ApiResponse.success(service.todos(caseId,page,size));}
     @PostMapping("/deadlines") public ApiResponse<JsonNode> deadline(@RequestBody NotificationService.Deadline body){return ApiResponse.success(service.deadline(body));}
