@@ -91,7 +91,7 @@ export function draftPayload(form: DraftForm) {
 export function workOrderApi(client: AxiosInstance) {
   const data = async <T>(request: Promise<{ data: ApiResponse<T> }>) => (await request).data.data
   return {
-    list: (page=1,status='',query='') => data<Page<WorkOrder>>(client.get('/work-orders',{ params:{ page,size:20,status:status||undefined,query:query||undefined } })),
+    list: (page=1,status='',query='',excludeCompleted=status!=='COMPLETED') => data<Page<WorkOrder>>(client.get('/work-orders',{ params:{ page,size:20,status:status||undefined,query:query||undefined,excludeCompleted:excludeCompleted||undefined } })),
     reconciliation: (page=1,status='',query='') => client.get<Blob>('/funds/reconciliation/export',{params:{page,size:20,status:status||undefined,query:query||undefined},responseType:'blob'}).then(response=>response.data),
     regions: (page=1) => data<Page<RegionOption>>(client.get('/pricing/regions',{ params:{ page,size:20 } })),
     mapCities:(query='',page=1)=>data<Page<RegionOption>>(client.get('/maps/cities',{params:{query,page,size:20}})),

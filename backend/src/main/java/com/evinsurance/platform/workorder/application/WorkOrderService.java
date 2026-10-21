@@ -116,7 +116,7 @@ public class WorkOrderService {
         });
     }
 
-    public PageResponse<WorkOrderViews.WorkOrder> list(int page,int size,String status,String query) {
+    public PageResponse<WorkOrderViews.WorkOrder> list(int page,int size,String status,String query,boolean excludeCompleted) {
         var actor=CurrentUser.require();
         if(status!=null&&!status.isBlank()) parseStatus(status);
         String scope=scope(actor);
@@ -127,9 +127,9 @@ public class WorkOrderService {
         };
         int offset=PageResponse.offset(page,size);
         String search=trim(query);
-        var entities=mapper.list(scope,scopeId,status,search,offset,size);var phases=new java.util.HashMap<UUID,WorkOrderRows.Phase>();if(!entities.isEmpty())for(var phase:mapper.phases(entities.stream().map(WorkOrderEntity::getId).toList()))phases.put(phase.caseId(),phase);
+        var entities=mapper.list(scope,scopeId,status,search,excludeCompleted,offset,size);var phases=new java.util.HashMap<UUID,WorkOrderRows.Phase>();if(!entities.isEmpty())for(var phase:mapper.phases(entities.stream().map(WorkOrderEntity::getId).toList()))phases.put(phase.caseId(),phase);
         var rows=entities.stream().map(r -> view(r,false,actor,phases.get(r.getId()))).toList();
-        return new PageResponse<>(page,size,mapper.count(scope,scopeId,status,search),rows);
+        return new PageResponse<>(page,size,mapper.count(scope,scopeId,status,search,excludeCompleted),rows);
     }
 
     public WorkOrderViews.WorkOrder get(UUID id) {

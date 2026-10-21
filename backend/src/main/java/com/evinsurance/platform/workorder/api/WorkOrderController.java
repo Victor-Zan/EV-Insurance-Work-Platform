@@ -30,11 +30,12 @@ public class WorkOrderController {
     public WorkOrderController(WorkOrderService service) { this.service=service; }
 
     @GetMapping
-    @Operation(summary="List work orders within the caller's server-side data scope")
+    @Operation(summary="List work orders within the caller's server-side data scope; excludeCompleted filters completed cases before pagination and counting")
     public ApiResponse<PageResponse<WorkOrderViews.WorkOrder>> list(
         @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size,
-        @RequestParam(required=false) String status,@RequestParam(required=false) String query) {
-        return ApiResponse.success(service.list(page,size,status,query));
+        @RequestParam(required=false) String status,@RequestParam(required=false) String query,
+        @RequestParam(defaultValue="false") boolean excludeCompleted) {
+        return ApiResponse.success(service.list(page,size,status,query,excludeCompleted));
     }
 
     @GetMapping("/configuration")

@@ -40,6 +40,7 @@
         <when test="scope == 'OWNER'">w.owner_user_id=#{scopeId}</when>
       </choose>
       <if test="status != null and status != ''">AND w.status=#{status}</if>
+      <if test="excludeCompleted">AND w.status&lt;&gt;'COMPLETED'</if>
       <if test="query != null and query != ''">
         AND (lower(COALESCE(w.business_no,'')) LIKE lower('%'||#{query}||'%')
           OR lower(COALESCE(w.claim_no,'')) LIKE lower('%'||#{query}||'%')

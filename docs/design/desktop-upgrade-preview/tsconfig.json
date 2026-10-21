@@ -1,0 +1,11 @@
+{
+  "extends": "../../../admin-web/tsconfig.app.json",
+  "compilerOptions": {
+    "paths": {
+      "vue": ["../../../admin-web/node_modules/vue"],
+      "element-plus": ["../../../admin-web/node_modules/element-plus"]
+    },
+    "types": ["../../../admin-web/node_modules/vite/client", "../../../admin-web/node_modules/element-plus/global"]
+  },
+  "include": ["*.ts", "*.vue"]
+}
