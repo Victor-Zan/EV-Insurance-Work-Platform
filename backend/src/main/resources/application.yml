@@ -1,3 +1,7 @@
+app:
+  maps:
+    provider: ${MAP_PROVIDER:MOCK_V1}
+
 server:
   port: ${BACKEND_PORT:8080}
 

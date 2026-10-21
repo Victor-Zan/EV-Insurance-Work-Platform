@@ -36,7 +36,7 @@ public final class WorkOrderViews {
         Instant createdAt,
         Instant updatedAt,
         WorkOrderRows.Assignment currentAssignment,String workflowNode,String workflowActor,
-        String surveyorName,String surveyorPhone,String vehicleColor,boolean dispatchAddressConfirmed) {}
+        String surveyorName,String surveyorPhone,String vehicleColor,boolean dispatchAddressConfirmed,Long parkingRegionId,String parkingAddress) {}
 
     public record DuplicateConfiguration(int possibleDuplicateDays) {}
 }

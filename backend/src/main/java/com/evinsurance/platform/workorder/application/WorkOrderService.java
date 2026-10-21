@@ -167,9 +167,9 @@ public class WorkOrderService {
         int offset=PageResponse.offset(page,size);
         if(row.getAccidentRegionId()==null)return new PageResponse<>(page,size,0,List.of());
         long count=mapper.eligibleShopCount(row.getAccidentRegionId());
-        if(!row.isDispatchAddressConfirmed()||trim(row.getAccidentAddress())==null)return new PageResponse<>(page,size,count,mapper.eligibleShops(row.getAccidentRegionId(),offset,size));
+        if(!"MOCK_V1".equals(maps.providerId())||!row.isDispatchAddressConfirmed()||(trim(row.getParkingAddress())==null&&trim(row.getAccidentAddress())==null))return new PageResponse<>(page,size,count,mapper.eligibleShops(row.getAccidentRegionId(),offset,size));
         // Mock geocoding is local. Read candidates in bounded batches, rank before pagination.
-        var ranked=new java.util.ArrayList<WorkOrderRows.ShopOption>();var origin=maps.geocode(row.getAccidentAddress()).point();
+        var ranked=new java.util.ArrayList<WorkOrderRows.ShopOption>();var origin=maps.geocode(row.getParkingAddress()!=null?row.getParkingAddress():row.getAccidentAddress()).point();
         for(int start=0;start<count;start+=100){var batch=mapper.eligibleShops(row.getAccidentRegionId(),start,100);for(var shop:batch){if(trim(shop.getAddress())!=null)shop.setDistanceMetres(maps.distance(origin,maps.geocode(shop.getAddress()).point()).metres());ranked.add(shop);}}
         ranked.sort(java.util.Comparator.comparing(WorkOrderRows.ShopOption::getDistanceMetres,java.util.Comparator.nullsLast(Double::compareTo)).thenComparing(WorkOrderRows.ShopOption::getId));
         return new PageResponse<>(page,size,count,ranked.stream().skip(offset).limit(size).toList());
@@ -431,7 +431,7 @@ public class WorkOrderService {
         boolean confirmDuplicate,String duplicateReason,String transferDescription) {
         var row=lock(id);
         requireStatus(row,WorkOrderStatus.PENDING_DISPATCH);
-        if(!row.isDispatchAddressConfirmed()||trim(row.getAccidentAddress())==null)throw ApiException.conflict("DISPATCH_ADDRESS_REQUIRED","请先核对服务区域和实际接车地址");
+        if(!row.isDispatchAddressConfirmed()||(trim(row.getParkingAddress())==null&&trim(row.getAccidentAddress())==null))throw ApiException.conflict("DISPATCH_ADDRESS_REQUIRED","请先核对服务区域和实际接车地址");
         if(row.getAccidentRegionId()==null||mapper.shopEligible(shopId,row.getAccidentRegionId())!=1) {
             throw ApiException.conflict("SHOP_NOT_ELIGIBLE","Shop is disabled or outside the service region");
         }
@@ -681,7 +681,9 @@ public class WorkOrderService {
             policyNo,row.getVehicleBrand(),row.getVehicleModel(),vin,plate,other,row.getAccidentAt(),row.getAccidentRegionId(),address,
             description,row.getShopId(),row.getStatus(),row.getStatusStartedAt(),row.getVersion(),row.getCreatedBy(),row.getCreatedAt(),
             row.getUpdatedAt(),assignment,node(row,phase),nodeActor(row,phase),row.getSurveyorName(),
-            actor.roles().contains(Role.ADMIN)||actor.roles().contains(Role.CUSTOMER_SERVICE)?row.getSurveyorPhone():null,row.getVehicleColor(),row.isDispatchAddressConfirmed());
+            actor.roles().contains(Role.ADMIN)||actor.roles().contains(Role.CUSTOMER_SERVICE)?row.getSurveyorPhone():null,row.getVehicleColor(),row.isDispatchAddressConfirmed(),
+            actor.roles().contains(Role.ADMIN)||actor.roles().contains(Role.CUSTOMER_SERVICE)?row.getParkingRegionId():null,
+            actor.roles().contains(Role.ADMIN)||actor.roles().contains(Role.CUSTOMER_SERVICE)?row.getParkingAddress():null);
     }
 
     private String node(WorkOrderEntity row,WorkOrderRows.Phase phase){if(java.util.Set.of("WAITING_INSURER_ASSESSMENT","WAITING_REPAIR_AUTHORIZATION").contains(row.getStatus())&&(phase==null||!phase.formalCurrent()))return phase!=null&&phase.rawCurrent()?"QUOTE_REVIEW":"SHOP_QUOTE";var n=com.evinsurance.platform.workorder.domain.WorkflowNode.current(row.getStatus(),phase!=null&&phase.amountPresent(),phase!=null&&phase.lossPresent());return n==null?"UNKNOWN":n.name();}

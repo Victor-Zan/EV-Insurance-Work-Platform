@@ -52,7 +52,7 @@ public interface WorkOrderMapper {
     long eligibleShopCount(@Param("regionId") long regionId);
     List<WorkOrderRows.ShopOption> eligibleShops(@Param("regionId") long regionId,@Param("offset") int offset,@Param("size") int size);
 
-    @org.apache.ibatis.annotations.Update("UPDATE work_order SET accident_region_id=#{regionId},accident_address=#{address},dispatch_address_confirmed=TRUE,version=version+1,updated_by=#{actor},updated_at=now() WHERE id=#{id} AND version=#{version} AND status IN ('PENDING_DISPATCH','PENDING_ACCEPTANCE','PENDING_ARRIVAL','ARRIVAL_EXCEPTION','ARRIVED')")
+    @org.apache.ibatis.annotations.Update("UPDATE work_order SET parking_region_id=#{regionId},parking_address=#{address},dispatch_address_confirmed=TRUE,version=version+1,updated_by=#{actor},updated_at=now() WHERE id=#{id} AND version=#{version} AND status IN ('PENDING_DISPATCH','PENDING_ACCEPTANCE','PENDING_ARRIVAL','ARRIVAL_EXCEPTION','ARRIVED')")
     int dispatchLocation(@Param("id") UUID id,@Param("version") long version,@Param("regionId") long regionId,@Param("address") String address,@Param("actor") long actor);
 
     int nextAssignmentVersion(@Param("workOrderId") UUID workOrderId);

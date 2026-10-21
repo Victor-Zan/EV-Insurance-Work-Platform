@@ -226,6 +226,18 @@ class WorkOrderPostgresIT {
         long jobsBefore=db.queryForObject("SELECT count(*) FROM ocr_job",Long.class);
         api(customerService,"POST","/api/v1/ocr",Map.of("fileId",photo),"scene-not-ocr-"+id,400);
         assertThat(db.queryForObject("SELECT count(*) FROM ocr_job",Long.class)).isEqualTo(jobsBefore);
+        assertThat(db.queryForObject("SELECT accident_region_id FROM work_order WHERE id=?::uuid",Long.class,id)).isNull();
+        assertThat(db.queryForObject("SELECT accident_address FROM work_order WHERE id=?::uuid",String.class,id)).isNull();
+        assertThat(db.queryForObject("SELECT parking_region_id FROM work_order WHERE id=?::uuid",Long.class,id)).isEqualTo(regionId);
+        assertThat(api(customerService,"GET","/api/v1/work-orders/"+id+"/eligible-shops?size=1",null,null,200).path("total").asLong()).isZero();
+        api(customerService,"POST","/api/v1/work-orders/"+id+"/dispatch",Map.of("shopId",shopId),"still-no-accident-"+id,409);
+    }
+    @Test void explicitAccidentDistrictKeepsMockRankingManualDispatchAndQuotationFlow() throws Exception {
+        var valid=new HashMap<String,Object>();valid.put("claimNo","EXPLICIT-REGION-"+UUID.randomUUID());valid.put("ownerPhone",uniquePhone());valid.put("vehiclePlate","粤B8Z71M");valid.put("surveyorName","合成查勘");valid.put("surveyorPhone","00000000001");valid.put("accidentRegionId",regionId);
+        String id=createDraft(customerService,valid).path("id").asText();
+        var formal=api(customerService,"POST","/api/v1/work-orders/"+id+"/submit",Map.of(),"submit-explicit-"+id,200);
+        var location=Map.of("expectedVersion",formal.path("version").asLong(),"regionId",regionId,"address","合成接车地点","confirmed",true);
+        api(customerService,"PUT","/api/v1/work-orders/"+id+"/dispatch-location",location,null,200);
         long nearest=createEligibleShop();db.update("UPDATE repair_shop SET address=? WHERE id=?","合成接车地点",nearest);db.update("UPDATE repair_shop SET address=? WHERE id=?","另一个合成地点",shopId);
         var shops=api(customerService,"GET","/api/v1/work-orders/"+id+"/eligible-shops?size=1",null,null,200);
         assertThat(shops.path("records").size()).isEqualTo(1);

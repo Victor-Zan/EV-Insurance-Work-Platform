@@ -9,7 +9,7 @@ import * as MapHelpers from '../src/features/workorders/dispatch-map.ts'
 const location={label:'模拟接车地址',point:{latitude:22.55,longitude:113.95},mock:true}
 const shops=[{id:1,name:'模拟网点甲',distanceMetres:1000,mockLocation:location},{id:2,name:'模拟网点乙',distanceMetres:2000,mockLocation:{...location,point:{latitude:22.56,longitude:113.96}}}]
 function setup(){
- const {descriptor}=parse(readFileSync(new URL('../src/features/workorders/DispatchLocation.vue',import.meta.url),'utf8'))
+ const {descriptor}=parse(readFileSync(new URL('../src/features/workorders/MockDispatchLocation.vue',import.meta.url),'utf8'))
  let code=ts.transpileModule(compileScript(descriptor,{id:'dispatch-test'}).content,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText
  code=code.replace(/import\s*\{([^}]+)\}\s*from\s*['"]vue['"];?/g,(_,names)=>'const {'+names.replace(/\s+as\s+/g,':')+'}=__vue;')
  code=code.replace(/import\s*\{[^}]+\}\s*from\s*['"]element-plus['"];?/g,'')

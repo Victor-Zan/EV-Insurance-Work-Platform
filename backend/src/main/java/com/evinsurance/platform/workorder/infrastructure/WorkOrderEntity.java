@@ -20,6 +20,9 @@ public class WorkOrderEntity {
     private String surveyorPhone;
     private String vehicleColor;
     private boolean dispatchAddressConfirmed;
+    private Long parkingRegionId; private String parkingAddress;
+    public Long getParkingRegionId(){return parkingRegionId;} public void setParkingRegionId(Long v){parkingRegionId=v;}
+    public String getParkingAddress(){return parkingAddress;} public void setParkingAddress(String v){parkingAddress=v;}
     public String getSurveyorName(){return surveyorName;} public void setSurveyorName(String v){surveyorName=v;}
     public String getSurveyorPhone(){return surveyorPhone;} public void setSurveyorPhone(String v){surveyorPhone=v;}
     public String getVehicleColor(){return vehicleColor;} public void setVehicleColor(String v){vehicleColor=v;}

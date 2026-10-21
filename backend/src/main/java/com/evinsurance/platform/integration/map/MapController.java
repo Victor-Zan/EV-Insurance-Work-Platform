@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.*;
 public class MapController {
     private final MapProvider provider;private final WorkOrderService orders;
     public MapController(MapProvider provider,WorkOrderService orders){this.provider=provider;this.orders=orders;}
-    private void access(){var roles=CurrentUser.require().roles();if(!roles.contains(Role.CUSTOMER_SERVICE)&&!roles.contains(Role.ADMIN))throw ApiException.denied();}
+    private void access(){var roles=CurrentUser.require().roles();if(!roles.contains(Role.CUSTOMER_SERVICE)&&!roles.contains(Role.ADMIN))throw ApiException.denied();if(!"MOCK_V1".equals(provider.providerId()))throw MapFailure.of("STRUCTURED_ADDRESS_REQUIRED");}
     private String address(String text){if(text==null||text.isBlank()||text.length()>255)throw ApiException.invalid("Address must be 1..255 characters");return text.trim();}
     private MapProvider.Point point(double lat,double lon){if(!Double.isFinite(lat)||!Double.isFinite(lon)||lat< -90||lat>90||lon< -180||lon>180)throw ApiException.invalid("Invalid coordinates");return new MapProvider.Point(lat,lon);}
     @GetMapping("/search") public ApiResponse<List<MapProvider.Location>> search(@RequestParam String query){access();return ApiResponse.success(provider.search(address(query)));}
