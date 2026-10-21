@@ -1,7 +1,8 @@
 ## 2026-10-21 最新更新 GitHub 发布与 main 合并验证
 
 - 用户明确授权将最新更新上传 GitHub 并合并 `main`。范围为工作区已有桌面端视觉升级、登录页配图与工程动效、已完成案件归档入口及服务端分页筛选，以及对应测试、设计样板、截图与文档；本轮没有新增业务功能或进入后续升级阶段。
-- 拉取远端后，本地 `main` 与 `origin/main` 均为 `9e13bb5`，没有分叉。保留全部既有改动，建立发布分支 `codex/desktop-upgrade-archive-20261021`，通过 PR 交付到 `main`。
+- 拉取远端后，本地 `main` 与 `origin/main` 均为 `9e13bb5`，没有分叉。保留全部既有改动，建立发布分支 `codex/desktop-upgrade-archive-20261021`；更新提交 `54db4a4` 已推送 GitHub。
+- GitHub 连接器创建 PR 返回 HTTP 403（`Resource not accessible by integration`），未创建 PR。Git 推送权限正常，按用户既有合并授权改用 `git merge --no-ff` 合入 `main` 后普通推送，保留发布分支及完整历史，不使用强制推送。
 
 | 检查 | 本次实际命令／结果 |
 | --- | --- |
