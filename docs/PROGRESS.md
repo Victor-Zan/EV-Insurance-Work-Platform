@@ -1,3 +1,146 @@
+## 2026-10-21 最新更新 GitHub 发布与 main 合并验证
+
+- 用户明确授权将最新更新上传 GitHub 并合并 `main`。范围为工作区已有桌面端视觉升级、登录页配图与工程动效、已完成案件归档入口及服务端分页筛选，以及对应测试、设计样板、截图与文档；本轮没有新增业务功能或进入后续升级阶段。
+- 拉取远端后，本地 `main` 与 `origin/main` 均为 `9e13bb5`，没有分叉。保留全部既有改动，建立发布分支 `codex/desktop-upgrade-archive-20261021`；更新提交 `54db4a4` 已推送 GitHub。
+- GitHub 连接器创建 PR 返回 HTTP 403（`Resource not accessible by integration`），未创建 PR。Git 推送权限正常，按用户既有合并授权改用 `git merge --no-ff` 合入 `main` 后普通推送，保留发布分支及完整历史，不使用强制推送。
+
+| 检查 | 本次实际命令／结果 |
+| --- | --- |
+| 管理端 | `admin-web` 下 `npm run lint`、`npm run typecheck`、`npm run test`、`npm run build` 全部通过；98 项测试，0 失败／跳过 |
+| H5 回归 | `h5-web` 下同四项命令全部通过；26 项测试，0 失败／跳过 |
+| 后端单元与构建 | Corretto 21.0.11，`backend` 下 `.\mvnw.cmd -B -ntp -Dvalidation.build.directory=../tmp/github-release-20261021/backend-build verify` 通过；55 项单元测试，0 失败／错误／跳过，可执行 JAR 构建成功 |
+| 设计样板 | 样板目录使用已有 `eslint` 与 `vue-tsc` 检查通过；根目录 `node admin-web/node_modules/vite/bin/vite.js build --config docs/design/desktop-upgrade-preview/vite.config.mjs --configLoader native` 和 `node docs/design/desktop-upgrade-preview/package-preview.mjs` 通过；离线产物继续由 Git 忽略 |
+| Compose 配置 | `docker compose --env-file .env -f infra/docker-compose.yml config --quiet` 通过 |
+| 发布文件检查 | 检查 56 个待提交文件，未发现常见 Token／私钥模式或本地环境敏感值泄漏；无超过 10 MiB 的文件，`.env`、临时日志和构建产物保持忽略；`git diff --check` 通过 |
+
+日志保存在本地忽略目录 `tmp/github-release-20261021/`。设计样板约 1.02 MB JS 的分包警告、管理端构建耗时提示与后端已有弃用 API 提示保留，未放宽检查。
+
+本次未验证真实 PostgreSQL／MinIO 集成、Flyway 迁移和容器健康：Docker daemon 不可连接，`docker desktop start --timeout 45` 启动超时，随后状态检查仍不可用。没有跳过集成测试后宣称全量通过；2026-10-17 已记录的案件分页、四角色权限及迁移验证属于历史结果。补救条件是恢复 Docker 及已有本地测试容器后，在专用测试库重跑 `tmp/workflow-stage1/verify.ps1`（内部执行 `verify -Ppostgres-it`）。本次不修改数据库迁移、不连接业务库、不调用真实 OCR，也不重新宣称浏览器／物理手机验收或生产部署完成。
+
+## 2026-10-19 登录页工程风格动态点缀完成
+
+- 按用户要求，在登录页留白加入浅灰工程线稿齿轮、扳手和电池；保留已放大的整车拆解图、原排版和登录流程。生产源码仅修改 `admin-web/src/views/LoginView.vue`，使用内联 SVG 和 CSS，无新增依赖或图片请求。
+- 双齿轮缓慢反向旋转（32s／23s），扳手围绕螺栓小幅拧动（5.5s），电量依次增长并回落（8s）；动画只改变 transform／opacity。右上角提供暂停／播放按钮，支持键盘操作；系统减少动效时静止并隐藏暂停按钮。窄屏收起齿轮和扳手，保留小电池。装饰不接收指针事件，表单显示在装饰上方。
+- 正式组件隔离浏览器验收：动画随时间变化；暂停后各动画数值保持，Enter 可恢复。空账号／密码校验保留；带错误提示时，1280×640、1280×701、1440×900、640×720 均无整体横向溢出，装饰边界不与登录卡片重叠；窄屏保持正常纵向滚动。浏览器 error 日志为空，临时工具链既有 vue-router 弃用警告保留。
+- `admin-web` 执行 `npm run lint`、`npm run typecheck`、`npm test`、`npm run build` 全部通过；98 项测试，0 失败／跳过，构建 3.23s。日志 `tmp/login-motion-*.log`，相关文件 `git diff --check` 通过（既有 LF/CRLF 提示）。系统减少动效规则已核对源码，未实际切换操作系统偏好；未进行跨浏览器和性能专项测量。
+- 截图见 [登录页工程点缀验收](design/login-engineering-motion/README.md)。后端、H5、数据库和业务权限无变更，相关构建、迁移、基础设施检查不适用；本轮不重复声明真实登录端到端验证。临时预览收尾关闭，原业务服务保留。未提交、推送、部署或进入其他升级阶段。
+
+## 2026-10-19 配图目标澄清：登录页放大、工作台恢复
+
+- 用户澄清“我说的是登录页的图”。撤回上一轮工作台插图宽度／定位三处误改，仅恢复这些样式值，保留案件筛选和工作区既有改动。
+- 登录工程拆解图高度从容器 44% 改为 50%，宽度从 88% 改为 94%，微调位置；`object-fit:contain` 保持整车完整，实际线性尺寸约增大 14%。矮桌面窗口文案适当上移，避免图文重叠；登录行为和窄屏原规则不变。REQUIREMENTS 和交付说明已纠正目标。
+- 浏览器正式组件隔离预览：1280×640 图片高 320px（原约 282px），文案底约 299px、图顶 308px、图底 628px，按钮底约 505px；1440×900 图高 450px，两者无横向溢出。640×720 窄屏无横向溢出。截图见 [登录配图与归档入口记录](design/home-archive-adjustment/README.md)。
+- `admin-web` 执行 `npm run lint`、`npm run typecheck`、`npm test`、`npm run build` 全部通过；98 项测试，0 失败／跳过，构建 2.18s，日志 `tmp/login-image-*.log`。相关文件 `git diff --check` 通过，仅既有 LF/CRLF 提示。本轮仅登录／工作台样式和文档纠正，后端、H5、数据、权限与已完成案件归档规则未改；相关构建、迁移不适用。临时预览收尾关闭，原登录业务服务保留。
+
+## 2026-10-19 首页配图放大与已完成案件统一归档入口（配图目标随后澄清，已撤回）
+
+- 按用户补充要求，首页工程配图宽度由 `min(820px,68%)` 调为 `min(980px,78%)`，微调位置；原 214px 横幅和快捷入口位置保持。1280px 视口下配图宽约 893px，增大约 15%。
+- 普通案件队列固定使用现有服务端 `excludeCompleted=true`，覆盖普通导航、顶部搜索、重置和旧 false 参数；状态下拉移除已完成，旧完成状态筛选按未选择处理。旧选中完成案件链接转至历史档案，历史档案保持 `COMPLETED` 分页和原详情入口。先更新 REQUIREMENTS，接口使用补充同步 PHASE12_API；不修改状态、权限与通知／资金追溯记录。
+- `admin-web` 最终执行 `npm run lint`、`npm run typecheck`、`npm test`、`npm run build` 均通过；98 项测试，0 失败／跳过，构建 19.57s。日志 `tmp/home-archive-*.log`；测试同步验证普通列表默认排除、历史完成查询保留。`git diff --check` 通过，仅既有 LF/CRLF 提示。
+- 浏览器正式组件＋合成数据验证：21 未完成／22 完成，普通队列 20＋1 分页；顶部搜索完成编号无结果，重置恢复 21 条，状态选项不含完成，旧 URL 的完成筛选／关闭排除参数无效，旧选中完成案件转历史档案，历史列表 20＋2 分页。1280×640 与 1440×900 横幅 214px、无横向溢出，矮窗口快捷按钮完整。error 日志为空；临时工具链 vue-router 旧入口弃用提示保留。
+- 本地真实 5173 代理＋已恢复后端只读核对：排除完成查询 13 条、无完成记录；历史完成查询 1 条且为完成。没有创建或变更案件，仅产生正常登录审计。后端／H5／数据库源码未修改，相关构建、迁移、Compose 本轮不适用，未重复执行。
+- 截图和说明见 [首页与归档入口验收](design/home-archive-adjustment/README.md)。本轮临时预览服务收尾关闭，原业务 5173／8080 保持运行。未执行完整阶段 D，未提交、推送或部署。
+
+## 2026-10-19 本地登录“请求未完成”故障恢复
+
+- 用户反馈登录显示“请求未完成，请稍后重试”。实际排查：5173 前端正常，`/api/v1/auth/login` 经前端代理返回 HTTP 502；8080 无监听、无 Java 后端进程。PostgreSQL／MinIO 容器健康。直接原因是本地后端未运行，不是登录页样式或账号校验代码变化。旧后端日志有休眠／时钟跳变及数据库连接关闭记录，但不足以认定进程退出原因。
+- 恢复前只读核对数据库：public 已为 V22，共 23 条成功迁移（含开发 V2.1），修正此前进度中的 V21 运行状态描述；以本次实测为准。旧 `repair-funds-release-runtime.jar` 仅包含到 V21，因此未重启旧包。
+- 使用此前已完成构建与验证的 `tmp/archive-backend-build/backend-0.0.1-SNAPSHOT.jar` 恢复本地 8080，JDK21、原 `.env`、仅绑定 127.0.0.1，保留 Flyway 校验并限制 target=22。启动日志确认 `Successfully validated 23 migrations`、当前版本 22、`No migration necessary`；未更改用户密码、数据库结构或业务记录。正常登录／失败登录产生既有认证审计。
+- 临时恢复脚本 `tmp/restore-login-backend.ps1` 检查数据库目标与端口占用，不停止其他进程；隐藏运行窗口，日志 `tmp/login-backend.stdout.log`／`stderr.log`，进程记录 `tmp/login-backend-pid.json`。服务保留运行供用户继续登录。
+
+| 验证 | 实际结果 |
+| --- | --- |
+| 后端健康 | `GET http://127.0.0.1:8080/api/v1/health` → 200 |
+| 当前网页代理 | `GET http://localhost:5173/api/v1/health` → 200 |
+| 管理员／客服登录 | 通过 `http://localhost:5173/api/v1/auth/login` 分别使用已有开发账号及原环境密码，均 200 / SUCCESS；密码与 token 未输出、未落盘 |
+| 认证会话 | 两个账号携带响应 token 请求前端代理 `/api/v1/admin/session`，均 200 |
+| 错误凭据 | 随机测试字符串请求登录，401 / INVALID_CREDENTIALS，认证未放宽 |
+| 数据库版本 | 启动前查询、启动时 Flyway 校验：V22、23 条成功；无迁移执行 |
+
+本轮为运行环境恢复，未修改前后端源码，无需重复源码 lint／类型／构建；未将此前 98 项测试作为本次新执行结果。未进入视觉升级阶段 D，无提交、推送、生产部署。用户可刷新原登录页后重新登录。
+
+## 2026-10-19 桌面端视觉升级：阶段 C 全局视觉与基础组件完成
+
+- 用户在三类样板交付后要求“开始做吧”，并要求继续未完成内容；本轮完成阶段 C 正式接入。范围为客服／管理员电脑端，沿用暖白玻璃＋石墨灰、适中动效、现有排版与工程插图，不改变业务流程、API、路由或权限规则。
+- 全局颜色、字体、控件尺寸、表格、浮层、状态反馈与焦点统一；Element Plus 默认文案使用简体中文。导航保留原尺寸与断点，顶栏使用已精修插图；登录精简说明、完整展示拆解插图，取消搜索／登录按钮指针跟随。访问失败文案精简但保留关键说明。
+- 验收发现管理员角色复选框被通用 label 样式排成上下结构，局部排除 `.el-checkbox` 后恢复；不改变角色操作。保留工作区已有案件、历史档案和后端等未提交改动，无提交、推送或部署。
+
+| 检查 | 命令／方法与结果 |
+| --- | --- |
+| 管理端门禁 | `admin-web` 下 `npm run lint`、`npm run typecheck`、`npm test`、`npm run build` 最终全部通过；98 项测试，0 失败／跳过；构建 2.98s |
+| 日志与差异 | 本地 `tmp/desktop-upgrade-stage-c/final-*.log`；`git diff --check` 通过，仅既有 LF/CRLF 提示 |
+| 登录与尺寸 | 正式组件隔离预览：空值、合成失败、密码清空、客服登录／退出通过；1280×640 错误提示及按钮完整，1440×900 外壳原尺寸不变，640×720 登录重排且无整体横向溢出 |
+| 组件与角色 | 客服／管理员入口区分、价格筛选、加载禁用、空／错态、金额校验及原确认框、管理员角色弹窗与 Tab 焦点通过；最终业务写入未执行 |
+| 前后对照 | 登录同尺寸截图、价格页和管理员弹窗截图，见阶段 C 交付记录；画面标识合成验收，生产代码不含验收工具 |
+| 后端／H5／基础设施 | 本轮未修改，不适用；未执行相关构建、Flyway、Compose，不计为通过 |
+
+生产源码门禁全部成功。隔离预览曾因临时 alias 错误匹配中文语言包子路径失败，修正后恢复；临时 vue-router 旧入口弃用提示保留，未宣称控制台零警告。样式有减少动效／透明度及不支持磨砂的降级，但系统偏好切换、200% 缩放、跨浏览器、性能和全站视觉回归尚未验证。浏览器采用真实组件＋合成网络数据，不代替真实业务／服务端授权／上传导入的端到端验证。
+
+交付详见 [阶段 C 截图与验收记录](design/desktop-upgrade-stage-c/README.md)，设计规范与 D-062 已更新。临时验收服务收尾关闭，不影响原有业务服务。按阶段门禁停在阶段 C；下一阶段 D 为工作台、案件与滚动体验，阶段 E 为其余页面布局／文案，尚未实施。
+
+## 2026-10-18 桌面端视觉升级：阶段 B 三类样板交付
+
+- 用户确认先做工作台、案件详情、典型表格／表单三个样板，并要求推荐合适的插件／skills；后续要求检查进度并继续生成。沿用已确认的暖白玻璃＋石墨灰、适中动效、略放松密度和保留工程插图。
+- 新增 `docs/design/desktop-upgrade-preview/`，使用仓库已有 Vue 3 / Element Plus 依赖制作独立交互预览。工程插图经 imagegen 精修，原资产未覆盖；交付 README、5 张截图、可重建的离线 HTML。主设计方法采用 redesign-existing-projects，现有工具足够，无新插件或依赖安装。
+- 工作台包含待办、队列与通知；详情包含稳定摘要、九节点、正文独立滚动、完整右栏、单据对照与金额校验；价格库包含查询分页、加载/空/错态、新版本表单及反馈。所有数据合成，保存和确认不调用业务 API。其余导航明确标记样板范围。
+- 浏览器发现并修复：跨页搜索在转场完成前执行、示例列表误跳到同一案件、工程插图底部裁切；同时提升辅助文字可读性，收紧矮窗口右栏留白，减少动效模式覆盖定位滚动。
+
+| 检查 | 实际命令／方式与结果 |
+| --- | --- |
+| ESLint | 样板目录下 `node ../../../admin-web/node_modules/eslint/bin/eslint.js . --max-warnings 0` 通过；后加 `package-preview.mjs` 单独同规则检查通过 |
+| 类型检查 | 样板目录下 `node ../../../admin-web/node_modules/vue-tsc/bin/vue-tsc.js --noEmit -p tsconfig.json` 通过 |
+| 构建 | 根目录 `node admin-web/node_modules/vite/bin/vite.js build --config docs/design/desktop-upgrade-preview/vite.config.mjs --configLoader native` 通过；完整 Element Plus 使 JS 约 1.02MB，大包警告保留，未宣称完成生产性能优化 |
+| 打包 | `node docs/design/desktop-upgrade-preview/package-preview.mjs` 生成约 3.08MB 的 `preview.html`（Git 忽略产物）；图片/样式/脚本内联，无外部 script / CSS 引用；提取的内联 JS 经 `node --check` 通过 |
+| 差异检查 | 本轮文档执行 `git diff --check`，新增文本逐个 `git diff --no-index --check -- /dev/null <文件>`，无空白错误，仅既有 LF/CRLF 提示 |
+| 工作台、表格和表单 | 内置浏览器本机 HTTP 预览验证：查询清除、跨页搜索、分页、空/加载/错态和重试、必填金额报错与有效输入确认通过；无业务数据写入 |
+| 案件详情 | 空金额及不一致金额拦截，1378.60 + 勾选进入确认，确认后不改变状态；资料/记录切换和单据放大关闭通过。1280×640 右栏 bottom 612.45、操作栏 bottom 624；正文滚动后摘要/右栏/操作栏不移动。1366×768 右栏 bottom 710.22、操作栏 bottom 747.67，页面无整体横向溢出 |
+| 动效与浏览器 | 减少动效／实体背景开关可用，实体背景 backdrop-filter = none；浏览器 warn/error 为空。临时视口已恢复 |
+
+首轮检查出现表格 slot 类型推断、缓存进入 lint 和 Node 全局变量问题；修正类型及显式 Node 导入，仅排除第三方生成缓存后复验通过。未删除测试、放宽源码规则或为 CSS 添加镜像测试。详情、参数与截图见 [样板说明](design/desktop-upgrade-preview/README.md)。
+
+本阶段只修改样板与计划/进度文档，保留已有未提交工作；正式管理端、后端、H5、数据库与业务服务未改，无提交、推送或部署。管理端全量门禁、真实业务/权限、上传导入、性能基准、跨浏览器、200% 缩放及登录后前后对照尚未验证，不能以合成预览代替。内置浏览器因协议限制拒绝直接打开离线 HTML，未绕过，离线运行未验证；用户可用系统浏览器打开交付文件。临时预览服务在收尾关闭。
+
+当前停在阶段 B 样板审阅入口，待用户对材质、密度、插图及动效反馈后再进入阶段 C，不自动修改正式业务页面。
+
+## 2026-10-18 客服与管理员网页版升级计划（讨论阶段）
+
+- 用户要求先沟通并形成计划书，业务流程不变，主要排版沿用现有页面；两轮沟通已确认仅改客服／管理员电脑网页版，采用暖白玻璃＋石墨灰，动效适中、操作区稳定，信息密度略微放松但首屏保留主要任务，保留并精修工程插图作为平台特色。
+- 已形成 [前端升级计划书 V1.0](FRONTEND_UPGRADE_PLAN.md)，包含现状依据、配色与玻璃分层、组件统一、插图精修、滚动与动效、文案精简、全站页面范围、阶段安排和验收清单。具体参数为待预览确认的设计提案，不代表已实施；H5 不在本轮范围。
+- 核对既有 DESIGN、D-058 滚动方案及 D-059／D-060 局部实现，保留顶部摘要、完整流程与右栏稳定的要求；完整正文单滚动方案仍待实施，没有将其记作已完成。保留工作台队列／历史档案等当前工作区已有未提交改动。
+- 实际只读查看 localhost:5173 登录页；浏览器原预填登录返回账号或密码错误，未继续尝试、重置账号或修改运行环境。业务页审视依据源代码和已有验收记录，本轮未完成登录后的全站视觉核对。
+- 本轮只新增计划文档并补记本进度，不修改前后端、H5、数据库、运行数据或已确认业务规则。文档检查：`git diff --check -- docs/PROGRESS.md` 与 `git diff --no-index --check -- /dev/null docs/FRONTEND_UPGRADE_PLAN.md`，均通过，新增文件单独检查；Git 仅提示既有换行转换策略。测试、lint、类型检查、构建、Flyway 与 Compose 本轮不适用，未执行，不计为通过。
+- 计划讨论阶段止于此；待用户确认后再进入代表页面预览，不自动开始前端实现，无提交、推送或部署。
+
+## 2026-10-17 工作台队列与历史档案调整
+
+### 范围与完成结果
+
+- 按本次用户要求：工作台队列排除 `COMPLETED`；案件导航改名“历史档案”，默认分页查看系统已完成案件，另可检索独立导入档案并进行历史案件批量导入；标题下说明句替换为快捷入口，底部入口删除。取消、关闭和既有角色权限不变。
+- 系统完成案件直接查询当前状态，不复制历史表；撤回完成后退出归档列表。已导入档案仍独立只读，XLSX 上传预览、确认去重、原件下载保持原接口。导入面板默认收起，确认归档后切到导入档案。
+- `GET /work-orders` 新增可选 `excludeCompleted`（默认 false），在 SQL 分页、总数计算前筛选，保留原权限、稳定排序、状态和搜索条件。从工作台搜索、选择案件及查看完整队列时携带此条件；“全部案件”仍为原查询。
+- 先更新 REQUIREMENTS，再修改实现；同步 PHASE12_API 与 DESIGN。无新增数据库迁移、金额规则或外部服务。
+
+### 实际验证
+
+| 检查 | 命令 / 方式 | 结果 |
+| --- | --- | --- |
+| 管理端门禁 | admin-web 下 `npm run lint`、`npm run typecheck`、`npm test`、`npm run build`；最后按钮颜色修复后再跑 lint/typecheck/build | PASS；98 项测试，0 失败/跳过；日志 `tmp/archive-admin-*.log`、`tmp/archive-admin-final-*.log` |
+| 后端单元、案件集成与构建 | `tmp/workflow-stage1/verify.ps1 -IntegrationTest WorkOrderPostgresIT -LogName archive-isolated-final -BuildDirectory <仓库>/tmp/archive-backend-build`，内部 JDK21 执行 Maven `verify -Ppostgres-it` | PASS；55 单元 + 12 真实 PG/MinIO 集成，0 失败/错误/跳过，JAR 成功；`tmp/workflow-stage1/archive-isolated-final.log` |
+| 报价与历史导入回归 | 同脚本 `-IntegrationTest WorkOrderPostgresIT,QuotationPostgresIT -LogName archive-verified` | QuotationPostgresIT 41 项 PASS，含 XLSX 预览、去重归档、原件及历史权限。该次整轮因新增查询夹具污染既有重复检测而失败；修正后仅重跑受影响的 WorkOrderPostgresIT，结果见上一行，不将该整轮记为成功 |
+| 分页与权限回归 | 新增真实 API 测试：已完成占据排序前部、size=1 翻页、筛选总数、全部案件兼容、完成状态查询、完成撤回、四角色本范围、跨店/其他车主不可见；既有敏感字段测试一并运行 | PASS；筛选先于分页与计数，不放宽权限或门禁 |
+| Flyway | 专用 `ev_insurance_workflow_stage1_test` 中随机 schema 空库 migrate/validate | PASS；日志验证 24 条迁移；未修改迁移文件，未升级本地业务库 |
+| 浏览器页面复查 | 内置浏览器，原 Vue 页面 + 独立合成数据适配，临时 localhost:5190 | PASS；标题下仅一处快捷入口、队列显示 2 条未完成，历史 21 条已完成翻至第二页、搜索重置页码、导入档案和批量导入展开/收起；修复标题全局 span 颜色影响按钮文字对比度后截图复查通过 |
+| Git | `git diff --check` | PASS；仅本任务源码、测试和文档，无提交/推送 |
+| 基础设施 | `docker compose --env-file .env -f infra/docker-compose.yml config --quiet`；读取已有容器健康状态 | PASS；PG/MinIO healthy，未启动或重建容器；临时合成预览进程已关闭 |
+
+测试过程如实保留：首次新增夹具用 JDBC 不支持的 Instant；改 Timestamp 后发现直接把草稿改终态违反工单约束，改为先调用真实提交；新夹具共用原测试车主手机号又触发既有派单疑似重复，最终使用独立合成手机号。一次既有 BaiduOcrProviderTest 本机 HTTP 超时模拟偶发失败，保持原断言和超时设置，原样重跑通过。未跳过测试、放宽约束或调用真实百度。
+
+### 本地运行与边界
+
+- 现有 8080 后端仍运行旧的 repair-funds-release-runtime.jar；当前业务库 public 仅应用到 V21。直接更新完整后端会连带此前合并的 V22 网点 OCR 迁移，新 OCR 链路依赖该表，不能仅锁定 V21 启动来声称兼容。本轮保留旧进程和业务库，工作台服务端排除完成案件须在新版后端更新后实际生效；历史列表/导航/快捷入口前端代码已更新。
+- 页面视觉使用明确标记的合成数据，不能等同于当前 8080 真实运行包端到端通过。新后端查询已通过真实隔离数据库 API 测试；批量导入后端由真实 MinIO/PG 回归验证。本轮未在业务库导入数据、改变案件状态或执行资金划转。
+- H5 未改且未重复运行前端门禁；未做物理手机、多浏览器或全站视觉回归。无生产部署、提交、推送或下一阶段实施。
+
 ## 2026-10-15 网点报价表单手写OCR完成（D-047）
 
 - 基线：origin/main 674edf2431062288307bd14f2425ac8e5d6fa6e0，交付前再次fetch仍一致。独立分支 feature/sherr-shop-quotation-ocr；本机工作区 shop-quotation-ocr；原地图分支、旧OCR库及资料目录未覆盖/切换/重置。提交署名使用现有 Sherry070719 / Sherry7191088@outlook.com，不冒用队友。
@@ -1148,6 +1291,8 @@ Docker CLI/Desktop 不可用，Compose 本次未验证且文件未改；未执�
 
 
 ## 2026-10-21 移动端产品化调整与 GitHub 同步
-从 GitHub main 9e13bb5 建立独立同步工作树，原旧分支及约269项交错未提交改动保留。修复通知图标、精简车主导航、调整收车后的评价入口、增加帮助中心/使用说明、精简开发说明，并在管理端案件详情显示车主绑定状态。旧版客服核损和最新资金状态保持现有逻辑。
+从 GitHub main 9e13bb5 建立独立同步工作树，推送前又合入远端 d3e887b 的桌面端视觉与完结案件归档，原旧分支及约269项交错未提交改动保留。修复通知图标、精简车主导航、调整收车后的评价入口、增加帮助中心/使用说明、精简开发说明，并在管理端案件详情显示车主绑定状态。旧版客服核损和最新资金状态保持现有逻辑。
 
 本地既有验收：2026-10-16 两前端 lint/typecheck/test/build 通过；实际管理员与车主接口核验一个正式工单待绑定，开发车主账号未登记手机号，车主列表为空。该用户归属操作尚待确认，因此本轮未改账号或案件绑定。同步工作树迁入后重新执行：H5 lint、typecheck、27测试（失败/跳过0）、build 均通过；管理端 lint、typecheck、97测试（失败/跳过0）、build 均通过。管理端测试保留现有 Vue 组件渲染警告，未屏蔽。后端与迁移未修改，后端/PG/Flyway回归本轮未执行。离线 npm ci 因缺缓存失败，联网按锁文件安装后两端检查通过；依赖缓存移到第二阶段 local-validation，未入库。
+
+合入 d3e887b 后管理端 lint、typecheck、全量测试和 build 再次退出0；保留既有 Vue 渲染警告，未屏蔽测试。移动端源码未被该次远端提交改动，其前述27项测试和构建结果仍对应最终源码。

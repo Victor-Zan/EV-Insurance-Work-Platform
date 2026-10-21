@@ -13,6 +13,10 @@
 
 ## 独立历史档案
 
+2026-10-17 管理端入口统一命名为“历史档案”，默认列表使用 `GET /api/v1/work-orders?status=COMPLETED&page=1&size=20&query=` 展示当前已完成案件，并进入原案件详情。“导入档案”仍使用下列独立历史接口，不复制或迁移系统案件。工作台使用 `GET /api/v1/work-orders?excludeCompleted=true&page=1&size=20&query=`；可选布尔参数 `excludeCompleted` 默认 `false`，为 `true` 时在分页和计数前排除 `COMPLETED`，同时仍执行原角色数据范围、状态及搜索条件。
+
+2026-10-19 补充：管理端普通案件队列及顶部搜索统一发送 `excludeCompleted=true`，忽略 URL 对该条件的关闭要求；状态选项不再包含 `COMPLETED`，仅历史档案使用已完成状态查询。管理端 API 包装默认排除完成，明确查询 `COMPLETED` 时保持历史查询。后端参数默认值、H5 与原鉴权不变。
+
 使用 `ebike-history-order-import-template.xlsx` 的“历史订单”“字段说明”双工作表，导入第一张表的 17 列；第二张表只作填写说明。历史记录只供管理员/客服在管理端查阅，不进入现有 `work_order`、报价、派单、维修授权或资金台账。旧记录无须补造保险公司和事故时间；新建正式案件的原有必填规则不变。品牌、网点和原状态按来源文字保留，不自动创建或绑定系统字典/状态。历史定损金额仅作记录。
 
 - `POST /api/v1/historical-cases/imports`，multipart `file`：上传并生成预览批次，不立即归档。仅 `.xlsx`，最多 10 MiB、2000 条非空数据行；列名、顺序和工作表名与模板一致。公式/错误单元格、缺失必填字段、无效手机号/坐标/日期/金额在行级标为 `INVALID`，不影响其他行。源文件经 `ObjectStorageService` 私有保存。

@@ -1,11 +1,23 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { draftPayload, idempotencyKey, statusLabels } from '../src/features/workorders/work-orders.ts'
+import { draftPayload, idempotencyKey, statusLabels, workOrderApi } from '../src/features/workorders/work-orders.ts'
 import { AuthSession } from '../src/shared/auth/session.ts'
 import { guard } from '../src/shared/auth/guard.ts'
 
 const form={insuranceCompany:'平安保险',claimNo:'PA-1',claimReportedAt:'',ownerName:'测试车主',ownerPhone:'13800000000',policyNo:'  ',vehicleBrand:'测试品牌',vehicleModel:'测试车型',vehicleVin:'VIN-1',vehiclePlate:' ',vehicleOtherIdentifier:' ',accidentAt:'2026-10-07T09:00:00',accidentRegionId:'3',accidentAddress:' ',accidentDescription:'测试事故'}
+test('desktop lists exclude completed cases by default while archive retains its completed scope',async()=>{
+  const calls=[],result={records:[],total:0,page:1,size:20}
+  const api=workOrderApi({get:async(path,options)=>{calls.push({path,params:options.params});return {data:{data:result}}}})
+  assert.equal(await api.list(2,'','claim-1',true),result)
+  await api.list(1,'COMPLETED','claim-2')
+  await api.list()
+  assert.deepEqual(calls,[
+    {path:'/work-orders',params:{page:2,size:20,status:undefined,query:'claim-1',excludeCompleted:true}},
+    {path:'/work-orders',params:{page:1,size:20,status:'COMPLETED',query:'claim-2',excludeCompleted:undefined}},
+    {path:'/work-orders',params:{page:1,size:20,status:undefined,query:undefined,excludeCompleted:true}},
+  ])
+})
 test('draft payload keeps exact business values and sends instants, numeric region and null optionals',()=>{
   const payload=draftPayload(form)
   assert.equal(payload.claimReportedAt,null);assert.match(payload.accidentAt,/Z$/)

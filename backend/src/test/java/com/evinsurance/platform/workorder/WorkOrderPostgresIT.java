@@ -574,6 +574,61 @@ class WorkOrderPostgresIT {
         assertThat(db.queryForObject("select count(*) from work_order_number_counter where last_value<1 or last_value>999999",Long.class)).isZero();
     }
 
+    @Test
+    void completedArchiveAndActiveQueueFilterBeforePaginationWithoutChangingScope() throws Exception {
+        String prefix="ARCHIVE-"+UUID.randomUUID();
+        String archivePhone="13800007891";
+        db.update("update owner_profile set contact_phone=? where user_id=(select id from app_user where username='dev_owner')",archivePhone);
+        List<String> ids=new ArrayList<>();
+        var states=List.of("PENDING_DISPATCH","CANCELLED","CLOSED","COMPLETED","COMPLETED","COMPLETED");
+        for(int index=0;index<states.size();index++) {
+            String id=createDraft(customerService,requiredDraft(prefix+"-"+index,archivePhone,
+                "VIN-"+UUID.randomUUID(),Instant.now())).path("id").asText();
+            submit(customerService,id,false,null,"archive-submit-"+id,200);
+            // Query fixtures only: exercise every terminal filter without bypassing a production transition.
+            db.update("update work_order set status=?,shop_id=?,owner_user_id=(select id from app_user where username='dev_owner'),updated_at=? where id=?::uuid",
+                states.get(index),shopId,java.sql.Timestamp.from(Instant.parse("2026-10-17T00:00:00Z").plusSeconds(index)),id);
+            ids.add(id);
+        }
+        for(String token:List.of(admin,customerService,shop,owner)) {
+            mvc.perform(get("/api/v1/work-orders").header("Authorization","Bearer "+token).param("query",prefix))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(6));
+            for(int page=1;page<=3;page++) {
+                mvc.perform(get("/api/v1/work-orders").header("Authorization","Bearer "+token)
+                    .param("query",prefix).param("excludeCompleted","true").param("size","1").param("page",String.valueOf(page)))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(3))
+                    .andExpect(jsonPath("$.data.records.length()").value(1))
+                    .andExpect(jsonPath("$.data.records[0].id").value(ids.get(3-page)));
+            }
+            mvc.perform(get("/api/v1/work-orders").header("Authorization","Bearer "+token)
+                .param("query",prefix).param("status","COMPLETED"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(3))
+                .andExpect(jsonPath("$.data.records[0].id").value(ids.get(5)));
+            mvc.perform(get("/api/v1/work-orders").header("Authorization","Bearer "+token)
+                .param("query",prefix).param("status","COMPLETED").param("excludeCompleted","true"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(0))
+                .andExpect(jsonPath("$.data.records.length()").value(0));
+        }
+        String otherShop=login(createUser("REPAIR_SHOP",createEligibleShop()).path("username").asText(),"H5");
+        String otherOwner=login(createUser("OWNER",null).path("username").asText(),"H5");
+        for(String token:List.of(otherShop,otherOwner))for(boolean exclude:List.of(false,true)) {
+            mvc.perform(get("/api/v1/work-orders").header("Authorization","Bearer "+token)
+                .param("query",prefix).param("excludeCompleted",String.valueOf(exclude)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(0));
+            mvc.perform(get("/api/v1/work-orders").header("Authorization","Bearer "+token)
+                .param("query",prefix).param("status","COMPLETED"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(0));
+        }
+        // A legitimate existing completion withdrawal must immediately leave the archive query.
+        db.update("update work_order set status='WAITING_OWNER_CONFIRMATION' where id=?::uuid",ids.get(5));
+        mvc.perform(get("/api/v1/work-orders").header("Authorization","Bearer "+customerService)
+            .param("query",prefix).param("status","COMPLETED"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(2));
+        mvc.perform(get("/api/v1/work-orders").header("Authorization","Bearer "+customerService)
+            .param("query",prefix).param("excludeCompleted","true"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(4));
+    }
+
     private long historyCount(String id,String action) {
         return db.queryForObject("select count(*) from work_order_status_history where work_order_id=?::uuid and action=?",Long.class,id,action);
     }

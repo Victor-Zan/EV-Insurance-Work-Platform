@@ -17,9 +17,9 @@ public interface WorkOrderMapper {
     int deleteDraft(@Param("id") UUID id,@Param("version") long version);
     WorkOrderEntity find(@Param("id") UUID id);
     WorkOrderEntity lock(@Param("id") UUID id);
-    long count(@Param("scope") String scope,@Param("scopeId") Long scopeId,@Param("status") String status,@Param("query") String query);
+    long count(@Param("scope") String scope,@Param("scopeId") Long scopeId,@Param("status") String status,@Param("query") String query,@Param("excludeCompleted") boolean excludeCompleted);
     List<WorkOrderEntity> list(@Param("scope") String scope,@Param("scopeId") Long scopeId,@Param("status") String status,
-        @Param("query") String query,@Param("offset") int offset,@Param("size") int size);
+        @Param("query") String query,@Param("excludeCompleted") boolean excludeCompleted,@Param("offset") int offset,@Param("size") int size);
 
     void lockSubmissionGuard();
     int possibleDuplicateDays();

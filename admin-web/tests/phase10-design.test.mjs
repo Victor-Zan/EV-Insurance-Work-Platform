@@ -18,7 +18,7 @@ test('workbench uses live paginated APIs and avoids invented metrics', () => {
   const view = source('../src/views/HomeView.vue')
   assert.match(view, /'\/notifications\/todos'/)
   assert.match(view, /'\/notifications'/)
-  assert.match(view, /api\.list\(1\)/)
+  assert.match(view, /api\.list\(1,'','',true\)/)
   assert.doesNotMatch(view, /今日回款额|平均处理时长|维修完成率/)
 })
 
@@ -50,14 +50,14 @@ test('shell supports keyboard-accessible navigation and reduced motion', () => {
   assert.doesNotMatch(css, /min-width: 1024px/)
 })
 
-test('design refinement uses original blueprint assets, layered glass and safe motion', () => {
+test('design refinement retains engineering artwork, layered glass and safe motion', () => {
   const shell = source('../src/shared/ui/AppShell.vue')
   const login = source('../src/views/LoginView.vue')
   const home = source('../src/views/HomeView.vue')
   const app = source('../src/App.vue')
   const magnetic = source('../src/shared/ui/magnetic.ts')
   const css = source('../src/styles.css')
-  assert.match(shell, /e-scooter-blueprint-panorama\.webp/)
+  assert.match(shell, /e-scooter-graphite\.png/)
   assert.match(login, /e-scooter-exploded-login\.webp/)
   assert.match(home, /e-scooter-parts-empty\.webp/)
   assert.match(app, /Transition name="page-shift"/)
