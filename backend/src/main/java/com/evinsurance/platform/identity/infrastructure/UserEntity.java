@@ -13,6 +13,7 @@ public class UserEntity {
     private String displayName;
     private String passwordHash;
     private Boolean enabled;
+    private Boolean activated=true;
     private Long authVersion;
     private Instant createdAt;
     private Instant updatedAt;
@@ -26,6 +27,7 @@ public class UserEntity {
     public void setDisplayName(String value) { this.displayName = value; }
     public String getPasswordHash() { return passwordHash; }
     public void setPasswordHash(String value) { this.passwordHash = value; }
+    public Boolean getActivated(){return activated;} public void setActivated(Boolean value){activated=value;}
     public Boolean getEnabled() { return enabled; }
     public void setEnabled(Boolean value) { this.enabled = value; }
     public Long getAuthVersion() { return authVersion; }

@@ -15,7 +15,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtService jwt; private final UserMapper users; private final ObjectMapper json;
     public JwtAuthenticationFilter(JwtService jwt,UserMapper users,ObjectMapper json) { this.jwt=jwt; this.users=users; this.json=json; }
     @Override
-    protected boolean shouldNotFilter(HttpServletRequest request) { return request.getServletPath().equals("/api/v1/auth/login"); }
+    protected boolean shouldNotFilter(HttpServletRequest request) { return java.util.Set.of("/api/v1/auth/login","/api/v1/auth/sign-in","/api/v1/auth/handoff","/api/v1/auth/activation/inspect","/api/v1/auth/activation/complete").contains(request.getServletPath()); }
     @Override
     protected void doFilterInternal(HttpServletRequest request,HttpServletResponse response,FilterChain chain) throws ServletException,IOException {
         String header=request.getHeader("Authorization");
@@ -26,7 +26,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 long id=Long.parseLong(token.getSubject());
                 Number version=token.getClaim("av");
                 var row=users.accessById(id);
-                if (row==null || !row.enabled() || row.roles().isEmpty() || version.longValue()!=row.authVersion()
+                if (row==null || !row.enabled() || !row.activated() || !row.bindingValid() || row.roles().isEmpty() || version.longValue()!=row.authVersion()
                     || !(com.evinsurance.platform.identity.domain.Portal.ADMIN.allows(row.roles())
                     || com.evinsurance.platform.identity.domain.Portal.H5.allows(row.roles()))) {
                     write(response,401,"SESSION_INVALID","Account disabled or session invalid; sign in again"); return;

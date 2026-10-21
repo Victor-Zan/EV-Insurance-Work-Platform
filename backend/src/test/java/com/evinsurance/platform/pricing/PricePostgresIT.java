@@ -42,6 +42,7 @@ class PricePostgresIT {
  private String admin;private long source,region,shop;
  private record Fixture(long brand,long model,long part,String brandCode,String partCode,String alias){}
  @BeforeEach void setup()throws Exception{
+        db.update("DELETE FROM account_rate_limit");
   admin=login("dev_admin","ADMIN");source=db.queryForObject("select id from price_source where code='MANUAL'",Long.class);
   region=db.queryForObject("select id from region where code='DEV-CITY'",Long.class);shop=db.queryForObject("select id from repair_shop where code='DEV-SHOP'",Long.class);
  }

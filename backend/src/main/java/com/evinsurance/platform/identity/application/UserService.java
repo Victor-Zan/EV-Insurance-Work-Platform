@@ -53,6 +53,7 @@ public class UserService {
     @Transactional
     public void resetPassword(long id,String password) {
         var actor=CurrentUser.require(); actor.requireAdmin(); users.lockOwnerMatching(); var user=lock(id);
+        if(!user.getActivated())throw ApiException.conflict("ACCOUNT_PENDING","待激活账号须通过邀请设置密码");
         user.setPasswordHash(hash(password)); touch(user,actor.id()); users.updateById(user);
         audit.record(actor,Action.PASSWORD_RESET,"USER",id,"Password reset; existing sessions invalidated");
     }
@@ -69,9 +70,10 @@ public class UserService {
     }
     @Transactional
     public UserView ownerContact(long id,IdentityRequests.OwnerContact request) {
-        var actor=CurrentUser.require(); actor.requireAdmin(); users.lockOwnerMatching(); lock(id);
+        var actor=CurrentUser.require(); actor.requireAdmin(); users.lockOwnerMatching(); var user=lock(id);
         if(!users.accessById(id).roles().contains(Role.OWNER)) throw ApiException.invalid("Account is not OWNER");
         saveContact(id,request.phone(),request.reason(),actor);
+        if(!user.getActivated()){touch(user,actor.id());users.updateById(user);}
         return UserView.from(users.accessById(id));
     }
     private void saveContact(long id,String phone,String reason,CurrentUser actor) {

@@ -1296,3 +1296,43 @@ Docker CLI/Desktop 不可用，Compose 本次未验证且文件未改；未执�
 本地既有验收：2026-10-16 两前端 lint/typecheck/test/build 通过；实际管理员与车主接口核验一个正式工单待绑定，开发车主账号未登记手机号，车主列表为空。该用户归属操作尚待确认，因此本轮未改账号或案件绑定。同步工作树迁入后重新执行：H5 lint、typecheck、27测试（失败/跳过0）、build 均通过；管理端 lint、typecheck、97测试（失败/跳过0）、build 均通过。管理端测试保留现有 Vue 组件渲染警告，未屏蔽。后端与迁移未修改，后端/PG/Flyway回归本轮未执行。离线 npm ci 因缺缓存失败，联网按锁文件安装后两端检查通过；依赖缓存移到第二阶段 local-validation，未入库。
 
 合入 d3e887b 后管理端 lint、typecheck、全量测试和 build 再次退出0；保留既有 Vue 渲染警告，未屏蔽测试。移动端源码未被该次远端提交改动，其前述27项测试和构建结果仍对应最终源码。
+
+## 2026-10-19 受邀开通开始
+
+核对远程main 9e13bb5，无开放PR；新隔离工作区account-activation-login、分支codex/account-activation-login。当前迁移V22；计划追加V23，保留其他工作区。已阅读账号/JWT/权限/案件绑定代码与规则，先固化ACCOUNT_ACTIVATION.md及D-062，再实现并验证。
+
+### 受邀开通实现与验收记录
+
+范围：基于origin/main 9e13bb5，独立分支`codex/account-activation-login`。新增V23，V1–V22未修改；其他地图/OCR工作区未改动、未合并。本机作者沿用Sherry070719。仅账号邀请/激活/统一登录，不引入公众注册、外部发信或部署。
+
+已实现：管理员准备ADMIN/CUSTOMER_SERVICE/有效既有网点账号并复制邀请；客服在可见正式案件概览中为明确车主开通或重发，固定OWNER、人工核实说明、版本锁、冲突停止。已有绑定不转移，已有激活账号复用原密码；新受邀车主激活前后均不参加仅手机号自动匹配。待激活与停用独立，旧账号默认保持激活。256位随机邀请只存摘要、24小时一次、重发失效、行锁原子消费；停用/角色归属/待激活车主联系方式变化使旧邀请不可用。邀请和匿名接口有数据库限流，审计不含凭据或核实原文。
+
+两端增加手机适配开通页，打开只验证，设置密码后才激活，成功展示本人登录账号；统一登录按服务端角色进入管理端或H5，60秒一次性交接码而非JWT经片段转交并立即清除。目标端已有会话时，先处理交接并清除旧会话，避免把新客服登录误当成原管理员会话。未扩大客服通用用户管理权限，网点和车主仍沿用原案件数据范围。为兼容保留受保护旧管理员直接设密建号API；新的管理页面仅走邀请。非dev无默认管理员，本轮没有新增生产初始化入口。
+
+| 检查 | 实际命令/方法 | 结果与证据 |
+| --- | --- | --- |
+| 后端全量 | JDK21；backend下 `.\mvnw.cmd -B -ntp -Ppostgres-it verify` | PASS，56单元＋112集成，0失败/错误/跳过，Maven BUILD SUCCESS；gates-backend.log |
+| 最终激活审计 | 同上，附 `-Dvalidation.build.directory=<仓库外独立输出> -Dit.test=AccountActivationPostgresIT` | PASS，最终审计操作者断言补充后重跑56单元＋账号专项10项，0失败/错误/跳过，构建成功；gates-account-audit.log |
+| 管理端 | `npm run typecheck`、`npm run lint`、`npm test`、`npm run build` | PASS，102项测试，0失败/跳过；gates-admin-*.log |
+| H5 | 同上四项命令 | PASS，31项测试，0失败/跳过；gates-h5-*.log |
+| 数据库/Flyway | PostgreSQL17.6独立测试实例；各测试新schema迁移/validate，普通配置不种账号、dev切换及已有账号保留检查 | PASS：空schema完整迁移至V23及validate，普通profile不自动建号，原有四角色保持可用；旧业务库/个人OCR库保留，没有repair/reset |
+| 浏览器 | 本分支隔离服务；有效邀请脱敏预览、390px开通表单；网点从管理入口进入H5；管理员/客服从H5入口进入管理端；退出；客服拒绝/users；已有管理员会话被新的客服登录替换 | PASS；合成账号，截图仅保存在仓库外account-runtime。设置新密码提交由组件及API测试验证，未代真实人员办理开通 |
+| 隐私与协作 | 暂存文件名/内容、实际本地测试凭据和邀请比对、git diff检查、已有迁移改动检查 | PASS；无私密配置、邀请明文、真实单据、真实个人资料进入暂存 |
+| Compose | 检查本机Docker命令及安装路径 | 未验证：本机缺少Docker/Compose；未安装或重建容器，需有工具的环境补跑配置检查 |
+
+测试夹具变更说明：新增限流后，各独立schema的@BeforeEach清理测试限流桶，价格权限用例复用登录结果而非重复登录每个接口；未删权限断言或提高限流阈值。OCR完整迁移版本断言更新为V23。通知测试保留“待投递事件为0”断言，用有界等待处理后台SKIP LOCKED批次尚未提交的竞态，不修改通知业务。
+
+验证中曾因原本地测试库未运行而连接失败，后恢复测试；一次运行进程中断，未计为通过。最终改用本任务专用新数据库实例与schema，不升级/重置旧库。曾修复新账号准备中JdbcTemplate与MyBatis会话缓存导致待激活状态读取滞后，以及登录页旧会话阻拦交接的问题；对应回归保留。验证仅用合成资料及本地对象存储，未调用真实百度/高德，不使用历史泄露密钥。
+
+未验证：生产公开域名/HTTPS反向代理、生产首管受控初始化、实体手机与真人联系方式交付。短信/邮件自动发送及系统实名验证不在本轮范围。使用入口、后台URL配置、密码规则、邀请状态/限流/API见[ACCOUNT_ACTIVATION.md](ACCOUNT_ACTIVATION.md)与[LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md)。Git提交/推送及Draft PR结果在下方交付记录补记。
+
+#### GitHub交付结果（2026-10-19）
+
+实现提交：`df58fff7b4d4e1e7b3bfa312cf511ff4c0b568e3`，`feat(identity): add invited activation and unified login`，作者沿用本机Sherry070719。已推送并核对远端`codex/account-activation-login`与实现提交一致。
+
+GitHub集成已尝试创建以main为目标的Draft PR，返回准确错误：`403 Resource not accessible by integration`（FORBIDDEN）。本轮未创建PR，未改用其他凭据、CLI或网页绕过；未合并、未部署。此文档收尾提交随后推送同一分支。
+
+- 分支：https://github.com/Victor-Zan/EV-Insurance-Work-Platform/tree/codex/account-activation-login
+- 手动比较/创建PR：https://github.com/Victor-Zan/EV-Insurance-Work-Platform/compare/main...codex/account-activation-login?expand=1
+
+有权限人员可从比较页选择Draft创建。任务在此停止，不继续其他阶段。

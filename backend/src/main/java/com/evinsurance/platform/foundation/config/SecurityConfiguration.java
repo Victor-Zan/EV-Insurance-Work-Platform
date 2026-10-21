@@ -42,7 +42,7 @@ public class SecurityConfiguration {
             .addFilterBefore(new JwtAuthenticationFilter(jwt,users,json),UsernamePasswordAuthenticationFilter.class)
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/v1/health","/actuator/health","/v3/api-docs/**","/swagger-ui.html","/swagger-ui/**").permitAll()
-                .requestMatchers(HttpMethod.POST,"/api/v1/auth/login").permitAll()
+                .requestMatchers(HttpMethod.POST,"/api/v1/auth/login","/api/v1/auth/sign-in","/api/v1/auth/handoff","/api/v1/auth/activation/inspect","/api/v1/auth/activation/complete").permitAll()
                 .requestMatchers("/api/v1/auth/me").authenticated()
                 .requestMatchers("/api/v1/funds/**").hasAnyRole("ADMIN","CUSTOMER_SERVICE","REPAIR_SHOP")
                 .requestMatchers("/api/v1/historical-cases/**").hasAnyRole("ADMIN","CUSTOMER_SERVICE")

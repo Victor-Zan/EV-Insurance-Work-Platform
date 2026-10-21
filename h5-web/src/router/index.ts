@@ -16,6 +16,7 @@ import type { Role } from '@/shared/auth/session'
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
+    { path: '/activate', component: () => import('@/views/ActivateView.vue'), meta: { shell: false } },
     { path: '/login', component: LoginView, meta: { shell: false } },
     { path: '/', component: HomeView, meta: { roles: ['REPAIR_SHOP', 'OWNER'] } },
     { path: '/work-orders', component: WorkOrdersView, meta: { roles: ['REPAIR_SHOP', 'OWNER'] } },
@@ -32,9 +33,10 @@ const router = createRouter({
   ],
 })
 router.beforeEach(to => {
+  if(to.path==='/activate'||(to.path==='/login'&&new URLSearchParams(to.hash.slice(1)).has('handoff')))return true
   if (to.path === '/forbidden') return authSession.valid() ? '/' : '/login'
   if (to.path === '/connection-error') return authSession.valid() ? true : '/login'
   return guard(authSession, to.path, (to.meta.roles ?? []) as Role[], api.portalUser)
 })
-authSession.subscribe(() => { if (!authSession.token && router.currentRoute.value.path !== '/login') void router.replace('/login') })
+authSession.subscribe(() => { if (!authSession.token && !['/login','/activate'].includes(router.currentRoute.value.path)) void router.replace('/login') })
 export default router

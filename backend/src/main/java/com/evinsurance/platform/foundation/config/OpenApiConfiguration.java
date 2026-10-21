@@ -19,7 +19,7 @@ public class OpenApiConfiguration {
                 .addProperty("message",new io.swagger.v3.oas.models.media.StringSchema())
                 .addProperty("traceId",new io.swagger.v3.oas.models.media.StringSchema());
             java.util.Map.of("400","参数错误","401","未认证、账号停用或 Token 失效","403","无权限或登录错误端",
-                "404","资源不存在","409","状态、幂等、重复、价格版本或关联约束冲突","410","导入预览已过期","413","导入文件或行数超限","503","认证依赖暂不可用")
+                "404","资源不存在","409","状态、幂等、重复、价格版本或关联约束冲突","410","导入预览已过期","413","导入文件或行数超限","429","服务端操作限流，请稍后重试","503","认证依赖暂不可用")
                 .forEach((status,description) -> operation.getResponses().addApiResponse(status,
                     new io.swagger.v3.oas.models.responses.ApiResponse().description(description)
                         .content(new io.swagger.v3.oas.models.media.Content().addMediaType("application/json",

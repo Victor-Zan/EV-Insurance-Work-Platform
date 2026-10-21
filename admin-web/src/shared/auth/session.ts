@@ -1,5 +1,5 @@
 export type Role = 'ADMIN' | 'CUSTOMER_SERVICE' | 'REPAIR_SHOP' | 'OWNER'
-export interface User { id: number; username: string; displayName: string; roles: Role[]; ownerPhone?: string; shopId?: number; enabled?: boolean }
+export interface User { id: number; username: string; displayName: string; roles: Role[]; ownerPhone?: string; shopId?: number; activated?: boolean; enabled?: boolean }
 export interface LoginResult { accessToken: string; expiresAt: string; user: User }
 export const portal = 'ADMIN'
 export const allowedRoles: Role[] = ['ADMIN', 'CUSTOMER_SERVICE']

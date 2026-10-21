@@ -11,10 +11,10 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthController {
-    private final AuthService service;
-    public AuthController(AuthService service) { this.service=service; }
+    private final AuthService service;private final com.evinsurance.platform.identity.application.AccountRateLimit limits;
+    public AuthController(AuthService service,com.evinsurance.platform.identity.application.AccountRateLimit limits) { this.service=service;this.limits=limits; }
     @PostMapping("/login") @Operation(summary="账号密码登录指定端；无刷新 Token，过期重新登录")
-    public ApiResponse<AuthService.LoginResult> login(@Valid @RequestBody IdentityRequests.Login request) { return ApiResponse.success(service.login(request)); }
+    public ApiResponse<AuthService.LoginResult> login(@Valid @RequestBody IdentityRequests.Login request,jakarta.servlet.http.HttpServletRequest http) { limits.take("login:"+http.getRemoteAddr(),20);return ApiResponse.success(service.login(request)); }
     @GetMapping("/me") @SecurityRequirement(name="bearerAuth") @Operation(summary="实时当前用户、角色与网点归属")
     public ApiResponse<CurrentUser> me() { return ApiResponse.success(CurrentUser.require()); }
 }
