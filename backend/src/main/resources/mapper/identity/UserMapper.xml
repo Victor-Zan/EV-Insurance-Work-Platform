@@ -5,7 +5,9 @@
     SELECT u.id,u.username,u.display_name,u.password_hash,u.enabled,u.auth_version,
       (SELECT string_agg(r.code,',' ORDER BY r.code) FROM user_role ur JOIN app_role r ON r.id=ur.role_id WHERE ur.user_id=u.id) AS role_codes,
       (SELECT sa.shop_id FROM shop_account sa WHERE sa.user_id=u.id) AS shop_id,
-      (SELECT op.contact_phone FROM owner_profile op WHERE op.user_id=u.id) AS owner_phone
+      (SELECT op.contact_phone FROM owner_profile op WHERE op.user_id=u.id) AS owner_phone,u.activated,
+      (NOT EXISTS(SELECT 1 FROM user_role ur JOIN app_role r ON r.id=ur.role_id WHERE ur.user_id=u.id AND r.code='REPAIR_SHOP') OR EXISTS(SELECT 1 FROM shop_account sa JOIN repair_shop s ON s.id=sa.shop_id WHERE sa.user_id=u.id AND s.enabled)) AND
+      (NOT EXISTS(SELECT 1 FROM user_role ur JOIN app_role r ON r.id=ur.role_id WHERE ur.user_id=u.id AND r.code='OWNER') OR EXISTS(SELECT 1 FROM owner_profile p WHERE p.user_id=u.id)) AS binding_valid
     FROM app_user u
   </sql>
   <select id="accessById" resultType="com.evinsurance.platform.identity.infrastructure.AccessRow"><include refid="accessSelect"/> WHERE u.id=#{id}</select>

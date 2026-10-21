@@ -34,7 +34,8 @@ class CataloguePostgresIT {
  }
  @Autowired MockMvc mvc;@Autowired ObjectMapper json;@Autowired JdbcTemplate db;@Autowired Flyway flyway;
  private String admin;
- @BeforeEach void authenticate()throws Exception{admin=login("admin");}
+ @BeforeEach void authenticate()throws Exception{
+        db.update("DELETE FROM account_rate_limit");admin=login("admin");}
  private String login(String role)throws Exception{
   return json.readTree(mvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
    .content(json.writeValueAsString(Map.of("username","dev_"+role,"password",PASSWORD,"portal",List.of("admin","customer_service").contains(role)?"ADMIN":"H5"))))
@@ -47,17 +48,17 @@ class CataloguePostgresIT {
  private JsonNode create(String path,Object body)throws Exception{return json.readTree(request(post("/api/v1/pricing/"+path),body).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data");}
  private Map<String,Object> named(String code,String name){return Map.of("code",code,"name",name,"enabled",true);}
  @Test void permissionsReuseIdentityWithoutGrantingOrganizationManagement()throws Exception{
+  String cs=login("customer_service");
+  var shopAndOwner=Map.of("repair_shop",login("repair_shop"),"owner",login("owner"));
   for(String family:List.of("brands","models","parts","aliases","sources","part-models","regions","shops")){
    mvc.perform(get("/api/v1/pricing/"+family)).andExpect(status().isUnauthorized());
    request(get("/api/v1/pricing/"+family),null).andExpect(status().isOk());
-   String cs=login("customer_service");
    mvc.perform(get("/api/v1/pricing/"+family).header("Authorization","Bearer "+cs)).andExpect(status().isOk());
    for(String role:List.of("repair_shop","owner")){
-    String token=login(role);mvc.perform(get("/api/v1/pricing/"+family).header("Authorization","Bearer "+token)).andExpect(status().isForbidden());
+    String token=shopAndOwner.get(role);mvc.perform(get("/api/v1/pricing/"+family).header("Authorization","Bearer "+token)).andExpect(status().isForbidden());
     mvc.perform(post("/api/v1/pricing/"+family).header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isForbidden());
    }
   }
-  String cs=login("customer_service");
   for(String path:List.of("/users","/roles","/regions","/shops","/audit"))
    for(var method:List.of(get("/api/v1/admin"+path),post("/api/v1/admin"+path)))
     mvc.perform(method.header("Authorization","Bearer "+cs).contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isForbidden());

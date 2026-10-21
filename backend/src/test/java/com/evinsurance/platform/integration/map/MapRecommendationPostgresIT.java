@@ -43,6 +43,7 @@ class MapRecommendationPostgresIT {
         when(provider.resolve(any())).thenAnswer(inv->{var a=(MapProvider.Address)inv.getArgument(0);return List.of(new MapProvider.AddressCandidate("合成停车位置",new MapProvider.Point(23,113),"广东省",a.city(),a.district(),a.districtAdcode(),"门牌号","REQUIRES_CONFIRMATION",false));});
         when(provider.locate(any())).thenReturn(new MapProvider.AddressCandidate("合成位置",new MapProvider.Point(23.1,113.1),"广东省","广州市","天河区","440106","REVERSE","REQUIRES_CONFIRMATION",false));
         when(provider.driving(any(),any(),eq(32))).thenAnswer(inv->{routes.incrementAndGet();var from=(MapProvider.Point)inv.getArgument(0);var to=(MapProvider.Point)inv.getArgument(1);assertThat(from).isEqualTo(new MapProvider.Point(23,113));return new MapProvider.DrivingRoute(to.longitude()<113.15?9000:1000,600L,32,0,false);});
+        db.update("delete from account_rate_limit");
         admin=login("dev_admin","ADMIN");cs=login("dev_customer_service","ADMIN");shop=login("dev_repair_shop","H5");owner=login("dev_owner","H5");actor=db.queryForObject("select id from app_user where username='dev_admin'",Long.class);
         db.update("update repair_shop set enabled=false where code like 'MAP-TEST-%'");
         province=db.queryForObject("insert into region(code,name,level) values('440000','广东省',1) on conflict(code) do update set enabled=true returning id",Long.class);
@@ -179,7 +180,7 @@ class MapRecommendationPostgresIT {
         assertThatThrownBy(()->db.update("insert into shop_map_location(shop_id,version,district_id,address_snapshot,longitude,latitude,coordinate_system,source,created_by) values(?,3,?,'合成',113,23,'GPS','ADMIN_CONFIRMED_GCJ02',?)",shopId,district,actor)).isInstanceOf(org.springframework.dao.DataAccessException.class);
         query(position(),UUID.randomUUID().toString(),null,200);
         String audit=String.join("\n",db.queryForList("select summary from audit_log where action like 'MAP_%'",String.class));assertThat(audit).doesNotContain("合成停车位置","合成测试街道","113.15",PASSWORD,"access_token","key=");
-        flyway.validate();assertThat(flyway.info().current().getVersion().toString()).isEqualTo("23");
+        flyway.validate();assertThat(flyway.info().current().getVersion().toString()).isEqualTo("25");
     }
     @Test void ambiguousModelForeignPositionAndUnknownSourceCannotBecomeRealRecommendation() throws Exception {
         when(provider.locate(any())).thenReturn(new MapProvider.AddressCandidate("合成外省",new MapProvider.Point(28,112),"湖南省","长沙市","合成区","430100","REVERSE","REQUIRES_CONFIRMATION",false));

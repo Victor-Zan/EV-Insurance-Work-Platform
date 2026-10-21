@@ -4,8 +4,8 @@ import com.evinsurance.platform.identity.domain.Role;
 import com.evinsurance.platform.identity.infrastructure.AccessRow;
 import java.util.Set;
 
-public record UserView(long id, String username, String displayName, boolean enabled, Set<Role> roles, Long shopId, String ownerPhone) {
+public record UserView(long id, String username, String displayName, boolean enabled, Set<Role> roles, Long shopId, String ownerPhone,boolean activated) {
     public static UserView from(AccessRow row) {
-        return new UserView(row.id(),row.username(),row.displayName(),row.enabled(),row.roles(),row.shopId(),row.roles().contains(Role.OWNER)?row.ownerPhone():null);
+        return new UserView(row.id(),row.username(),row.displayName(),row.enabled(),row.roles(),row.shopId(),row.roles().contains(Role.OWNER)?row.ownerPhone():null,row.activated());
     }
 }

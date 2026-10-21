@@ -83,8 +83,31 @@ class MaterialsPostgresIT {
     private long regionId;
     private long shopId;
 
+    @Test void mapLocationApiKeepsCustomerServiceOnlyAndValidatesGuangdongHierarchy() throws Exception {
+        mvc.perform(get("/api/v1/maps/locations/configuration")).andExpect(status().isUnauthorized());
+        for(String token:List.of(admin,shop,owner)){
+            mvc.perform(get("/api/v1/maps/locations/configuration").header("Authorization","Bearer "+token)).andExpect(status().isForbidden());
+            mvc.perform(get("/api/v1/maps/locations/regions").header("Authorization","Bearer "+token)).andExpect(status().isForbidden());
+            mvc.perform(post("/api/v1/maps/locations/resolve").header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON).content("{\"districtId\":1,\"detail\":\"合成街道10号\"}")).andExpect(status().isForbidden());
+        }
+        mvc.perform(get("/api/v1/maps/locations/configuration").header("Authorization","Bearer "+customerService))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.provider").value("MOCK_V1")).andExpect(jsonPath("$.data.recommendationsAvailable").value(true)).andExpect(jsonPath("$.data.key").doesNotExist());
+        mvc.perform(get("/v3/api-docs").header("Authorization","Bearer "+customerService)).andExpect(status().isOk())
+            .andExpect(jsonPath("$.paths['/api/v1/maps/locations/resolve'].post").exists());
+        mvc.perform(get("/api/v1/maps/locations/regions?size=101").header("Authorization","Bearer "+customerService)).andExpect(status().isBadRequest());
+        mvc.perform(post("/api/v1/maps/locations/resolve").header("Authorization","Bearer "+customerService).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("districtId",regionId,"detail","合成街道10号")))).andExpect(status().isBadRequest());
+        Long province=db.queryForObject("insert into region(code,name,level) values('440000','广东省',1) on conflict(code) do update set enabled=true returning id",Long.class);
+        Long city=db.queryForObject("insert into region(code,name,level,parent_id) values('440100','广州市',2,?) on conflict(code) do update set enabled=true returning id",Long.class,province);
+        Long district=db.queryForObject("insert into region(code,name,level,parent_id) values('440106','天河区',3,?) on conflict(code) do update set enabled=true returning id",Long.class,city);
+        mvc.perform(get("/api/v1/maps/locations/regions").header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andExpect(jsonPath("$.data.records[0].adcode").value("440100"));
+        mvc.perform(get("/api/v1/maps/locations/regions?cityId="+city).header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andExpect(jsonPath("$.data.records[0].adcode").value("440106"));
+        // Explicit Mock remains labelled and cannot pretend to perform real geocoding.
+        mvc.perform(post("/api/v1/maps/locations/resolve").header("Authorization","Bearer "+customerService).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("districtId",district,"detail","合成街道10号")))).andExpect(status().isOk()).andExpect(jsonPath("$.data[0].candidate.mock").value(true));
+    }
+
     @BeforeEach
     void authenticate() throws Exception {
+        db.update("DELETE FROM account_rate_limit");
         admin=login("dev_admin","ADMIN");
         customerService=login("dev_customer_service","ADMIN");
         shop=login("dev_repair_shop","H5");

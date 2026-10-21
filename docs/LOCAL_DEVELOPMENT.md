@@ -1,5 +1,7 @@
 ## 2026-10-21 高德整合分支与隔离验收
 
+2026-10-22更新：最终合并版迁移为main原样V23账号开通/V24地图＋新增V25增量；只连接新schema `amap_main_final_20261022`。下述`amap_main_validation_20261021`/本地V23为已保留历史检查点，严禁新JAR连接。旧V17预览同样保留。数据库对应、恢复提交及后续升级门禁见[AMAP_MIGRATION_PLAN](AMAP_MIGRATION_PLAN.md)。本轮最终预览真实外呼上限0、不创建预算；Key仍仅后端私密文件，重启不解锁，页面明确关闭状态。
+
 从最新main增量整合的代码位于codex/amap-main-integration；不要将旧地图JAR连接main库。完整迁移含新V23，先在新隔离schema验收，旧地图V17及其他数据库不改历史、不repair。提交/合并审批未完成时，不替换现用main进程。
 
 后端私密配置使用MAP_PROVIDER=AMAP_WEB_V1、AMAP_WEB_SERVICE_KEY、AMAP_BUDGET_RUN_ID及进程防护上限；默认均不外呼。共享预算run/slot还须预登记已授权请求摘要；仅填写Key或重启不会取得额度。已有Load-AmapEnvironment.ps1白名单加载器支持新增预算ID和显式dev测试会话开关；Key只留被忽略的后端配置，不放VITE变量。APP_BUILD_COMMIT用于核对运行包来源，需同时核对JAR哈希和实际启动路径。
@@ -14,7 +16,22 @@
 
 照片上传返回`STORAGE_UNAVAILABLE`时，先核对后端进程是否加载`MINIO_ENDPOINT`、`MINIO_ACCESS_KEY`、`MINIO_SECRET_KEY`和`MINIO_BUCKET`。`MINIO_ROOT_USER/PASSWORD`仅供容器启动，不会自动映射到应用；已有`.env`不会随`.env.example`更新而自动补齐。仅本地开发可将应用访问凭据设为已创建的本地MinIO账户，禁止输出或提交真实值。修改后重启实际提供API的后端；容器healthy或`/actuator/health`为UP不能代替照片上传验证。上传失败时保留当前草稿和所选照片，配置恢复后在原页面重试，避免重复建单。
 
-网点报价表单OCR见[SHOP_QUOTE_OCR.md](SHOP_QUOTE_OCR.md)：启动配置与客服OCR共用，未新增供应商或前端Key变量。使用当前功能分支在新隔离schema迁移至V18；不得将本分支直接连接仍记录旧OCR V15的历史库或执行repair。V17为独立地图分支迁移，本分支不假设地图已合并。本轮验收使用MOCK_V1/模拟响应，不读取真实凭据、不增加此前真实调用预算；未来真实联调需另行确认。
+网点报价表单OCR见[SHOP_QUOTE_OCR.md](SHOP_QUOTE_OCR.md)：启动配置与客服OCR共用，未新增供应商或前端Key变量。使用当前功能分支在新隔离schema迁移至V18；不得将本分支直接连接仍记录旧OCR V15的历史库或执行repair。此段为网点 OCR 功能分支的历史说明；当前集成版本已将地图迁移排为 V24，账号激活迁移为 V23。本轮验收使用MOCK_V1/模拟响应，不读取真实凭据、不增加此前真实调用预算；未来真实联调需另行确认。
+
+## 高德私密配置（2026-10-15）
+
+在当前代码仓库根目录创建 `.env.amap`（已由 `.gitignore` 的 `.env.*` 排除）。其他电脑应使用自己的仓库路径。文件初始内容：
+
+```dotenv
+MAP_PROVIDER=MOCK_V1
+AMAP_WEB_SERVICE_KEY=
+AMAP_MAX_CALLS_PER_PROCESS=0
+AMAP_REQUESTS_PER_SECOND=2
+```
+
+用户只在本机文件填写 Web服务Key，不发聊天、不放VITE。`scripts/Start-Local.ps1` 先读取既有 `-EnvironmentFile`，再自动读取仓库 `.env.amap`；也可用 `-MapEnvironmentFile` 指定私密路径。`scripts/Load-AmapEnvironment.ps1 -EnvironmentFile <本机私密文件>` 可用于手动启动前加载，只接受上述四个后端变量，不输出值。配置文件不会被 Spring 自动读取，直接启动Java/Maven时必须先加载。
+
+真实供应商必须明确设 `MAP_PROVIDER=AMAP_WEB_V1`，缺Key即启动失败；调用上限0表示关闭外呼，正整数为本进程批准预算，所有地址、逆编码、路线请求共用并发安全计数，无自动重试。计数重启会归零，不能通过重启延长已批准预算。只有另行确认真实联调预算与地址之后才设置正数。本轮仅完成实现和离线验收，不启用真实联调。客服入口为工单详情→派单与异常；管理员入口为维修网点→车型与位置。dev Mock可显式维护合成位置，真实模式禁止拿合成坐标计算道路距离。详情见 AMAP_INTEGRATION.md。
 
 百度 OCR 与建单前表单配置/验收见 BAIDU_OCR.md。默认 OCR_PROVIDER=MOCK_V1，不发送真实请求；改为 BAIDU_HANDWRITING_V1 前注入重置后的后端环境变量，不能配置前端 VITE 密钥。scripts/Start-Local.ps1 的 EnvironmentFile 加载所有大写变量，不回显值，因此可读取 BAIDU_OCR_API_KEY / BAIDU_OCR_SECRET_KEY；私密文件须留在仓库外或被忽略的 .env。启动须提供本机真实 JDK 路径，不照搬他人绝对路径。真实任务建议 OCR_LEASE_SECONDS=180；缺凭据显式启动失败，不回退 Mock。不要把已有待执行任务改供应商；任务来源与供应商已不可变。
 
@@ -281,3 +298,13 @@ HTTP脚本默认phase8-delivery-build JAR，专用验证数据库随机schema、
 网点端按远端 main 的网点报价OCR实现：可手填提交，识别结果人工确认后从原报价表单提交，保留多图与逐行来源；不再强制经过本地 DocumentRecognition 原件核对入口。客服、管理员端按本地 main 保留，报价审核、核损确认、维修授权及顺序资金确认规则不回退。共享后端保留本地原件快照和核损失效规则，同时接入远端OCR作用域及逐行来源。网点 ASSESSMENT 是允许报价阶段的网点清单，上传不要求先生成客服正式报价；客服核损材料仍执行本地阶段门禁。
 
 用户确认网点OCR V18只在个人本地验证，未进入共享环境，因此将该迁移改编号为 V22__shop_quote_ocr.sql；本地 V1—V21 不修改。旧文档中的OCR V18及未合并地图说明为历史分支记录，当前合并版本以完整 V1—V22 为准。已有个人OCR V18库不得直接连合并版本或执行repair，验证使用隔离空schema；原个人库另行保留。
+
+## 受邀账号配置与入口（2026-10-19）
+
+配置`ACCOUNT_ADMIN_PUBLIC_URL`、`ACCOUNT_H5_PUBLIC_URL`为浏览器实际可访问的两端根地址（默认5173/5174；若使用其他端口须同步修改）。邀请和统一登录跳转由后端生成；本地可用HTTP回环地址，正式地址必须HTTPS。前后端部署路径前缀需与Vite BASE_URL及服务路由一致，CORS_ALLOWED_ORIGINS按实际源配置。变量只在后端读取，不配置前端密钥。`scripts/Start-Local.ps1 -EnvironmentFile <本机私密配置路径> -JavaHome <本机JDK21路径>`现有加载器会读取这两个大写变量；配置文件必须在仓库父目录范围或被忽略的.env，不能照搬队友路径。启动脚本不会自动读取未指定的.env，修改后需重启实际后端。
+
+首个管理员沿用现有dev初始化：显式设置SPRING_PROFILES_ACTIVE=dev和DEV_ADMIN_PASSWORD（其他开发角色种子也需各自环境变量），由既有Flyway开发配置生成BCrypt；不能把真实密码写文档/SQL。非dev不自动创建任何账号，本轮未新增生产初始化后门，生产首管的受控运维初始化及部署未验证。
+
+入口：管理员→用户与角色→准备账号并复制邀请；网点先建有效合作网点并绑定ID。客服→有权限的正式案件详情→概览→邀请本案车主开通账号，先线下核实本人/案件归属。受邀人打开对应端/activate，核对脱敏身份、设置密码；成功页显示其登录账号，再到/login登录。两端均可输入账号，由服务端按授权跳转管理端或H5。工作人员手动通过已核实渠道发送，无短信/邮件发送。已有已激活账号使用原密码；不批量迁移成待激活。
+
+迁移仅追加V23。详细权限、限流、邀请失效与API见[ACCOUNT_ACTIVATION.md](ACCOUNT_ACTIVATION.md)。保留受保护的旧管理员直接设密API用于兼容，新的管理页面只走邀请。开通不是身份验证或合作网点入驻审核。

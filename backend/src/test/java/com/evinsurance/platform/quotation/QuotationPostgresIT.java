@@ -87,6 +87,7 @@ class QuotationPostgresIT {
 
     @BeforeEach
     void authenticate() throws Exception {
+        db.update("DELETE FROM account_rate_limit");
         admin=login("dev_admin","ADMIN");
         customerService=login("dev_customer_service","ADMIN");
         shop=login("dev_repair_shop","H5");
@@ -812,7 +813,7 @@ class QuotationPostgresIT {
     private JsonNode getData(String token,String path) throws Exception {return json.readTree(mvc.perform(get("/api/v1/"+path).header("Authorization","Bearer "+token)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data");}
     private JsonNode findTask(String token,String id,String kind) throws Exception {var rows=getData(token,"notifications/todos?caseId="+id+"&size=100").path("records");for(var row:rows)if(kind.equals(row.path("kind").asText()))return row;throw new AssertionError("Missing active task "+kind);}
     @Test void stationNotificationsAreRecipientScopedReadIdempotentAndContainNoFinancialOrInternalFields() throws Exception {
-        String id=receivedRepair();fundsTarget(id,"RECEIVE","100.00",200);fundsTarget(id,"PAY","80.00",200);long pending=db.queryForObject("SELECT count(*) FROM notification_event WHERE projected_at IS NULL",Long.class);for(long offset=0;offset<pending;offset+=50)notificationProjector.project();assertThat(db.queryForObject("SELECT count(*) FROM notification_event WHERE projected_at IS NULL",Long.class)).isZero();
+        String id=receivedRepair();fundsTarget(id,"RECEIVE","100.00",200);fundsTarget(id,"PAY","80.00",200);org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(10)).untilAsserted(()->{notificationProjector.project();assertThat(db.queryForObject("SELECT count(*) FROM notification_event WHERE projected_at IS NULL",Long.class)).isZero();});
         var ownerInbox=getData(owner,"notifications?size=100").path("records");JsonNode ownNotice=null;long caseUnread=0;for(var row:ownerInbox)if(id.equals(row.path("caseId").asText())){ownNotice=row;if(!row.path("read").asBoolean())caseUnread++;assertThat(row.toString()).doesNotContain("amount","markup","originalTotal","internalNote","FUNDS_UPDATED","PAY_UPDATED");}
         mvc.perform(get("/api/v1/notifications/unread-count")).andExpect(status().isUnauthorized());
         var unread=getData(owner,"notifications/unread-count");assertThat(unread.size()).isEqualTo(1);long beforeRead=unread.path("count").asLong();assertThat(beforeRead).isPositive();
