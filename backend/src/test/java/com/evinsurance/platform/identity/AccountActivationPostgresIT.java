@@ -172,7 +172,7 @@ class AccountActivationPostgresIT {
         var destination=call("/auth/sign-in",null,Map.of("username","dev_admin","password",PASSWORD),200);
         String logs=json.writeValueAsString(db.queryForList("SELECT * FROM audit_log"));
         assertThat(logs).contains("INVITATION_ISSUE","ACCOUNT_ACTIVATE","ACCOUNT_ACTIVATION_FAILURE","LOGIN_FAILURE").doesNotContain(raw,invite.path("url").asText(),PASSWORD,destination.path("code").asText(),"$2a$");
-        flyway.validate();assertThat(flyway.info().current().getVersion().toString()).isEqualTo("23");
+        flyway.validate();assertThat(flyway.info().current().getVersion().toString()).isEqualTo("24");
         mvc.perform(get("/v3/api-docs")).andExpect(status().isOk())
             .andExpect(jsonPath("$.paths['/api/v1/auth/activation/complete'].post.responses['429']").exists())
             .andExpect(jsonPath("$.paths['/api/v1/admin/account-invitations/accounts'].post.security[0].bearerAuth").exists());

@@ -2,6 +2,8 @@
 
 2026-10-15 D-047新增限定网点报价OCR，现行专用API及权限矩阵见[SHOP_QUOTE_OCR.md](SHOP_QUOTE_OCR.md)。以下“网点全部禁止OCR”仍适用于原通用 `/ocr/**`，不阻止本次经确认的quotation作用域入口。客服/管理员对网点任务仅查看，不能代写。普通客服建单OCR原权限不变。
 
+2026-10-15 高德新增接口及旧Mock接口隔离见 [AMAP_INTEGRATION.md](AMAP_INTEGRATION.md)。本轮地址解析不等于已完成网点推荐或派单联动。
+
 所有路径前缀/api/v1，需有效Bearer且实时账号启用。JSON沿用ApiResponse，列表page从1开始，size上限100；字段及在线协议见/v3/api-docs。
 
 ## D-045 百度与建单前补充

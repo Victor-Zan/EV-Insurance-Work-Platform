@@ -2,7 +2,22 @@
 
 照片上传返回`STORAGE_UNAVAILABLE`时，先核对后端进程是否加载`MINIO_ENDPOINT`、`MINIO_ACCESS_KEY`、`MINIO_SECRET_KEY`和`MINIO_BUCKET`。`MINIO_ROOT_USER/PASSWORD`仅供容器启动，不会自动映射到应用；已有`.env`不会随`.env.example`更新而自动补齐。仅本地开发可将应用访问凭据设为已创建的本地MinIO账户，禁止输出或提交真实值。修改后重启实际提供API的后端；容器healthy或`/actuator/health`为UP不能代替照片上传验证。上传失败时保留当前草稿和所选照片，配置恢复后在原页面重试，避免重复建单。
 
-网点报价表单OCR见[SHOP_QUOTE_OCR.md](SHOP_QUOTE_OCR.md)：启动配置与客服OCR共用，未新增供应商或前端Key变量。使用当前功能分支在新隔离schema迁移至V18；不得将本分支直接连接仍记录旧OCR V15的历史库或执行repair。V17为独立地图分支迁移，本分支不假设地图已合并。本轮验收使用MOCK_V1/模拟响应，不读取真实凭据、不增加此前真实调用预算；未来真实联调需另行确认。
+网点报价表单OCR见[SHOP_QUOTE_OCR.md](SHOP_QUOTE_OCR.md)：启动配置与客服OCR共用，未新增供应商或前端Key变量。使用当前功能分支在新隔离schema迁移至V18；不得将本分支直接连接仍记录旧OCR V15的历史库或执行repair。此段为网点 OCR 功能分支的历史说明；当前集成版本已将地图迁移排为 V24，账号激活迁移为 V23。本轮验收使用MOCK_V1/模拟响应，不读取真实凭据、不增加此前真实调用预算；未来真实联调需另行确认。
+
+## 高德私密配置（2026-10-15）
+
+在当前代码仓库根目录创建 `.env.amap`（已由 `.gitignore` 的 `.env.*` 排除）。其他电脑应使用自己的仓库路径。文件初始内容：
+
+```dotenv
+MAP_PROVIDER=MOCK_V1
+AMAP_WEB_SERVICE_KEY=
+AMAP_MAX_CALLS_PER_PROCESS=0
+AMAP_REQUESTS_PER_SECOND=2
+```
+
+用户只在本机文件填写 Web服务Key，不发聊天、不放VITE。`scripts/Start-Local.ps1` 先读取既有 `-EnvironmentFile`，再自动读取仓库 `.env.amap`；也可用 `-MapEnvironmentFile` 指定私密路径。`scripts/Load-AmapEnvironment.ps1 -EnvironmentFile <本机私密文件>` 可用于手动启动前加载，只接受上述四个后端变量，不输出值。配置文件不会被 Spring 自动读取，直接启动Java/Maven时必须先加载。
+
+真实供应商必须明确设 `MAP_PROVIDER=AMAP_WEB_V1`，缺Key即启动失败；调用上限0表示关闭外呼，正整数为本进程批准预算，所有地址、逆编码、路线请求共用并发安全计数，无自动重试。计数重启会归零，不能通过重启延长已批准预算。只有另行确认真实联调预算与地址之后才设置正数。本轮仅完成实现和离线验收，不启用真实联调。客服入口为工单详情→派单与异常；管理员入口为维修网点→车型与位置。dev Mock可显式维护合成位置，真实模式禁止拿合成坐标计算道路距离。详情见 AMAP_INTEGRATION.md。
 
 百度 OCR 与建单前表单配置/验收见 BAIDU_OCR.md。默认 OCR_PROVIDER=MOCK_V1，不发送真实请求；改为 BAIDU_HANDWRITING_V1 前注入重置后的后端环境变量，不能配置前端 VITE 密钥。scripts/Start-Local.ps1 的 EnvironmentFile 加载所有大写变量，不回显值，因此可读取 BAIDU_OCR_API_KEY / BAIDU_OCR_SECRET_KEY；私密文件须留在仓库外或被忽略的 .env。启动须提供本机真实 JDK 路径，不照搬他人绝对路径。真实任务建议 OCR_LEASE_SECONDS=180；缺凭据显式启动失败，不回退 Mock。不要把已有待执行任务改供应商；任务来源与供应商已不可变。
 
