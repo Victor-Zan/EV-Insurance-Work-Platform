@@ -3,8 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { ElButton, ElInput } from 'element-plus'
 import { authSession, currentUser } from '@/shared/http/client'
-import engineeringBlueprint from '@/assets/e-scooter-blueprint-panorama.webp'
-import { vMagnetic } from '@/shared/ui/magnetic'
+import engineeringBlueprint from '@/assets/e-scooter-graphite.png'
 
 type Module = 'home' | 'cases' | 'pricing' | 'funds' | 'notices' | 'admin'
 const route = useRoute(), router = useRouter(), search = ref(''), preview = ref<Module | null>(null), opened = ref<Module | null>(null)
@@ -30,7 +29,7 @@ const visible = computed(() => preview.value ?? opened.value)
 const links = computed(() => {
   switch (visible.value) {
     case 'home': return [{ label: '工作台', to: '/' }, { label: '我的待办', to: '/notifications?tab=todos' }]
-    case 'cases': return [{ label: '全部案件', to: '/work-orders' }, { label: '历史档案导入', to: '/historical-cases' }, { label: '投诉跟踪', to: '/complaints' }, { label: '我的待办', to: '/notifications?tab=todos' }, { label: '案件草稿', to: '/work-orders?status=DRAFT' }]
+    case 'cases': return [{ label: '全部案件', to: '/work-orders' }, { label: '历史档案', to: '/historical-cases' }, { label: '投诉跟踪', to: '/complaints' }, { label: '我的待办', to: '/notifications?tab=todos' }, { label: '案件草稿', to: '/work-orders?status=DRAFT' }]
     case 'pricing': return [{ label: '价格候选', to: '/pricing' }, { label: '品牌资料', to: '/pricing/catalogue/brands' }, { label: '车型资料', to: '/pricing/catalogue/models' }, { label: '配件资料', to: '/pricing/catalogue/parts' }, { label: '适配关系', to: '/pricing/part-models' }, ...(isAdmin.value ? [{ label: '价格导入', to: '/pricing/import' }] : [])]
     case 'funds': return [{ label: '跨案件资金查询', to: '/funds/workbench' }, ...(isService.value ? [{ label: '资金导入', to: '/funds/imports' }] : []), { label: '案件资金记录', to: '/work-orders' }]
     case 'notices': return [{ label: '我的待办', to: '/notifications?tab=todos' }, { label: '站内通知', to: '/notifications?tab=notices' }]
@@ -65,11 +64,11 @@ function logout() { authSession.clear(); void router.replace('/login') }
     </nav>
     <Transition name="pod-slide"><aside v-if="visible" class="module-pod" :aria-label="`${modules.find(item=>item.id===visible)?.label}模块导航`" @mouseenter="cancelPreviewClose" @mouseleave="schedulePreviewClose">
       <div class="pod-heading"><strong>{{ modules.find(item=>item.id===visible)?.label }}</strong><button type="button" aria-label="收起模块导航" @click="close">×</button></div>
-      <p>当前模块导航</p>
+
       <nav><RouterLink v-for="link in links" :key="link.to" :to="link.to" @click="opened=visible;preview=null">{{ link.label }}</RouterLink></nav>
     </aside></Transition>
     <div class="app-main-wrap" @click="preview=null;opened=null">
-      <header class="context-header"><img class="context-blueprint" :src="engineeringBlueprint" alt="" aria-hidden="true"><form class="global-search" role="search" @submit.prevent="submitSearch"><ElInput v-model="search" clearable placeholder="搜索案件号、报案号或手机号" aria-label="搜索案件"/><ElButton v-magnetic native-type="submit">搜索</ElButton></form><div class="header-actions"><RouterLink to="/notifications">站内通知</RouterLink><span>{{ currentUser?.displayName }}</span><ElButton text @click="logout">退出</ElButton></div></header>
+      <header class="context-header"><img class="context-blueprint" :src="engineeringBlueprint" alt="" aria-hidden="true"><form class="global-search" role="search" @submit.prevent="submitSearch"><ElInput v-model="search" clearable placeholder="搜索案件号、报案号或手机号" aria-label="搜索案件"/><ElButton native-type="submit">搜索</ElButton></form><div class="header-actions"><RouterLink to="/notifications">站内通知</RouterLink><span>{{ currentUser?.displayName }}</span><ElButton text @click="logout">退出</ElButton></div></header>
       <main id="main-content" class="app-content" tabindex="-1"><slot /></main>
     </div>
   </div>

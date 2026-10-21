@@ -18,6 +18,7 @@ async function load() {
   try {
     const [detail, timeline] = await Promise.all([api.detail(props.caseId), api.history(props.caseId)])
     if (current !== request) return
+    if (detail.status === 'COMPLETED') { await router.replace('/historical-cases'); return }
     order.value = detail; history.value = timeline.records.slice(0, 4)
     const flow=(await httpClient.get<{data:Workflow}>('/work-orders/'+props.caseId+'/workflow')).data.data;if(current!==request)return;workflow.value=flow
     if (!['DRAFT','CANCELLED','CLOSED'].includes(detail.status)) {

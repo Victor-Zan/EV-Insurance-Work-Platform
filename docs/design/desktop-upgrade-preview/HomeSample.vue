@@ -1,0 +1,32 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue'
+import { ElMessage } from 'element-plus'
+import Icon from './Icon.vue'
+import blueprint from './assets/scooter-graphite.png'
+const emit = defineEmits<{ 'open-case': []; 'open-table': [] }>()
+const query = ref(''), appliedQuery = ref(''), notices = ref<HTMLElement>()
+const rows = [
+  { no: 'EVR-20261018-000001', claim: '示例报案 001', owner: '示例车主甲', vehicle: '示例品牌 A · 城市款', shop: '示例维修网点一', status: '待维修授权', tone: 'warning', date: '10-18 09:42' },
+  { no: 'EVR-20261018-000002', claim: '示例报案 002', owner: '示例车主乙', vehicle: '示例品牌 A · 轻行款', shop: '示例维修网点二', status: '待报价审核', tone: 'neutral', date: '10-18 09:28' },
+  { no: 'EVR-20261017-000003', claim: '示例报案 003', owner: '示例车主丙', vehicle: '示例品牌 B · 都市款', shop: '示例维修网点一', status: '维修中', tone: 'success', date: '10-17 16:20' },
+  { no: 'EVR-20261017-000004', claim: '示例报案 004', owner: '示例车主丁', vehicle: '示例品牌 B · 轻享款', shop: '待派单', status: '待派单', tone: 'neutral', date: '10-17 15:06' },
+  { no: 'EVR-20261016-000005', claim: '示例报案 005', owner: '示例车主戊', vehicle: '示例品牌 C · 悦行款', shop: '示例维修网点三', status: '待车主收车', tone: 'warning', date: '10-16 11:30' },
+  { no: 'EVR-20261016-000006', claim: '示例报案 006', owner: '示例车主己', vehicle: '示例品牌 C · 城市款', shop: '示例维修网点三', status: '待网点接单', tone: 'neutral', date: '10-16 10:08' },
+]
+const filtered = computed(() => rows.filter(row => Object.values(row).join(' ').toLowerCase().includes(appliedQuery.value.toLowerCase())))
+function setSearch(value: string) { query.value = value; appliedQuery.value = value }
+function showNotifications() { notices.value?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches || document.querySelector('.quiet-motion') ? 'instant' : 'smooth', block: 'start' }) }
+function openCase(no: string) { if (no === rows[0].no) emit('open-case'); else ElMessage.info('本轮案件详情样板为 EVR-20261018-000001，其余案件仅展示列表样式。') }
+function explain(name: string) { ElMessage.info(`${name}沿用现有业务流程，本轮样板只展示入口样式。`) }
+defineExpose({ setSearch, showNotifications })
+</script>
+
+<template>
+  <div class="home-page page-padding">
+    <header class="workbench-hero"><div class="hero-copy"><p class="overline">2026 年 10 月 18 日 <span>星期日</span></p><h1>客服工作台</h1><div class="hero-actions"><el-button type="primary" @click="explain('新建案件草稿')"><Icon name="plus" :size="16"/>新建案件草稿</el-button><el-button @click="emit('open-table')">价格数据库<Icon name="arrow" :size="15"/></el-button><button class="text-button" @click="explain('资金导入')">资金导入</button></div></div><img class="hero-blueprint" :src="blueprint" alt="电动车侧视与正视工程插图"></header>
+    <section class="surface pending-section" aria-labelledby="tasks-heading"><header class="section-heading"><h2 id="tasks-heading">我的待办 <span class="count">3</span></h2><button class="text-button" @click="explain('全部待办')">全部待办<Icon name="arrow" :size="16"/></button></header><div class="task-list"><button class="task-row" @click="emit('open-case')"><span class="task-icon warm"><Icon name="file"/></span><span class="task-primary"><strong>核对最终金额，确认维修授权</strong><small class="mono">EVR-20261018-000001</small></span><span class="task-subtitle">示例维修网点一</span><span class="task-deadline">今日 17:00 前</span><span class="row-action">进入处理<Icon name="arrow" :size="17"/></span></button><button class="task-row" @click="openCase(rows[1].no)"><span class="task-icon"><Icon name="price"/></span><span class="task-primary"><strong>审核网点报价</strong><small class="mono">EVR-20261018-000002</small></span><span class="task-subtitle">示例维修网点二</span><span class="task-deadline">今日 18:00 前</span><span class="row-action">进入处理<Icon name="arrow" :size="17"/></span></button><button class="task-row" @click="explain('投诉跟踪')"><span class="task-icon"><Icon name="bell"/></span><span class="task-primary"><strong>跟进投诉处理结果</strong><small class="mono">EVR-20261016-000006</small></span><span class="task-subtitle">示例维修网点三</span><span class="task-deadline muted">10 月 19 日前</span><span class="row-action">查看记录<Icon name="arrow" :size="17"/></span></button></div></section>
+    <div class="workbench-columns"><section class="surface queue-section" data-reveal aria-labelledby="queue-heading"><header class="section-heading"><h2 id="queue-heading">案件队列 <span class="count">{{ filtered.length }}</span></h2><button class="text-button" @click="emit('open-case')">查看案件<Icon name="arrow" :size="16"/></button></header><form class="queue-filter" @submit.prevent="appliedQuery = query"><el-input v-model="query" placeholder="案件号 / 报案号 / 车主" clearable aria-label="筛选示例案件"><template #prefix><Icon name="search" :size="16"/></template></el-input><el-button native-type="submit">查询</el-button></form><div class="queue-labels"><span>案件与车辆</span><span>当前状态</span><span>更新时间</span></div><button v-for="row in filtered" :key="row.no" class="queue-row" @click="openCase(row.no)"><span class="queue-primary"><strong class="mono">{{ row.no }}</strong><small>{{ row.vehicle }}<span class="tiny-divider">/</span>{{ row.owner }}</small></span><span class="status" :class="row.tone"><span/>{{ row.status }}</span><time class="mono">{{ row.date }}</time></button><div v-if="!filtered.length" class="empty-state"><Icon name="search" :size="28"/><h3>未找到符合条件的案件</h3><button class="text-button" @click="setSearch('')">清除筛选</button></div><footer class="list-footer"><span>共 {{ filtered.length }} 件</span><button class="text-button" @click="emit('open-case')">进入案件工作区<Icon name="arrow" :size="16"/></button></footer></section>
+      <aside ref="notices" class="surface notice-section" data-reveal aria-labelledby="notices-heading"><header class="section-heading"><h2 id="notices-heading">最近通知</h2><span class="count">3</span></header><button class="notice-item" @click="emit('open-case')"><span class="notice-bullet"/><span><strong>最终核损单已上传</strong><p>示例维修网点一</p><time>09:42</time></span><Icon name="arrow" :size="16"/></button><button class="notice-item" @click="openCase(rows[1].no)"><span class="notice-bullet"/><span><strong>收到新的网点报价</strong><p>示例维修网点二</p><time>09:28</time></span><Icon name="arrow" :size="16"/></button><button class="notice-item read" @click="openCase(rows[5].no)"><span class="notice-bullet"/><span><strong>完工照片已补齐</strong><p>示例维修网点三</p><time>昨日 16:20</time></span><Icon name="arrow" :size="16"/></button><button class="text-button all-notices" @click="explain('站内通知')">全部通知<Icon name="arrow" :size="16"/></button></aside></div>
+    <footer class="page-footnote">e保 · 保险协作台<span>所有案件与金额均为设计示例</span></footer>
+  </div>
+</template>
