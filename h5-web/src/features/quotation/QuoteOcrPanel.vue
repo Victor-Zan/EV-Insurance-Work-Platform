@@ -58,7 +58,7 @@ onUnmounted(()=>{disposed=true;if(timer)clearTimeout(timer);for(const page of pa
 </script>
 <template><section class="quote-ocr"><h4>上传手写清单识别</h4><p>候选结果，须人工核对。当前供应商：{{ provider||'读取中' }}。{{ provider==='MOCK_V1'?'当前为合成演示，不是真实识别。':'识别只提供报价候选，不自动提交。' }}</p>
 <label>清单材料类别<select v-model="category" :disabled="uploading||locked"><option value="SHOP_QUOTE">网点报价清单</option><option value="ASSESSMENT">网点定损清单</option></select></label>
-<input ref="input" type="file" accept=".jpg,.jpeg,.png" aria-label="手写报价清单图片" :disabled="uploading||locked||pages.length>=20" @change="choose">
+<FileDropZone hint="一次1张JPG/JPEG/PNG，≤10 MiB，最多20张。与原按钮相同：拖入或选择即上传并发起识别，真实模式可能消耗额度。" :max-bytes="10485760" :feedback="message" :disabled="uploading||locked||pages.length>=20" :busy="uploading"><input ref="input" type="file" accept=".jpg,.jpeg,.png" aria-label="手写报价清单图片" :disabled="uploading||locked||pages.length>=20" @change="choose"></FileDropZone>
 <button type="button" :disabled="uploading||locked||!provider||pages.length>=20" @click="input?.click()">{{ uploading?'正在上传…':'上传手写清单识别' }}</button><button v-if="selected" type="button" :disabled="uploading||locked" @click="upload">重新获取本次上传结果（同幂等键）</button>
 <p>每张图片独立保留来源和页次，最多20张。平台限10 MiB，百度另有尺寸/编码限制；不裁剪原件。上传即明确发起识别。</p><p role="status">{{ message }}</p>
 <button v-if="pages.some(page=>['QUEUED','RUNNING'].includes(page.job.state))" type="button" @click="stopped=true">停止页面等待，继续手填（已发起任务不撤销）</button><button v-if="pages.length" type="button" :disabled="locked" @click="stopped=false;polls=0;refresh()">刷新任务状态（不重新识别）</button>

@@ -41,15 +41,15 @@ defineExpose({createReviewedDraft})
   <section class="import-group chat-group" aria-label="聊天记录整包导入">
     <h3>聊天记录整包导入</h3><p>选择导出的文件夹，或将整个文件夹打包为 ZIP。</p>
     <div class="upload-row">
-      <label class="upload-choice" :class="{disabled:locked||busy}">上传文件夹<input type="file" webkitdirectory multiple :disabled="locked||busy" @change="importText"/></label>
-      <label class="upload-choice" :class="{disabled:locked||busy}">上传 ZIP<input type="file" accept=".zip,application/zip,application/x-zip-compressed" :disabled="locked||busy" @change="importText"/></label>
+      <FileDropZone folder hint="UTF-8 TXT 与 JPG/PNG；保留子目录路径。文字合计≤200000字节、50000字符、1000行；照片≤20张，每张≤10 MiB。" :feedback="importStatus" :error="message" :disabled="locked||busy" :busy="busy"><label class="upload-choice" :class="{disabled:locked||busy}">上传文件夹<input type="file" webkitdirectory multiple :disabled="locked||busy" @change="importText"/></label></FileDropZone>
+      <FileDropZone hint="一次1个ZIP；解压内容仅UTF-8 TXT和JPG/PNG。文字合计≤200000字节、50000字符、1000行；照片≤20张，每张≤10 MiB。" :feedback="importStatus" :error="message" :disabled="locked||busy" :busy="busy"><label class="upload-choice" :class="{disabled:locked||busy}">上传 ZIP<input type="file" accept=".zip,application/zip,application/x-zip-compressed" :disabled="locked||busy" @change="importText"/></label></FileDropZone>
     </div><p class="upload-help">包含 UTF-8 TXT 与 JPG / PNG，支持子文件夹。</p>
   </section>
   <section class="import-group separate-group" aria-label="文字和图片分别上传">
     <h3>文字 / 图片分别上传</h3><p>上传 TXT 或在下方粘贴文字，再添加物损图片。</p>
     <div class="upload-row">
-      <label class="upload-choice" :class="{disabled:locked||busy}">上传文字<input type="file" accept=".txt,text/plain" :disabled="locked||busy" @change="importText"/></label>
-      <label class="upload-choice" :class="{disabled:locked||busy}">上传图片<input type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" multiple :disabled="locked||busy" @change="importPhotos"/></label>
+      <FileDropZone hint="一次1个UTF-8 TXT；≤200000字节、50000字符、1000行。" :max-bytes="200000" :feedback="importStatus" :error="message" :disabled="locked||busy" :busy="busy"><label class="upload-choice" :class="{disabled:locked||busy}">上传文字<input type="file" accept=".txt,text/plain" :disabled="locked||busy" @change="importText"/></label></FileDropZone>
+      <FileDropZone :files="photos" hint="JPG/JPEG/PNG；支持批量，每张≤10 MiB，所有照片合计≤20张。" :max-bytes="10485760" :error="photoError" :disabled="locked||busy" :busy="busy"><label class="upload-choice" :class="{disabled:locked||busy}">上传图片<input type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" multiple :disabled="locked||busy" @change="importPhotos"/></label></FileDropZone>
     </div><p class="upload-help">图片每张不超过 10 MiB，合计最多 20 张。</p>
     <p class="photo-count" role="status">已选 {{ photos.length }} / 20 张图片，可在照片预览区查看或移除。</p>
     <p v-if="photoError" class="import-error" role="alert">{{ photoError }}</p>

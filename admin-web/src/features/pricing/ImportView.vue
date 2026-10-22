@@ -42,7 +42,7 @@ async function template() { await run(async () => {
   <p>UTF-8 CSV 或单工作表 XLSX，第一行必须按模板顺序。字段：brandCode、modelCode、internalCode、partName、alias、priceType、scope、regionCode、shopCode、amount、sourceCode、effectiveFrom、effectiveTo。</p>
   <p>品牌、车型、配件、别名、适配关系、来源及组织必须已存在；名称和别名可空。价格与日期使用文本，日期 yyyy-MM-dd，金额大于零且最多两位小数；全国范围不填写区域/网点，区域与网点分别填写已有编码。XLSX 不接受公式。最多 10 MiB / 20,000 行 / 单元格 256 字符。</p>
   <p>预览不写正式价格。确认时重新校验；任意错误整批价格零写入，失败批次和错误仍保留。可追加更晚的新版本，自动截止无期限旧版本；不能覆盖有限历史区间。</p>
-  <input aria-label="价格导入文件" type="file" accept=".xlsx,.csv" :disabled="busy" @change="select"><span>{{ selectedName }}</span><ElButton :disabled="busy || !file" @click="upload">解析并预览</ElButton>
+  <FileDropZone hint="一次1个UTF-8 CSV或单工作表XLSX；≤10 MiB、20000行。选择后仍需解析预览、人工确认。" :max-bytes="10485760" :error="error" :status="preview?'success':'pending'" :disabled="busy" :busy="busy"><input aria-label="价格导入文件" type="file" accept=".xlsx,.csv" :disabled="busy" @change="select"></FileDropZone><span>{{ selectedName }}</span><ElButton :disabled="busy || !file" @click="upload">解析并预览</ElButton>
   <template v-if="preview">
    <h2>校验预览</h2><p>总行数 {{ preview.totalRows }} · 有效 {{ preview.validRows }} · 错误 {{ preview.errorRows }} · 文件内重复 {{ preview.duplicateRows }} · 预览有效至 {{ preview.expiresAt }}</p>
    <ElAlert v-if="preview.errorRows" title="存在错误，确认后仅记录失败批次，不写入任何价格。" type="warning" :closable="false" />
