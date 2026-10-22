@@ -17,7 +17,11 @@
 
 验证日志在仓库外 `file-drop-runtime/final-{admin-web,h5-web}-{lint,typecheck,test,build}.log`，实际截图7张和可查看报告在同目录screenshots、acceptance.html。初次依赖安装遇沙箱DNS失败后成功补齐；初轮回归发现H5识别叶组件一致性断言失败，已同步同一交互并完整重跑通过，未删/跳过/放宽测试。没有重启、替换或部署当前网站。
 
-提交身份沿用本机Sherry070719；实现提交主题为 `feat(upload): support file drag and drop in existing upload flows`，最终提交号以该Git记录及交付报告为准。只推送功能分支，Draft PR结果另记录；不合并、不部署。
+提交身份沿用本机Sherry070719；实现提交 `a4987f2`，主题 `feat(upload): support file drag and drop in existing upload flows`，已正常推送 `codex/file-drop-import`。GitHub集成仅尝试一次创建Draft PR，返回 `403 Resource not accessible by integration`（FORBIDDEN）；未创建PR，未换渠道/凭据绕过或反复尝试。不合并、不部署。此交付记录随后以文档提交推送原功能分支。
+
+- 分支：https://github.com/Victor-Zan/EV-Insurance-Work-Platform/tree/codex/file-drop-import
+- 有权限人员手动创建Draft PR：https://github.com/Victor-Zan/EV-Insurance-Work-Platform/compare/main...codex/file-drop-import?expand=1
+- base为main，compare为codex/file-drop-import；可复制说明保存在仓库外file-drop-runtime/PR_DESCRIPTION.md。当前现有网站未切换版本，需审查和后续部署安排后才会看到本分支界面。
 
 ## 2026-10-22 PR #6 冲突整合（本地合入 main，不是 PR 合并）
 
