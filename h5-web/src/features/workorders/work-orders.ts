@@ -10,9 +10,9 @@ export interface Assignment { id: number; assignmentVersion: number; shopId: num
 export interface WorkOrder {
   id: string; businessNo?: string; insuranceCompany?: string; claimNo?: string; ownerName?: string; ownerPhone?: string
   vehicleBrand?: string; vehicleModel?: string; accidentAt?: string; accidentAddress?: string; accidentDescription?: string
-  status: WorkOrderStatus; shopId?: number; currentAssignment?: Assignment
+  status: WorkOrderStatus; shopId?: number; currentAssignment?: Assignment; workflowNode?: string
 }
-export interface History { id: number; toStatus: string; action: string; reason?: string; occurredAt: string }
+export interface History { id: number; fromStatus?: string; toStatus: string; action: string; reason?: string; occurredAt: string }
 export const statusLabels: Record<WorkOrderStatus,string> = {
   DRAFT:'草稿',PENDING_DISPATCH:'待派单',PENDING_ACCEPTANCE:'待接单',PENDING_ARRIVAL:'待到店',ARRIVAL_EXCEPTION:'到店异常',ARRIVED:'已到店',
   WAITING_QUOTE:'待报价',QUOTE_REVIEWING:'报价审核中',WAITING_INSURER_ASSESSMENT:'等待保险核损',WAITING_REPAIR_AUTHORIZATION:'待维修授权',

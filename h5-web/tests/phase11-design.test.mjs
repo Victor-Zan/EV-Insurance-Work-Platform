@@ -8,7 +8,7 @@ const source = path => readFileSync(new URL(path, import.meta.url), 'utf8')
 test('phase 11 shell exposes role-specific H5 navigation and dedicated pages', () => {
   const shell=source('../src/shared/ui/H5Shell.vue'),router=source('../src/router/index.ts'),app=source('../src/App.vue')
   assert.match(shell,/维修网点/);assert.match(shell,/车主/);assert.match(shell,/safe-area-inset-bottom/)
-  assert.match(shell,/任务/);assert.match(shell,/案件/);assert.match(shell,/通知/);assert.doesNotMatch(shell,/label:'投诉'/);assert.match(shell,/icon:'volume-o'/);assert.match(shell,/我的/)
+  assert.match(shell,/任务/);assert.match(shell,/案件/);assert.match(shell,/通知/);assert.doesNotMatch(shell,/label:'投诉'/);assert.match(shell,/glyph:'bell'/);assert.match(shell,/我的/)
   assert.match(router,/path: '\/notifications'/);assert.match(router,/path: '\/complaints'.*roles: \['OWNER'\]/);assert.match(router,/path: '\/me'/)
   assert.match(app,/ConfigProvider/);assert.match(app,/H5Shell/)
 })

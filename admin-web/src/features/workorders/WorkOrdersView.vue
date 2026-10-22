@@ -43,7 +43,9 @@ async function create(submitFormal=false){
       confirmDuplicate:async()=>{const result=await ElMessageBox.prompt('发现疑似重复案件。请输入继续创建原因：','疑似重复案件',{inputValidator:value=>Boolean(value.trim())||'原因必填'});return result.value.trim()}})
   }catch(error){
     const phase=saveStage.value==='PHOTOS'?'草稿已保存，物损照片上传未完成。':saveStage.value==='SUBMIT'?'草稿与材料已保存，正式提交结果需核对；重试前会先读取案件状态。':'草稿保存未完成或结果尚未确认。'
-    creationError.value=phase+(error instanceof Error?error.message:'操作已取消')+(error instanceof ApiError?'（'+error.code+'）':'');ElMessage.error(creationError.value);return
+    creationError.value=error instanceof ApiError&&error.code==='DUPLICATE_CASE'
+      ?'草稿与材料已保存。'+error.message+'（'+error.code+'）'
+      :phase+(error instanceof Error?error.message:'操作已取消')+(error instanceof ApiError?'（'+error.code+'）':'');ElMessage.error(creationError.value);return
   }finally{saving.value=false}
   ElMessage.success(saved.status==='DRAFT'?'草稿已保存':'案件已正式建单')
   dialog.value=false;pendingDraft.value=undefined;sceneFiles.value=[];Object.assign(form,blank());ocrBlocked.value=false;ocrSession.value++;submitKey.value=crypto.randomUUID()
