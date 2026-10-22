@@ -78,6 +78,39 @@ class MapRecommendationPostgresIT {
 
     @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
     @Autowired MapTestPositions testPositions;
+    @Test void explicitExtraAttemptIsAppendOnlySharedAndStopsWithOriginalRun() throws Exception {
+        String run="offline-extra-"+UUID.randomUUID();
+        var parameters=Map.of("city","440300","address","synthetic-expired-gate");
+        String hash=MapCallBudget.fingerprint("/v3/geocode/geo",parameters);
+        db.update("insert into map_call_budget_run(id,enabled) values(?,true)",run);
+        db.update("insert into map_call_budget_slot(run_id,subject,operation,request_hash) values(?,'GEO_CUHK','GEOCODE',?)",run,hash);
+        var originalEnv=new org.springframework.mock.env.MockEnvironment().withProperty("AMAP_BUDGET_RUN_ID",run).withProperty("AMAP_BUDGET_SCHEMA",SCHEMA);
+        var original=new MapCallBudget(db,transactions,originalEnv);original.reserve("/v3/geocode/geo",parameters);
+        var firstAttempt=db.queryForObject("select attempted_at from map_call_budget_slot where run_id=?",java.time.OffsetDateTime.class,run);
+        var env=new org.springframework.mock.env.MockEnvironment().withProperty("AMAP_BUDGET_RUN_ID",run).withProperty("AMAP_BUDGET_SCHEMA",SCHEMA).withProperty("AMAP_BUDGET_EXTRA_SCHEMA",SCHEMA);
+        String url=System.getenv("TEST_DB_URL");
+        var source=new org.springframework.jdbc.datasource.DriverManagerDataSource(url+(url.contains("?")?"&":"?")+"currentSchema=public",System.getenv("TEST_DB_USERNAME"),System.getenv("TEST_DB_PASSWORD"));
+        var extra=new MapCallBudget(new JdbcTemplate(source),new org.springframework.jdbc.datasource.DataSourceTransactionManager(source),env);
+        assertThat(extra.availability().remaining()).isZero();
+        assertThatThrownBy(()->extra.reserve("/v3/geocode/geo",parameters)).extracting("code").isEqualTo("MAP_LOCAL_BUDGET");
+        db.update("insert into map_call_budget_extra_attempt(ledger_schema,run_id,subject,operation,authorization_ref,request_hash) values(?,?,'GEO_CUHK','GEOCODE','synthetic-confirmed-extra',?)",SCHEMA,run,hash);
+        assertThat(extra.availability().remaining()).isEqualTo(1);
+        extra.stopFor("MAP_QUOTA");
+        assertThatThrownBy(()->extra.reserve("/v3/geocode/geo",parameters)).extracting("code").isEqualTo("MAP_LOCAL_BUDGET");
+        db.update("update map_call_budget_run set enabled=true where id=?",run);
+        var restarted=new MapCallBudget(db,transactions,env);var successes=new AtomicInteger();
+        try(var pool=java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()){
+            var jobs=new ArrayList<java.util.concurrent.Future<?>>();
+            for(int i=0;i<12;i++)jobs.add(pool.submit(()->{try{extra.reserve("/v3/geocode/geo",parameters);successes.incrementAndGet();}catch(MapFailure expected){assertThat(expected.code()).isEqualTo("MAP_LOCAL_BUDGET");}}));
+            for(var job:jobs)job.get();
+        }
+        assertThat(successes.get()).isEqualTo(1);assertThat(restarted.availability().remaining()).isZero();
+        assertThat(db.queryForObject("select attempted_at from map_call_budget_slot where run_id=?",java.time.OffsetDateTime.class,run)).isEqualTo(firstAttempt);
+        assertThatThrownBy(()->db.update("update map_call_budget_extra_attempt set attempted_at=null where run_id=?",run)).isInstanceOf(org.springframework.dao.DataAccessException.class);
+        assertThatThrownBy(()->db.update("delete from map_call_budget_extra_attempt where run_id=?",run)).isInstanceOf(org.springframework.dao.DataAccessException.class);
+        assertThatThrownBy(()->db.update("insert into map_call_budget_extra_attempt(ledger_schema,run_id,subject,operation,authorization_ref,request_hash) values(?,?,'GEO_CUHK','GEOCODE','synthetic-confirmed-extra',?)",SCHEMA,run,hash)).isInstanceOf(org.springframework.dao.DataAccessException.class);
+        assertThatThrownBy(()->new MapCallBudget(db,transactions,env.withProperty("AMAP_BUDGET_EXTRA_SCHEMA","bad;schema"))).isInstanceOf(IllegalArgumentException.class);
+    }
     @Test void separateBusinessSchemaUsesOriginalLedgerWithoutCopyingAllowances(){
         String run="offline-external-"+UUID.randomUUID();
         var parameters=Map.of("city","440300","address","synthetic-original-ledger");
@@ -199,7 +232,7 @@ class MapRecommendationPostgresIT {
         assertThatThrownBy(()->db.update("insert into shop_map_location(shop_id,version,district_id,address_snapshot,longitude,latitude,coordinate_system,source,created_by) values(?,3,?,'合成',113,23,'GPS','ADMIN_CONFIRMED_GCJ02',?)",shopId,district,actor)).isInstanceOf(org.springframework.dao.DataAccessException.class);
         query(position(),UUID.randomUUID().toString(),null,200);
         String audit=String.join("\n",db.queryForList("select summary from audit_log where action like 'MAP_%'",String.class));assertThat(audit).doesNotContain("合成停车位置","合成测试街道","113.15",PASSWORD,"access_token","key=");
-        flyway.validate();assertThat(flyway.info().current().getVersion().toString()).isEqualTo("25");
+        flyway.validate();assertThat(flyway.info().current().getVersion().toString()).isEqualTo("26");
     }
     @Test void ambiguousModelForeignPositionAndUnknownSourceCannotBecomeRealRecommendation() throws Exception {
         when(provider.locate(any())).thenReturn(new MapProvider.AddressCandidate("合成外省",new MapProvider.Point(28,112),"湖南省","长沙市","合成区","430100","REVERSE","REQUIRES_CONFIRMATION",false));
