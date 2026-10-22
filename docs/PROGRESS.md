@@ -1,3 +1,12 @@
+## 2026-10-22 11时 高德main包含范围、真实验收与当前页面复核
+
+- 完整核查见 [AMAP_STATUS_AUDIT_20261022](AMAP_STATUS_AUDIT_20261022.md)。远程main仍94173d2：基础地图代码已通过普通整合提交5076429进入main；本轮安全整合代码7cb469e不是main祖先，V25仍未进入main，不把两者混称“全部已合并”。GitHub全部PR核查无地图PR；本轮创建Draft PR再次返回403 `Resource not accessible by integration`，未换渠道绕过或重试。手动创建链接见报告。关键真实验收未完成，不能普通合并。
+- 本轮真实调用0：旧权威run关闭，4地理编码/1逆编码/3路线槽均未尝试；新最终schema预算run0、推荐查询0、位置0。当前可执行授权0，不重置或复制预算。历史另一次深圳湾科技生态园解析1次/2候选与学校验收无关。
+- 原本机预览及存储进程已停止；本轮恢复同一已验证隔离包（SHA256匹配）、原PG/MinIO，前端5194→后端18089、代码7cb469e、schema amap_main_final_20261022、AMAP_WEB_V1且外呼关闭。启动再次校验27迁移资源、无需迁移，V23/V24/V25成功；旧库/检查点保留。不是main发布，也没有升级旧库。
+- 实际浏览器只读截图11:06:17/11:06:59保存在仓库外runtime的audit-current-full-page.jpg、audit-current-candidates.png：事故南山区与停车位置分开，三家虚构网点“距离未计算”。本轮仅输入未保存公开入口文字、展开列表；没有解析、查询、保存或派单。11:10:59只读SQL确认EVR-20261022-000001仍PENDING_DISPATCH、工单版本2、shop_id空、assignment记录0（无派单版本）；停车字段仍空。
+- 四入口沿用用户已确认方案（南科大1号门、港中深东门、深大粤海立德门、深技大坪山1号门）。真实道路距离、耗时、排名、推荐、人工改选和正式派单均未执行，不填0/不编造结果或截图。学校不是合作维修商。
+- 本轮无代码/迁移变化，未重复完整Maven/npm；沿用同一代码此前77单元+132集成、管理端124/H5 32测试及两端lint/typecheck/build通过的历史证据，本轮另做运行包/启动Flyway/只读DB/浏览器验收与git diff检查。Compose缺Docker仍未验证。下一步需要手动PR（或集成权限修复）及用户另行明确是否重开原剩余额度，完成真实验收/审查/审批后再合并。
+
 ## 2026-10-22 最新main整合与V25迁移（自动验证通过，真实预算保持关闭）
 
 - GitHub交付：分支`codex/amap-main-integration`已正常推送，代码7cb469e、验证记录4066783。推送前再次fetch确认main仍94173d2，无V25新撞号。GitHub集成创建指向main的Draft PR返回`403 Resource not accessible by integration`；未用其他通道绕过、未重试创建或合并。可[手动创建Draft PR](https://github.com/Victor-Zan/EV-Insurance-Work-Platform/compare/main...codex/amap-main-integration?expand=1)。当前main仍未合入本轮整合，关键真实验收未执行也不满足合并条件。
