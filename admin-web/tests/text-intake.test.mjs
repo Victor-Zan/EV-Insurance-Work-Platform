@@ -5,7 +5,8 @@ import {parse,compileScript} from '@vue/compiler-sfc'
 import ts from 'typescript'
 import * as Vue from 'vue'
 import * as Forms from '../src/features/materials/ocr-form.ts'
-import {readChatFiles} from '../src/features/workorders/intake.ts'
+import * as Intake from '../src/features/workorders/intake.ts'
+import {BlobWriter,TextReader,ZipWriter} from '@zip.js/zip.js'
 import {mergeIntakeDraft} from '../src/features/workorders/intake-values.ts'
 
 function intake(){
@@ -22,11 +23,12 @@ function intake(){
   const result=body.text.includes('\n')?{fields:{claimNo:'TEXT-SYNTHETIC'},evidence:{ownerName:[{value:'候选甲'},{value:'候选乙'}]}}:{fields:{ownerName:body.text.split('：')[1]}}
   return {data:{data:result}}
  }}
- code=code.replace(/import\s*\{\s*readChatFiles\s*\}\s*from\s*['"][^'"]+['"];?/g,'const readChatFiles=__readChatFiles;')
+ code=code.replace(/import\s*\{([^}]+)\}\s*from\s*['"][^'"]*intake['"];?/g,(_,names)=>'const {'+names+'}=__intake;')
  code=code.replace(/import\s*\{\s*mergeIntakeDraft\s*\}\s*from\s*['"][^'"]+['"];?/g,'const mergeIntakeDraft=__mergeIntakeDraft;')
- const component=new Function('__vue','__client','__forms','__readChatFiles','__mergeIntakeDraft',code)(Vue,client,Forms,readChatFiles,mergeIntakeDraft)
- const context=component.setup({form,locked:false},{expose(){},emit(name,value){if(name==='merge')Object.assign(form,value);if(name==='blocked')blocked=value}})
- return {context,form,requests,blocked:()=>blocked}
+ const component=new Function('__vue','__client','__forms','__intake','__mergeIntakeDraft',code)(Vue,client,Forms,Intake,mergeIntakeDraft)
+ const props=Vue.reactive({form,locked:false,photos:[]})
+ const context=component.setup(props,{expose(){},emit(name,value){if(name==='merge')Object.assign(form,value);if(name==='blocked')blocked=value;if(name==='photos')props.photos.push(...value)}})
+ return {context,form,props,requests,blocked:()=>blocked}
 }
 test('ambiguous text needs an explicit choice; retained original and adopted China time stay aligned',async()=>{
  const {context,form,requests}=intake();const original='车主姓名：候选甲\n车主姓名：候选乙'
@@ -52,4 +54,45 @@ test('TXT and folder imports immediately extract the insured plate and surveyor 
   assert.equal(form.vehiclePlate,'粤BD27391');assert.equal(form.surveyorName,'合成');assert.deepEqual(context.ambiguities.value,[])
   assert.equal(requests.filter(row=>row.url.endsWith('/extract')).length,1)
  }
+})
+
+test('ZIP imports photos into the shared list and extracts text without OCR',async()=>{
+ const {context,props,requests}=intake(),writer=new ZipWriter(new BlobWriter(),{useWebWorkers:false})
+ await writer.add('聊天/记录.txt',new TextReader('标的车牌：粤BD27391'))
+ await writer.add('聊天/照片.jpg',new TextReader('synthetic-image'))
+ const input={files:[new File([await writer.close()],'聊天.zip')],hasAttribute:()=>false,value:'selected'}
+ await context.importText({target:input})
+ assert.equal(props.photos.length,1);assert.equal(props.photos[0].name,'照片.jpg')
+ assert.equal(requests.length,1);assert.ok(requests[0].url.endsWith('/extract'));assert.equal(input.value,'')
+ assert.match(context.importStatus.value,/聊天.zip.*1张/)
+})
+test('separate images append without changing reviewed text, and reject invalid or excessive batches atomically',async()=>{
+ const {context,props,requests}=intake()
+ context.text.value='已核对文字';context.source.value='已核对文字';context.confirmed.value=true
+ const input={files:[new File(['image'],'first.jpg')],value:'selected'}
+ context.importPhotos({target:input});assert.equal(props.photos.length,1);assert.equal(input.value,'')
+ assert.equal(context.confirmed.value,true);assert.equal(context.text.value,'已核对文字');assert.equal(requests.length,0)
+ input.files=[new File(['image'],'second.png'),new File(['bad'],'bad.pdf')];context.importPhotos({target:input})
+ assert.equal(props.photos.length,1);assert.match(context.photoError.value,/JPG\/PNG/)
+ input.files=Array.from({length:20},()=>new File(['image'],'extra.jpg'));context.importPhotos({target:input})
+ assert.equal(props.photos.length,1);assert.match(context.photoError.value,/最多20张/)
+ input.files=[new File(['image'],'second.png')];context.importPhotos({target:input})
+ assert.equal(props.photos.length,2);assert.equal(context.photoError.value,'')
+})
+test('failed package validation preserves the old text, confirmation and photos, and can be retried',async()=>{
+ const {context,props,requests,blocked}=intake()
+ context.text.value='已核对文字';context.source.value='已核对文字';context.confirmed.value=true
+ props.photos=Array.from({length:20},()=>new File(['image'],'existing.jpg'))
+ const input={files:[new File(['标的车牌：粤BD27391'],'a.txt'),new File(['image'],'new.jpg')],hasAttribute:()=>true}
+ await context.importText({target:input})
+ assert.match(context.message.value,/最多20张/);assert.equal(context.text.value,'已核对文字');assert.equal(context.confirmed.value,true)
+ assert.equal(props.photos.length,20);assert.equal(requests.length,0);assert.equal(blocked(),false)
+ props.photos.pop();await context.importText({target:input})
+ assert.equal(props.photos.length,20);assert.equal(context.message.value,'');assert.equal(requests.length,1);assert.equal(blocked(),true)
+})
+test('locked controls do not import text or photos',async()=>{
+ const {context,props,requests}=intake();props.locked=true
+ await context.importText({target:{files:[new File(['text'],'a.txt')]}})
+ context.importPhotos({target:{files:[new File(['image'],'a.jpg')]}})
+ assert.equal(props.photos.length,0);assert.equal(context.text.value,'');assert.equal(requests.length,0)
 })

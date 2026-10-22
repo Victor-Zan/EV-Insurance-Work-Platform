@@ -1,3 +1,24 @@
+## 2026-10-22 PR #6 冲突整合（本地合入 main，不是 PR 合并）
+
+- 核实 PR #6：源分支 codex/amap-main-integration、原提交540eb82，目标main e50c114；PR open、merged=false。初始工作区干净，沿用本机提交身份。仅将最新main正常合入原功能分支，保留双方提交历史，不新建PR、不合并PR、不强推。
+- 唯一文本冲突是本文件首部：双方在相同位置分别追加高德验收和ZIP/统一登录进度。逐段保留两侧完整记录，下文“历史执行记录”中0次、未执行和403均是当时状态；最新真实结果以13时完成记录及AMAP_LIVE_ACCEPTANCE_20261022为准。现已有PR #6，早期“尚无PR/需手动创建”不代表当前状态。
+- main新增ZIP、文字/图片导入、累计照片校验、统一登录错误提示及启动器检查原样保留；自动合并的需求同时保留地图与ZIP规则。共享建单/派单、角色及事故区县/停车独立规则未放宽。最新main迁移到V24，本分支V25/V26无撞号；不改任何既有迁移、旧库或执行历史。
+- 本轮首次完整后端回归78单元通过，134集成中1失败：IdentityPostgresIT的完整迁移清单漏列V26，实际迁移没有失败。仅补齐该明确版本断言，保留所有既有身份、权限和业务断言；不修改迁移。完整重跑于18:08:29 BUILD SUCCESS，78单元＋134集成、失败/错误/跳过0。首次失败日志与第二轮报告均保留，未把历史结果记作本次通过。
+- main的ZIP、建单页面、共享HTTP和启动器与远程原文一致；本轮额外手工修改仅进度、PR说明、常驻运行边界和上述测试清单。常驻启动器target=24不等于隔离V26，未提高target、升级旧库或替换JAR。双方原PROGRESS的466/458段全部保留；24份main迁移blob一致、26个正式迁移版本唯一，隔离验收库V23—V26执行校验值与源码相符。
+- 高德与百度新增真实调用均0，原权威run仍关闭，原槽7次＋追加2次的attempted_at及旧库迁移历史在前后只读快照中完全一致；新业务schema无新预算run。EVR-20261022-000001仍网点2/PENDING_ACCEPTANCE/工单版本5，未修改或重做验收。当前网站没有重启或更新，历史真实验收不冒充本次浏览器回归。
+
+| 本轮重新执行的检查 | 结果与证据 |
+| --- | --- |
+| 后端完整验证 | `backend`下`mvnw.cmd -B -ntp -Dvalidation.build.directory=C:/Users/Sherr/Documents/Codex/amap-main-runtime/pr6-backend-build- clean verify -Ppostgres-it`；78单元＋134 PostgreSQL/MinIO集成，全部通过，跳过0；包含共享建单/派单、四角色、账号开通、OCR、报价及地图回归。第二轮Maven记录37:11含中断恢复，不作性能指标；报告位于仓库外pr6-backend-build-，日志pr6-backend-verify-final.log（原文件pr6-backend-verify-.log） |
+| Flyway | 完整新随机schema迁移/validate、V24→V26保留数据且无默认预算、再次migrate为0均通过；日志校验28迁移资源。旧V17、本地旧V23和最终V26库仅只读核对，没有repair、清库或修改历史 |
+| 管理端 | `npm run lint`、`npm run typecheck`、`npm test`、`npm run build -- --outDir C:/Users/Sherr/Documents/Codex/amap-main-runtime/pr6-admin-web-build`全部通过；133测试、失败/跳过0，构建1.40秒；覆盖ZIP安全/等价/累计照片、统一登录、停车隔离、人工改选及原派单适配器 |
+| H5 | 同四项命令，outDir为仓库外pr6-h5-web-build；32测试、失败/跳过0，构建1.26秒。两端产物不替换现有dist或运行网站 |
+| 依赖及启动脚本 | 首次`npm ci --ignore-scripts --no-audit --no-fund`因现有预览锁住native文件EPERM失败，未终止该进程；`npm install --ignore-scripts --no-audit --no-fund`补齐成功，package-lock仍与main一致。启动器PowerShell语法解析错误0，未执行Start/Watch |
+| 安全与文档 | `git diff --check`、冲突标记/未解决索引检查、暂存私密值扫描通过；无私密配置、图片、全文或数据库备份进入提交。每侧原进度段落全保留，无单边覆盖 |
+| 未验证与后续 | 本轮无Docker CLI，Compose未验证；未新增浏览器端到端或真实接口验收。正常合并提交仅推送原功能分支以更新PR #6；PR是否无冲突、检查和审批须分别读取GitHub最新结果，不能把本地合入main说成PR已合入main。仍需正式代码审查、仓库要求检查和人工审批；本轮不合并PR或部署 |
+
+详细本轮日志、前后只读快照均在仓库外amap-main-runtime的pr6-*文件，未提交私密运行资料。下文各日期/时刻记录保留原貌，均是对应时点的状态。
+
 ## 2026-10-22 13时 三目的地真实驾车排序与合成案件派单完成（未合并main，外呼关闭）
 
 - 最终事实/截图见[AMAP_LIVE_ACCEPTANCE_20261022](AMAP_LIVE_ACCEPTANCE_20261022.md)。代码380c854，四入口沿用确认方案。深大唯一粤海立德门、深技大唯一1号门；港中深逐条比对唯一匹配用户选定原候选1，未盲选首条；南科大追加解析唯一1号门由客服确认。
@@ -65,6 +86,41 @@
 - 管理端首轮113测试通过；增加预算关闭和手工选择API回归后116测试通过，lint/typecheck/build通过；H5 lint/typecheck/27测试/build通过。后续必要重跑及真实验收以本节后续记录为准。无Docker CLI，Compose未验证。
 - 2026-10-22用户确认独立“人工核对事故区县”入口及七条边界，已先更新需求/决策并实现：沿用ADMIN/客服案件权限与派单阶段，完整启用区县树分页、明确原因/核对、版本审计；停车与事故地址保持独立，不自动扩展城市关系；拒绝使当前已派网点失去服务资格的变更。新增后端集成与前端交互回归，正在运行完整验证。本轮合成案件仍预先明确南山区，不为匹配网点改事故事实。
 - 代码审查已检查角色/案件/网点范围、外呼前持久计数、不可重置台账、provider无降级、短期供应商坐标不入库、查询采用前读取的案件版本以避免并发停车变化冒用新版依据，并追加内存过期清理。真实验收/PR/合并/本地main运行更新尚未完成，不能写成通过。
+
+## 2026-10-22 新建案件聊天资料上传入口更新
+
+- 用户先要求只出计划，确认后授权限定范围实施。本轮仅调整新建案件资料导入：浅蓝“聊天记录整包导入”提供文件夹/ZIP，浅米色“文字 / 图片分别上传”提供相邻TXT/图片入口，原始文字仍可粘贴与核对。两组有独立标题、边框及键盘焦点，图片计数显示所有入口累计数量。
+- `TextFormIntake.vue`复用既有提取/人工确认及photos事件，`WorkOrdersView.vue`只增加当前照片列表属性，原照片预览、删除及幂等保存组件未改。整批校验后再采用资料，超量或读取失败保留旧原文、核对结果和照片；新增图片不重提取或清空已核对文字。所有入口累计最多20张，其余限制沿用本轮确认计划。
+- 新增`intake-zip.ts`及锁定依赖`@zip.js/zip.js@2.24.0`，仅ZIP选择时动态加载（构建129.37kB，gzip59.01kB）。浏览器按条目/块读取并检查实际解压大小、CRC、路径、加密及文件类型，保留中文相对路径与原图片字节，随后共用原TXT解析。ZIP不发送至新的存储或接口，不启动第13阶段智能分类/PDF/OCR。依赖用法核对[zip.js官方文档](https://gildas-lormeau.github.io/zip.js/api/classes/ZipReader.html)。
+
+| 检查 | 实际结果 |
+| --- | --- |
+| 专项回归 | `admin-web`下`node --test tests/intake-zip.test.mjs tests/text-intake.test.mjs tests/intake-files.test.mjs tests/intake-recovery.test.mjs`，23项通过；覆盖中文嵌套目录、ZIP/文件夹等价、损坏/加密/异常路径/不支持文件、缺TXT、文本/照片上限、伪造解压大小、累计超量原子拒绝、重试保留、锁定及图片不OCR |
+| 全量管理端测试 | 首次`npm --prefix admin-web test`有测试子进程`spawn EPERM`，未记为通过；改用`admin-web`下`node --test --test-concurrency=1 tests/*.test.mjs`后127项全部通过，0失败/取消/跳过，72.67秒。未删除、跳过或放宽任何测试。日志`tmp/intake-upload/test{,-serial}.log` |
+| lint/类型/构建 | `npm --prefix admin-web run lint`、`run typecheck`、`run build`均退出0，最终构建1.43秒；日志`tmp/intake-upload/{lint,typecheck,build}.log`。首次lint指出catch转换错误须保留cause，已补齐后重跑通过 |
+| 浏览器 | 使用真实WorkOrdersView及其子组件的本地隔离验收页，所有API以合成适配器响应，不登录或写入业务库。ZIP导入后原文、字段和1张照片出现；独立图片入口追加后计数2，人工核对后保存调用原文字草稿与两张图片流程。1280×720两组入口清晰；390×844页面scrollWidth=390，组内无横向溢出。截图`tmp/intake-upload/{desktop,mobile,saved}.jpg`。首次依赖预构建刷新导致选择丢失，重试成功后才计为通过 |
+| 改动范围 | 父页面仅新增照片属性；其他页面、登录、共享HTTP、后端、数据库、H5、启动脚本均未由本轮修改。开始前已有的登录修复和文档变更保留。`git diff --check`通过，仅换行提示 |
+
+未验证：真实后端新工单写入、生产/跨浏览器/实体设备；本轮后端/数据库/H5无改动，相关门禁未重复执行。合成验收页已移除，截图/夹具/日志留在Git忽略的tmp目录；没有提交、推送或部署。本阶段完成并停止。
+
+## 2026-10-22 统一登录错误提示与常驻后端版本同步修复
+
+- 用户反馈既有管理员和客服账号使用原密码均显示“账号或密码错误”。范围：确认账号／服务版本原因，恢复新版统一登录，保留密码、角色、启用／激活状态和全部页面设计；验收为两个账号通过实际浏览器登录、真实错误密码及越权仍拒绝、运行入口不再仅凭普通health宣称登录可用。
+- 实际对照：同两个账号经5173代理、带真实127.0.0.1 Origin调用旧 `/auth/login` 均200且角色正确，新 `/auth/sign-in` 均401／UNAUTHORIZED。运行中JAR不含UnifiedLoginService；旧后端仍为26592，前端已随拉取94173d2切换新版接口。数据库只读查询确认public修复前已是V24，账号密码并未失效，问题是常驻运行包没有随源码更新。
+- 保留当前数据库备份 `tmp/login-runtime-sync/db-before-runtime-sync.dump`（19,882,571字节，Git忽略），在专用测试库随机schema验证当前后端。核验原守护／后端的命令路径和启动时间后，停止两者，用watch.lock隔离替换窗口，保留旧JAR，安装已验证新包；启动新版守护28220和后端22588。原管理端4264不动。旧包、来源和新SHA256见 LOCAL_RUNTIME；数据库启动校验25条、public V24、No migration necessary，没有执行新的迁移／清库／账号重置。
+- 启动器增加LoginApi检查，以空对象访问统一登录接口，验证新版参数校验400，旧运行包会401；不提交凭据、不执行登录或消耗其限流。修复前Status记录LoginApi False，其余True；修复后七项全True。Start／守护增加对应错误提示，启动参数匹配已确认target24；重启守护加载了新源码，重复Start复用同PID健康服务。
+- 管理端错误转换区分 `/auth/sign-in` 的UNAUTHORIZED（登录服务暂未就绪）和INVALID_CREDENTIALS（账号或密码错误），保持401处理及错误码，不自动重试或降级到旧接口。新增回归在旧转换下先失败，修复后完整测试通过。
+
+| 检查 | 本轮实际结果 |
+| --- | --- |
+| 后端 | Java21；`backend`下 `.\mvnw.cmd -B -ntp '-Dvalidation.build.directory=../tmp/login-runtime-sync/backend-build' '-Dit.test=AccountActivationPostgresIT,MapRecommendationPostgresIT' verify -Ppostgres-it`通过；77单元＋21真实PG／MinIO集成，0失败／错误／跳过。隔离测试库、Mock供应商及真实地图预算0，无真实高德调用；日志 `tmp/login-runtime-sync/backend-verify.log` |
+| 管理端 | `npm run lint`、`npm run typecheck`、`npm test`、`npm run build`全通过；119测试0失败／跳过。日志 `tmp/login-runtime-sync/frontend-{lint,typecheck,test,build}.log`；先红记录 `frontend-red.log` |
+| 真实统一登录 | 两个原账号分别通过 `/auth/sign-in` 200、`/auth/handoff` 200，activated均True，角色分别CUSTOMER_SERVICE／ADMIN；没有输出或保存密码／交接码／Token |
+| 实际浏览器 | 原管理员进入“管理工作台”，退出后原客服进入“客服工作台”，当前保留客服已登录页。截图 `tmp/login-runtime-sync/{admin-login,customer-service-login}.png`仅取顶部，不含密码／Token／案件列表；没有代办业务 |
+| 权限 | 客服访问admin/session200、admin/users403、h5/session403；随机错误密码401／INVALID_CREDENTIALS，未放宽授权 |
+| 启动与文件 | Windows PowerShell语法解析通过；新增检查实测先False后True，重复Start七项True、PID未变；`git diff --check`通过，数据库备份保持忽略 |
+
+仅修改管理端错误转换／回归测试、当前电脑启动器和对应文档；没有修改登录页设计、账号数据或远端业务源码。H5无改动，未重复执行H5门禁；未执行全量后端集成、生产／跨设备／系统重启验证。旧包和本地备份保留，未提交、推送或部署生产。本阶段完成并停止。
 
 ## 2026-10-21 本次改动提交、同步远端及合并发布
 

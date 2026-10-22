@@ -76,6 +76,15 @@ test('service unavailable retains the specific business message and code',async(
  await assert.rejects(api.me(),error=>error instanceof ApiError && error.status===503 && error.code==='STORAGE_UNAVAILABLE' && error.message==='文件服务暂不可用')
 })
 
+test('an unavailable unified login endpoint is distinguished from invalid credentials without retry',async()=>{
+ for(const code of ['UNAUTHORIZED','INVALID_CREDENTIALS']){
+  const api=createClient(new AuthSession(storage()),'/api/v1');let requests=0
+  api.client.defaults.adapter=async config=>{requests++;throw new AxiosError('rejected','ERR_BAD_RESPONSE',config,{}, {status:401,statusText:'',headers:{},config,data:{code,message:'Unauthorized'}})}
+  await assert.rejects(api.client.post('/auth/sign-in',{username:'test_account',password:randomUUID()}),error=>error instanceof ApiError && error.status===401 && error.code===code && (code==='UNAUTHORIZED'?/登录服务暂未就绪/.test(error.message):error.message==='账号或密码错误'))
+  assert.equal(requests,1)
+ }
+})
+
 test('multipart uploads preserve file bytes instead of JSON serialization',async()=>{
  const api=createClient(new AuthSession(storage()),'/api/v1'),form=new FormData()
  form.append('file',new Blob(['SYNTHETIC,1.00\n'],{type:'text/csv'}),'synthetic.csv')

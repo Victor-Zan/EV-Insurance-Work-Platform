@@ -20,8 +20,13 @@ export function validateSceneFiles(files:File[]){
   for(const file of files){if(!/\.(jpe?g|png)$/i.test(file.name)||file.size<=0||file.size>10485760)throw Error('物损照片仅支持JPG/PNG，每张不超过10 MiB')}
 }
 export async function readChatFiles(files:File[]){
+  if(files.some(file=>/\.zip$/i.test(file.name))){
+    if(files.length!==1)throw Error('请一次选择一个ZIP包，或直接上传聊天记录文件夹')
+    const {readChatZip}=await import('./intake-zip.ts')
+    files=await readChatZip(files[0]!)
+  }
   const texts=files.filter(file=>/\.txt$/i.test(file.name)),photos=files.filter(file=>/\.(jpe?g|png)$/i.test(file.name))
-  if(!texts.length)throw Error('文件夹中没有UTF-8 TXT聊天记录')
+  if(!texts.length)throw Error('导入资料中没有UTF-8 TXT聊天记录')
   if(files.some(file=>!texts.includes(file)&&!photos.includes(file)))throw Error('文件夹仅支持TXT和JPG/PNG，请移除其他文件后重试')
   validateSceneFiles(photos)
   if(texts.reduce((sum,file)=>sum+file.size,0)>200000)throw Error('文字文件合计不超过200000字节')

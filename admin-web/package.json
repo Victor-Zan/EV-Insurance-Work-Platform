@@ -16,6 +16,7 @@
     "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
+    "@zip.js/zip.js": "2.24.0",
     "axios": "1.20.0",
     "element-plus": "2.14.7",
     "pinia": "4.0.3",
