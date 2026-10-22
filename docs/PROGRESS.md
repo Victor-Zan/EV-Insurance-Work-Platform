@@ -1,4 +1,14 @@
-## 2026-10-22 原高德预算恢复验收（执行记录继续补充）
+## 2026-10-22 13时 三目的地真实驾车排序与合成案件派单完成（未合并main，外呼关闭）
+
+- 最终事实/截图见[AMAP_LIVE_ACCEPTANCE_20261022](AMAP_LIVE_ACCEPTANCE_20261022.md)。代码380c854，四入口沿用确认方案。深大唯一粤海立德门、深技大唯一1号门；港中深逐条比对唯一匹配用户选定原候选1，未盲选首条；南科大追加解析唯一1号门由客服确认。
+- 同南科大起点、车辆→网点、AMAP_WEB_V1真实、v5策略32主方案0：13:23返回深大13543m/1388s、港中深30001m/2584s、深技大50565m/3712s。完整排序深大→港中深→深技大，按shopId关联；当时页面公里13.54/30.00/50.56，精确米数为核对依据。
+- 默认深大ID3，客服实际改选港中深ID2，13:23:57点原按钮正式派单，早于13:25:17到期。读库EVR-20261022-000001：shop_id2、PENDING_ACCEPTANCE、工单版本5、派单版本1/PENDING；派单审计ID87正确。原键重放仍1条派单/1条派单审计、路线3次。停车不改事故区县/地址，无学校或外部系统通知。
+- 累计解析6（原4+用户追加2）、路线3、逆编码0，共9/10；仅逆编码1未用且不可挪用。原run8槽已用7、关联追加2条已用；原2条尝试时间不变，新库run0。13:24:55关闭原run，13:30:26仅本轮清单内后端以上限0再启动，旧库/包/Git与私密V25检查点保留；不因重启恢复额度。
+- 实际截图保存在仓库外runtime：continuation-origin-confirmed.jpg、continuation-real-ranking.jpg、continuation-manual-selection.jpg、continuation-dispatch-success.jpg、continuation-three-results.png、continuation-formal-dispatch-history.jpg。路线已到期，仅历史验收证据。原始响应/坐标/凭据不提交；站内提示仅隔离测试账号流程。
+- 380c854的78单元+51相关集成及Maven通过；前2cab477完整78+133通过记录保留，未混称新代码全量集成重跑。两端无改动，本轮未重复构建；无Docker/Compose未验证。V26新增与再次启动校验见最终报告。关键真实验收已完成，正式PR/代码审查/CI/审批待完成；不重试GitHub403、不合并main，不进入其他阶段。手动PR和复制说明见AMAP_PR_DESCRIPTION。
+- 13:35关闭后API复核运行380c854/AMAP_WEB_V1/非Mock/callsEnabled=false，工单仍网点2/版本5/待接单/派单版本1；重复启动28迁移资源校验/无需迁移通过。交付前fetch发现main新增ZIP前端提交e50c114，无地图后端/组件/迁移变化及V25/V26撞号；本次未整合/覆盖队友成果，正式PR仍需核对最新main及相称前端回归，不称最新main已运行验收。
+
+## 2026-10-22 原高德预算恢复验收（历史执行记录）
 
 - 13:08用户确认港中深原候选1；只读后端返回港中深409/MAP_LOCATION_EXPIRED、南科大会话404/已清理，未补查。用户随后明确批准已用两个入口各追加一次解析。先fetch核实main仍94173d2、V26未占用；V26仅新增空的追加尝试表，旧台账/旧库结构不改，仍在原run锁下校验并占用，原2次不重置。新增配置默认关闭、无迁移授权种子。正在相称的后端验证，真实累计仍2/0/0。
 - V26前已在仓库外保存私密最终V25 schema检查点（private-pre-v26-final-schema.dump），不输出/提交其内容。追加预算首轮验证78单元通过、32相关集成中1失败，原因仅为原测试最新迁移版本仍断言25；已将三处受影响的版本断言明确更新为26，保留所有权限、隐私和业务断言。最终命令clean verify -Ppostgres-it -Dit.test=MapRecommendationPostgresIT,MapMigrationPostgresIT,WorkOrderPostgresIT,AccountActivationPostgresIT,ShopQuoteOcrPostgresIT：78单元＋51相关集成、失败/错误/跳过0，BUILD SUCCESS（13:18:51，2分36秒）。本次选择性回归未冒称新代码已重跑全部集成；此前2cab477完整78＋133通过记录保留。新代码不改前端/H5或既有迁移。
