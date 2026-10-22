@@ -55,6 +55,8 @@
 
 浏览器验收时独立运行JAR的SHA256为 `537ADCD71AB52BD6A018630BE6B1A2D1023FC9E78D3BFF52D6520F74E7104C2F`，启动标识 `f3e3357-manual-fix-working`。补齐删除草稿兼容后，最终构建JAR的SHA256为 `0B3907C1A9DBA9CE0C7C28A6AC1BBA2C09049322D3A27E5B24C07756B1A32855`。这不是远程main发布。旧库、旧网站与所有真实案件未改动。
 
+2026-10-23仅更新本轮隔离后端运行最终JAR。服务端实际返回构建提交 `9900f7bc307a4074a8dab900f397b73fe4be9440`，Provider为MOCK_V1；前端5210实际请求18105匹配。再次只读核对同一正式工单，仍为PENDING_DISPATCH/v1/MANUAL/有效照片1张，无文字来源；没有重复创建、派单或外部调用。`current-runtime-readback.json`在仓库外留存。文档后续提交不改变已测运行代码。
+
 实际截图、脱敏只读核对和本地报告保存在仓库外 `manual-case-runtime/screenshots`、`final-readback.json`、`acceptance.html`，不将图片、原始运行日志或私密配置放进公开仓库。截图中的车辆、人员与工单均为合成测试资料。
 
 ## 实际重新运行的验证

@@ -16,7 +16,13 @@
 | 浏览器与读取核对 | 真实本地后端及私有存储：手工草稿、必要照片、正式提交、详情跳转、具体缺项、实际文字冲突及取消保留手填均通过；后端读取确认唯一性及审计 |
 | 安全/未验证 | 百度/高德真实调用0，未加载真实供应商凭据/改变预算；未复现原报错站点，浏览器断网/上传故障注入未做（恢复由组件测试+实际接口重放覆盖），实体手机/其他浏览器及Compose本轮未重跑，无生产部署 |
 
-详细规则/API兼容、复现条件和证据见[MANUAL_CASE_CREATION.md](MANUAL_CASE_CREATION.md)。仓库外manual-case-runtime保存实际截图6张、acceptance.html、脱敏final-readback及本轮日志；不提交原始日志、凭据或真实材料。运行包SHA256及源码基线见该说明，当前是独立测试实例，未替换旧网站。提交/推送及PR状态在完成GitHub交付后补记，不将本地测试通过写成已合并。
+详细规则/API兼容、复现条件和证据见[MANUAL_CASE_CREATION.md](MANUAL_CASE_CREATION.md)。仓库外manual-case-runtime保存实际截图6张、acceptance.html、脱敏final-readback及本轮日志；不提交原始日志、凭据或真实材料。运行包SHA256及源码基线见该说明，当前是独立测试实例，未替换旧网站。
+
+2026-10-23交付补记：实现提交 `9900f7bc307a4074a8dab900f397b73fe4be9440` 已正常推送。只重启本轮18105隔离后端，最终JAR再次Flyway校验28资源/当前V26/无需迁移；实际接口返回buildCommit=9900f7b、Provider=MOCK_V1，5210前端请求18105目标匹配。已有合成工单只读核对仍为PENDING_DISPATCH/v1/MANUAL/有效照片1张/无文字来源。旧5194/18089实例、数据库与真实外呼台账保留，未新建或推进其他案件。
+
+- 分支：https://github.com/Victor-Zan/EV-Insurance-Work-Platform/tree/codex/manual-case-creation-fix
+- GitHub集成仅尝试一次创建Draft PR，返回 `403 Resource not accessible by integration`（FORBIDDEN）。未创建PR、未绕过或重复尝试，未合并/部署。可复制PR说明在仓库外manual-case-runtime/PR_DESCRIPTION.md。
+- 有权限人员手动创建Draft PR：https://github.com/Victor-Zan/EV-Insurance-Work-Platform/compare/main...codex/manual-case-creation-fix?expand=1 ，base=main，compare=codex/manual-case-creation-fix。该交付状态随后以文档提交推送原分支；不是PR已合并。
 
 ## 2026-10-22 现有上传入口拖拽交互增强（独立功能分支）
 
