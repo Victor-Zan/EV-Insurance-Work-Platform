@@ -101,10 +101,15 @@ onBeforeUnmount(()=>{window.removeEventListener('online',updateOnline);window.re
   box-shadow: inset 0 1px 0 #fff,0 -10px 28px rgba(65,55,38,.07);
   backdrop-filter:blur(16px) saturate(.78);
 }
-:deep(.van-tabbar-item) { min-height: 56px; background: transparent; transition: color 180ms ease,transform 220ms var(--motion-fluid); }
-:deep(.van-tabbar-item--active) { transform: translate3d(0,-2px,0); }
+:deep(.van-tabbar-item) { position: relative; min-height: 56px; background: transparent; transition: background-color 180ms var(--motion-fluid),color 180ms ease,transform 220ms var(--motion-fluid); }
+:deep(.van-tabbar-item::before) { position: absolute; top: 0; left: 50%; width: 28px; height: 2px; border-radius: 0 0 2px 2px; background: var(--color-accent); content: ''; transform: translateX(-50%) scaleX(0); transition: transform 220ms var(--motion-fluid); }
+:deep(.van-tabbar-item--active) { background: var(--color-accent-soft); transform: translate3d(0,-2px,0); }
+:deep(.van-tabbar-item--active::before) { transform: translateX(-50%) scaleX(1); }
 :deep(.van-tabbar-item--active .tab-glyph) { transform: scale(1.08); filter: drop-shadow(0 3px 5px rgba(53,56,59,.18)); }
 .tab-glyph { display: block; width: 22px; height: 22px; transition: transform 220ms var(--motion-fluid),filter 220ms var(--motion-fluid); }
+:deep(.van-tabbar-item:active) { transform: translate3d(0,0,0) scale(.97); }
+:deep(.van-tabbar-item:focus-visible) { background: var(--color-surface-muted); }
+@media(hover:hover) { :deep(.van-tabbar-item:hover:not(.van-tabbar-item--active)) { background: var(--color-surface-muted); }:deep(.van-tabbar-item:hover:not(.van-tabbar-item--active) .tab-glyph) { transform: scale(1.04); } }
 :deep(.van-tabbar-item__icon) { font-size: 21px; }
 :deep(.van-tabbar-item__text) { font-size: 11px; }
 @supports not (backdrop-filter:blur(1px)) { .h5-context,:deep(.van-tabbar) { background: #fffefa!important; } }
@@ -112,5 +117,5 @@ onBeforeUnmount(()=>{window.removeEventListener('online',updateOnline);window.re
   .h5-context,:deep(.van-tabbar) { background: #fffefa!important; backdrop-filter: none; }
   .brand-mark,.role-chip { background: #fffefa; }
 }
-@media(prefers-reduced-motion:reduce) { :deep(.van-tabbar-item),.tab-glyph { transition: none; } }
+@media(prefers-reduced-motion:reduce) { :deep(.van-tabbar-item),:deep(.van-tabbar-item::before),.tab-glyph { transition: none; } }
 </style>
