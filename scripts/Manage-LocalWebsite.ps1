@@ -25,6 +25,14 @@ function Docker-Ready {
     & $docker info --format '{{.ServerVersion}}' *> $null
     return $LASTEXITCODE -eq 0
 }
+function Login-Ready {
+    try {
+        Invoke-WebRequest -Uri 'http://127.0.0.1:5173/api/v1/auth/sign-in' -Method Post -ContentType 'application/json' -Body '{}' -Headers @{Origin='http://127.0.0.1:5173'} -UseBasicParsing -TimeoutSec 3 | Out-Null
+        return $false
+    } catch {
+        return $_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 400
+    }
+}
 function Start-Dependencies {
     $ErrorActionPreference='Continue'
     & $docker compose --env-file (Join-Path $repo '.env') -f (Join-Path $repo 'infra/docker-compose.yml') start --wait --wait-timeout 30 *> (Join-Path $runtime 'dependencies.log')
@@ -55,6 +63,7 @@ function Report {
         Backend=Ready 'http://127.0.0.1:8080/actuator/health'
         Admin=Ready 'http://127.0.0.1:5173/'
         AdminApi=Ready 'http://127.0.0.1:5173/api/v1/health'
+        LoginApi=Login-Ready
         PreviewApi=Ready 'http://127.0.0.1:5191/api/v1/health'
         WatchRunning=Owned (Read-State).watch $scriptPath
         AutoRecoveryEnabled=Test-Path -LiteralPath $enabledPath
@@ -97,7 +106,10 @@ if($Action -eq 'Start'){
     }
     $deadline=(Get-Date).AddSeconds(120)
     do {
-        if((Ready 'http://127.0.0.1:8080/actuator/health') -and (Ready 'http://127.0.0.1:5173/api/v1/health')){Report;return}
+        if((Ready 'http://127.0.0.1:8080/actuator/health') -and (Ready 'http://127.0.0.1:5173/api/v1/health')){
+            if(-not(Login-Ready)){throw 'Unified login API is unavailable. Rebuild and update tmp/local-website/backend.jar to match the frontend; do not reset account passwords.'}
+            Report;return
+        }
         Start-Sleep -Seconds 2
     }while((Get-Date) -lt $deadline)
     throw 'Services are not ready. Check tmp/local-website/watch.log and backend logs. Do not repeatedly click login.'
@@ -142,7 +154,7 @@ try {
                         if($_ -match '^([A-Z][A-Z0-9_]*)=(.*)$'){[Environment]::SetEnvironmentVariable($matches[1],$matches[2].Trim().Trim('"').Trim("'"),'Process')}
                     }
                     $env:SERVER_ADDRESS='127.0.0.1'
-                    $process=Start-Process -FilePath $java -ArgumentList @('-jar',('"'+$jar+'"'),'--spring.flyway.target=22') -WorkingDirectory $repo -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $runtime 'backend.log') -RedirectStandardError (Join-Path $runtime 'backend-error.log')
+                    $process=Start-Process -FilePath $java -ArgumentList @('-jar',('"'+$jar+'"'),'--spring.flyway.target=24') -WorkingDirectory $repo -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $runtime 'backend.log') -RedirectStandardError (Join-Path $runtime 'backend-error.log')
                     $state.backend=Record $process
                     $backendGrace=(Get-Date).AddSeconds(120)
                     $backendFailures=0
@@ -161,6 +173,7 @@ try {
                 throw 'Admin frontend is starting or port 5173 belongs to another process; no unknown process is stopped.'
             }
             if(-not(Ready 'http://127.0.0.1:5173/api/v1/health')){throw 'Admin API proxy or browser Origin is unavailable. Check CORS_ALLOWED_ORIGINS for http://127.0.0.1:5173.'}
+            if(-not(Login-Ready)){throw 'Unified login API is unavailable. Update the verified backend runtime to match the frontend; account passwords are not the cause.'}
             $message='Backend, database and admin page are ready.'
         }catch {$message=$_.Exception.Message}
         if($message -ne $lastMessage){
