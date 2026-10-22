@@ -74,7 +74,7 @@ onBeforeUnmount(()=>{disposed=true;clearTimeout(timer);if(image.value)URL.revoke
 <template><section class="form-intake" aria-label="建单前单据识别">
   <h3>上传单据识别</h3><p>候选结果，须人工核对。无需先创建案件，识别只填当前空白字段；已有内容由你选择。</p>
   <p>当前供应商：{{ job?.provider || provider || '正在读取配置' }}。{{ (job?.provider||provider)==='MOCK_V1'?'Mock 合成演示，不识别真实图片。':'百度模式会发送所选单据并消耗识别额度。' }}</p>
-  <input ref="fileInput" type="file" accept=".jpg,.jpeg,.png" aria-label="上传手写单据" hidden :disabled="locked||busy||Boolean(job)" @change="choose">
+  <FileDropZone hint="一次1张JPG/JPEG/PNG，≤10 MiB。与原按钮相同：选择或拖入即发起识别，真实模式可能消耗额度。" :max-bytes="10485760" :feedback="message" :disabled="locked||busy||Boolean(job)" :busy="busy"><input ref="fileInput" type="file" accept=".jpg,.jpeg,.png" aria-label="上传手写单据" hidden :disabled="locked||busy||Boolean(job)" @change="choose"></FileDropZone>
   <button type="button" :disabled="locked||busy||Boolean(job)||!provider" @click="fileInput?.click()">上传单据识别</button>
   <button v-if="selected&&!job" type="button" :disabled="busy||locked" @click="upload">继续上传（沿用幂等键）</button>
   <button v-if="job||selected||sourceError" type="button" :disabled="locked||busy" @click="detach">解除识别关联，保留当前表单</button>
