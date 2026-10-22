@@ -8,21 +8,21 @@ import { currentUser } from '@/shared/http/client'
 const route = useRoute()
 const useShell = computed(() => Boolean(currentUser.value) && route.meta.shell !== false)
 const themeVars = {
-  colorPrimary: '#526E6E',
-  textColor: '#2C3133',
-  textColor2: '#667074',
-  borderColor: '#D5D9DA',
-  background: '#F7F8F8',
+  colorPrimary: '#35383B',
+  textColor: '#292B2D',
+  textColor2: '#706D65',
+  borderColor: '#E0DCD3',
+  background: '#F5F3EE',
   background2: '#FFFFFF',
-  buttonPrimaryBackground: '#526E6E',
-  buttonPrimaryBorderColor: '#526E6E',
+  buttonPrimaryBackground: '#35383B',
+  buttonPrimaryBorderColor: '#35383B',
   buttonBorderRadius: '8px',
-  fieldLabelColor: '#596265',
-  navBarBackground: '#F7F8F8',
-  navBarTitleTextColor: '#2C3133',
-  tabbarBackground: 'rgba(255,255,255,.96)',
-  tabbarItemActiveColor: '#526E6E',
-  tabbarItemTextColor: '#6F777A',
+  fieldLabelColor: '#706D65',
+  navBarBackground: '#F5F3EE',
+  navBarTitleTextColor: '#292B2D',
+  tabbarBackground: 'rgba(255,254,250,.96)',
+  tabbarItemActiveColor: '#35383B',
+  tabbarItemTextColor: '#706D65',
 }
 </script>
 

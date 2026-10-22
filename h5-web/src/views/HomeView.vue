@@ -27,8 +27,93 @@ onMounted(load)
   </template></div></template>
 
 <style scoped>
-.home-lead{position:relative;min-height:150px;overflow:hidden;padding:28px 20px 24px;border-bottom:1px solid rgba(255,255,255,.9);background:linear-gradient(145deg,rgba(255,255,255,.82),rgba(236,240,240,.78));box-shadow:inset 0 1px 0 #fff;backdrop-filter:blur(12px)}.home-lead::before{position:absolute;inset:0;background-image:linear-gradient(rgba(82,110,110,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(82,110,110,.045) 1px,transparent 1px);background-size:22px 22px;content:'';mask-image:linear-gradient(90deg,transparent 25%,#000)}.role-hero{position:absolute;right:-20px;bottom:-128px;width:230px;height:345px;object-fit:cover;object-position:center 72%;filter:grayscale(.55) saturate(.42) contrast(.9);opacity:.38;mask-image:linear-gradient(90deg,transparent 0,#000 26%);pointer-events:none}.lead-copy{position:relative;z-index:1;max-width:78%;padding:14px 12px;border:1px solid rgba(255,255,255,.84);border-radius:13px;background:rgba(255,255,255,.6);backdrop-filter:blur(10px)}.home-lead h1{max-width:14em;margin:6px 0 10px;font-size:25px;line-height:1.32;letter-spacing:-.035em}.lead-copy>p:last-child{margin:0;color:var(--color-text-secondary);font-size:14px;line-height:1.7}.home-skeleton{padding:24px 20px}
-.home-section{padding:22px 16px 8px;border-top:1px solid var(--color-border);background:#fff}.section-title{display:flex;align-items:end;justify-content:space-between;gap:12px;margin-bottom:8px}.section-title h2{margin:2px 0;font-size:18px}.section-title>span,.section-index{margin:0;color:var(--color-text-secondary);font-size:11px}.section-index{color:var(--color-accent);font-weight:700;letter-spacing:.1em}.text-link{min-height:40px;padding:0;border:0;background:transparent;color:var(--color-accent)}
-.task-row,.notice-row{display:flex;width:100%;min-height:64px;align-items:center;justify-content:space-between;gap:10px;padding:12px 0;border:0;border-bottom:1px solid var(--color-border);background:transparent;color:var(--color-text);text-align:left;transition:background-color 160ms ease,transform 180ms cubic-bezier(.16,1,.3,1)}.task-row:active,.notice-row:active{background:var(--color-accent-soft);transform:scale(.992)}.task-row span,.task-row strong,.task-row small{display:block}.task-row small{margin-top:5px;color:var(--color-text-secondary);font-size:12px}.home-case{width:100%;margin:0}.notice-row{justify-content:flex-start;min-height:52px}.notice-row .dot{width:6px;height:6px;flex:0 0 auto;border-radius:50%;background:var(--color-accent);box-shadow:0 0 0 4px rgba(82,110,110,.08)}.notice-row strong{font-size:14px}.quiet-empty{padding:18px 0;color:var(--color-text-secondary);text-align:center}
-@media(prefers-reduced-transparency:reduce){.home-lead{background:#f7f8f8;backdrop-filter:none}}
+.home-lead {
+  position: relative;
+  min-height: 168px;
+  overflow: hidden;
+  margin: 12px 14px 6px;
+  padding: 24px 18px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: linear-gradient(145deg,rgba(255,254,250,.92),rgba(238,235,229,.76));
+  box-shadow: inset 0 1px 0 #fff,var(--shadow-surface);
+  backdrop-filter: blur(12px);
+}
+.home-lead::before {
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(rgba(65,55,38,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(65,55,38,.045) 1px,transparent 1px);
+  background-size: 22px 22px;
+  content: '';
+  mask-image: linear-gradient(90deg,transparent 25%,#000);
+}
+.role-hero {
+  position: absolute;
+  right: -20px;
+  bottom: -128px;
+  width: 230px;
+  height: 345px;
+  object-fit: cover;
+  object-position: center 72%;
+  filter: grayscale(.7) sepia(.05) contrast(.9);
+  opacity: .4;
+  mask-image: linear-gradient(90deg,transparent 0,#000 26%);
+  pointer-events: none;
+}
+.lead-copy {
+  position: relative;
+  z-index: 1;
+  max-width: 78%;
+  padding: 14px 12px;
+  border: 1px solid rgba(255,255,255,.84);
+  border-radius: 12px;
+  background: rgba(255,254,250,.74);
+  box-shadow: inset 0 1px 0 #fff,var(--shadow-surface);
+  backdrop-filter: blur(10px);
+}
+.home-lead h1 { max-width: 14em; margin: 6px 0 10px; font-size: 25px; line-height: 1.32; letter-spacing: -.035em; }
+.lead-copy>p:last-child { margin: 0; color: var(--color-text-secondary); font-size: 14px; line-height: 1.7; }
+.home-skeleton { padding: 24px 20px; }
+.home-section {
+  margin: 12px 14px;
+  padding: 20px 16px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-surface);
+}
+.section-title { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.section-title h2 { margin: 2px 0; font-size: 18px; }
+.section-title>span,.section-index { margin: 0; color: var(--color-text-secondary); font-size: 11px; }
+.section-index { color: var(--color-accent); font-weight: 700; letter-spacing: .1em; }
+.text-link { min-height: 40px; padding: 0; border: 0; background: transparent; color: var(--color-accent); }
+.task-row,.notice-row {
+  display: flex;
+  width: 100%;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 0;
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+  transition: background-color 160ms ease,transform 180ms var(--motion-fluid);
+}
+.task-row:active,.notice-row:active { background: var(--color-accent-soft); transform: scale(.992); }
+.task-row span,.task-row strong,.task-row small { display: block; }
+.task-row small { margin-top: 5px; color: var(--color-text-secondary); font-size: 12px; }
+.home-case { width: 100%; margin: 0; }
+.notice-row { justify-content: flex-start; min-height: 52px; }
+.notice-row .dot { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--color-accent); box-shadow: 0 0 0 4px var(--color-accent-soft); }
+.notice-row strong { font-size: 14px; }
+.quiet-empty { padding: 18px 0; color: var(--color-text-secondary); text-align: center; }
+@media(prefers-reduced-transparency:reduce) {
+  .home-lead,.lead-copy { background: #fffefa; backdrop-filter: none; }
+}
+@supports not (backdrop-filter:blur(1px)) {
+  .home-lead,.lead-copy { background: #fffefa; }
+}
 </style>

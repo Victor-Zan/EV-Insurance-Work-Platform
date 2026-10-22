@@ -1,19 +1,22 @@
 :root {
-  --color-canvas:#f7f8f8;
+  --color-canvas:#f5f3ee;
   --color-surface:#fff;
-  --color-surface-muted:#eceeef;
-  --color-border:#d5d9da;
-  --color-border-strong:#b8bec0;
-  --color-text:#2c3133;
-  --color-text-secondary:#667074;
-  --color-accent:#526e6e;
-  --color-accent-soft:#e4eaea;
-  --color-success:#3f6d62;
-  --color-success-soft:#e7f0ed;
-  --color-warning:#8a5c20;
-  --color-warning-soft:#f2ebdd;
-  --color-danger:#a34e49;
-  --color-danger-soft:#f5e8e7;
+  --color-surface-muted:#eeebe5;
+  --color-border:#e0dcd3;
+  --color-border-strong:#aaa69e;
+  --color-text:#292b2d;
+  --color-text-secondary:#706d65;
+  --color-accent:#35383b;
+  --color-accent-soft:#eeece7;
+  --color-success:#436851;
+  --color-success-soft:#edf3ed;
+  --color-warning:#87612c;
+  --color-warning-soft:#f6f0e5;
+  --color-danger:#a04c47;
+  --color-danger-soft:#f8edeb;
+  --glass-surface:rgba(255,254,250,.86);
+  --shadow-surface:0 6px 22px rgba(65,55,38,.045);
+  --shadow-floating:0 18px 48px rgba(65,55,38,.12);
   --motion-fluid:cubic-bezier(.16,1,.3,1);
   color:var(--color-text);
   background:var(--color-canvas);
@@ -44,7 +47,7 @@ button:active,.van-button:active{transform:scale(.98)}
 .status-line:last-child{border-bottom:0}.status-line small{display:block;color:var(--color-text-secondary);line-height:1.5}
 .mono{font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .state-panel{margin:16px;padding:26px 18px;border:1px dashed var(--color-border-strong);border-radius:12px;background:#fff;text-align:center}.state-panel p{color:var(--color-text-secondary);line-height:1.6}
-.van-skeleton__row,.van-skeleton__title{background:linear-gradient(100deg,#e9ecec 24%,#f7f8f8 42%,#e9ecec 62%);background-size:220% 100%;animation:skeleton-pass 1.35s ease-in-out infinite}
+.van-skeleton__row,.van-skeleton__title{background:linear-gradient(100deg,#e9e5dd 24%,#f7f5f0 42%,#e9e5dd 62%);background-size:220% 100%;animation:skeleton-pass 1.35s ease-in-out infinite}
 
 /* Existing business panels keep their API behavior and share one restrained H5 surface language. */
 :is(.quotation,.repair,.funds,.complaint,.materials,.notifications){min-width:0;margin:0 16px;padding:20px 0;border-top:1px solid var(--color-border);background:transparent;scroll-margin-top:72px}
@@ -55,7 +58,7 @@ button:active,.van-button:active{transform:scale(.98)}
 :is(.quotation,.repair,.funds,.complaint,.materials,.notifications) button:disabled{cursor:not-allowed;opacity:.52}
 :is(.quotation,.repair,.funds,.complaint,.materials,.notifications) :is(input:not([type=checkbox]):not([type=radio]):not([type=file]),select,textarea){width:100%;min-height:44px;margin-top:6px;padding:10px 11px;border:1px solid var(--color-border);border-radius:8px;background:#fff;color:var(--color-text)}
 :is(.quotation,.repair,.funds,.complaint,.materials,.notifications) textarea{min-height:92px;resize:vertical}
-:is(.quotation,.repair,.funds,.complaint,.materials,.notifications) label{display:block;margin:12px 0;color:#596265;line-height:1.55;overflow-wrap:anywhere}
+:is(.quotation,.repair,.funds,.complaint,.materials,.notifications) label{display:block;margin:12px 0;color:var(--color-text-secondary);line-height:1.55;overflow-wrap:anywhere}
 :is(.quotation,.repair,.funds,.complaint,.materials,.notifications) p[role=status]:not(:empty){padding:11px 12px;margin:12px 0;border-left:3px solid var(--color-accent);background:var(--color-accent-soft);color:var(--color-text);overflow-wrap:anywhere}
 :is(.quotation,.repair,.funds,.complaint,.materials,.notifications) fieldset{min-width:0;margin:12px 0;padding:12px;border:1px solid var(--color-border);border-radius:10px;background:#fff}
 :is(.quotation,.repair,.funds,.complaint,.materials,.notifications) ul{padding-left:20px}:is(.quotation,.repair,.funds,.complaint,.materials,.notifications) li{padding:5px 0;overflow-wrap:anywhere}
