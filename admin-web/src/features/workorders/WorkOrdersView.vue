@@ -9,7 +9,7 @@ import {nodeNames} from './workflow'
 import TextFormIntake from './TextFormIntake.vue'
 import ScenePhotoIntake from './ScenePhotoIntake.vue'
 import IntakeFields from './IntakeFields.vue'
-import {saveIntake,openSavedCase} from './intake-save'
+import {saveIntake,openSavedCase,createManualDraft} from './intake-save'
 import {intakeMissing,validateSceneFiles} from './intake'
 import CaseSummaryPanel from './CaseSummaryPanel.vue'
 import { statusLabels, workOrderApi, type DraftForm, type WorkOrder, type WorkOrderStatus } from './work-orders'
@@ -26,19 +26,22 @@ const exporting=ref(false),sceneFiles=ref<File[]>([]),photoPanel=ref<InstanceTyp
 function folderPhotos(files:File[]){try{const combined=[...sceneFiles.value,...files];validateSceneFiles(combined);sceneFiles.value=combined}catch(error){ocrBlocked.value=true;ElMessage.error(error instanceof Error?error.message:'照片导入失败')}}
 const blank=():DraftForm=>({surveyorName:'',surveyorPhone:'',vehicleColor:'',insuranceCompany:'',claimNo:'',claimReportedAt:'',ownerName:'',ownerPhone:'',policyNo:'',vehicleBrand:'',vehicleModel:'',vehicleVin:'',vehiclePlate:'',vehicleOtherIdentifier:'',accidentAt:'',accidentRegionId:'',accidentAddress:'',accidentDescription:''})
 const form=reactive<DraftForm>(blank())
+const manualAttempt: {form?:DraftForm}={}
+const missingFields=computed(()=>intakeMissing(form,sceneFiles.value.length))
 async function load(){loading.value=true;error.value='';try{const result=await api.list(page.value,status.value,query.value.trim(),excludeCompleted);rows.value=result.records;total.value=result.total}catch(cause){error.value=cause instanceof Error?cause.message:'加载失败'}finally{loading.value=false}}
 function filter(){page.value=1;void router.replace({path:'/work-orders',query:{excludeCompleted:'true',...(query.value.trim()?{query:query.value.trim()}:{}),...(status.value?{status:status.value}:{})}});void load()}
 function reset(){query.value='';status.value='';filter()}
 function select(row:WorkOrder){void router.push({path:'/work-orders',query:{...route.query,selected:row.id}})}
 function keySelect(event:KeyboardEvent,row:WorkOrder){if(event.key==='Enter'){event.preventDefault();if(event.ctrlKey||event.metaKey)void router.push(`/work-orders/${row.id}`);else select(row)}}
 async function create(submitFormal=false){
-  if(saving.value||ocrBlocked.value)return
-  if(submitFormal){const missing=intakeMissing(form,sceneFiles.value.length);if(missing.length){ElMessage.warning('请补齐：'+missing.join('、'));return}}
+  if(saving.value)return
+  if(ocrBlocked.value){creationError.value='已导入资料尚待核对；请处理冲突，或明确取消文字导入后继续手填。';return}
+  if(submitFormal&&missingFields.value.length){creationError.value='请补齐：'+missingFields.value.join('、');ElMessage.warning(creationError.value);return}
   creationError.value='';saving.value=true
   let saved:WorkOrder
   try{
     saved=await saveIntake({api,pending:pendingDraft.value,form:{...form},formal:submitFormal,submitKey:submitKey.value,
-      create:async snapshot=>await ocrPanel.value?.createReviewedDraft(snapshot)??await api.create(snapshot),
+      create:async snapshot=>await ocrPanel.value?.createReviewedDraft(snapshot)??await createManualDraft({api,attempt:manualAttempt,form:snapshot,key:submitKey.value,saved:order=>{pendingDraft.value=order}}),
       upload:async id=>{await photoPanel.value?.upload(id)},saved:order=>{pendingDraft.value=order},stage:value=>{saveStage.value=value},
       confirmDuplicate:async()=>{const result=await ElMessageBox.prompt('发现疑似重复案件。请输入继续创建原因：','疑似重复案件',{inputValidator:value=>Boolean(value.trim())||'原因必填'});return result.value.trim()}})
   }catch(error){
@@ -46,7 +49,7 @@ async function create(submitFormal=false){
     creationError.value=phase+(error instanceof Error?error.message:'操作已取消')+(error instanceof ApiError?'（'+error.code+'）':'');ElMessage.error(creationError.value);return
   }finally{saving.value=false}
   ElMessage.success(saved.status==='DRAFT'?'草稿已保存':'案件已正式建单')
-  dialog.value=false;pendingDraft.value=undefined;sceneFiles.value=[];Object.assign(form,blank());ocrBlocked.value=false;ocrSession.value++;submitKey.value=crypto.randomUUID()
+  dialog.value=false;pendingDraft.value=undefined;manualAttempt.form=undefined;sceneFiles.value=[];Object.assign(form,blank());ocrBlocked.value=false;ocrSession.value++;submitKey.value=crypto.randomUUID()
   await load()
   try{await openSavedCase(router,saved.id,href=>window.location.assign(href))}catch{creationError.value='案件已保存，详情暂未打开，请从案件队列进入。';ElMessage.warning(creationError.value)}
 }
@@ -64,7 +67,7 @@ watch(()=>route.query.status,value=>{const next=value==='COMPLETED'?'':String(va
       <div v-else class="queue-rows" role="listbox" aria-label="案件结果"><div v-for="row in rows" :key="row.id" class="queue-row" :class="{ 'is-selected': selected===row.id }" role="option" tabindex="0" :aria-selected="selected===row.id" @click="select(row)" @keydown="keySelect($event,row)"><div class="queue-row-top"><strong>{{ row.businessNo || '草稿未编号' }}</strong><ElTag size="small" effect="plain">{{ statusLabels[row.status as WorkOrderStatus] }}</ElTag></div><p>{{ row.vehicleBrand || '未填写品牌' }} {{ row.vehicleModel }} · {{ row.ownerName || row.ownerPhone || '待补手机号' }}</p><small>{{ nodeNames[row.workflowNode??'']||statusLabels[row.status as WorkOrderStatus] }} · {{ row.workflowActor||'待核对' }} · {{ row.claimNo || '暂无报案号' }}</small><ElButton text size="small" @click.stop="router.push(`/work-orders/${row.id}`)">完整详情 ↗</ElButton></div></div>
       <div class="pager"><ElButton :disabled="loading||page<=1" @click="page--;load()">上一页</ElButton><span>{{ page }} / {{ Math.max(1,Math.ceil(total/20)) }}</span><ElButton :disabled="loading||page*20>=total" @click="page++;load()">下一页</ElButton></div></section>
       <Transition name="case-panel" mode="out-in"><CaseSummaryPanel v-if="selected" :key="selected" :case-id="selected" class="selected-summary"/><aside v-else class="case-placeholder"><p>选择一个案件</p><h2>让下一步清晰可见</h2><p>右侧将显示真实状态、四项维修授权条件和最近处理记录。复杂操作仍在完整详情中进行。</p></aside></Transition></div>
-  <ElDialog v-model="dialog" title="创建工单 / 新建案件草稿" top="4vh" width="min(1100px, 96vw)" :close-on-click-modal="!saving" :close-on-press-escape="!saving" :show-close="!saving"><div class="creation-layout with-ocr"><TextFormIntake :key="ocrSession" ref="ocrPanel" :form="form" :photos="sceneFiles" :locked="saving||Boolean(pendingDraft)" @merge="Object.assign(form,$event)" @blocked="ocrBlocked=$event" @photos="folderPhotos"/><div><IntakeFields :form="form" :disabled="saving" @merge="Object.assign(form,$event)"/><p class="hint">牌照与车架号至少一项；草稿可留空，正式建单须补齐必填项。</p><ScenePhotoIntake ref="photoPanel" v-model="sceneFiles" :locked="saving"/><p v-if="creationError" role="alert">{{ creationError }}</p><p v-if="pendingDraft?.status==='DRAFT'" class="hint" role="status">草稿已保留。可补齐信息或重试上传，不会重复建单。</p></div></div><template #footer><ElButton :disabled="saving" @click="dialog=false">取消</ElButton><ElButton :loading="saving" :disabled="ocrBlocked" @click="create(false)">保存草稿</ElButton><ElButton type="primary" :loading="saving" :disabled="ocrBlocked" @click="create(true)">提交正式工单</ElButton></template></ElDialog>
+  <ElDialog v-model="dialog" title="创建工单 / 新建案件草稿" top="4vh" width="min(1100px, 96vw)" :close-on-click-modal="!saving" :close-on-press-escape="!saving" :show-close="!saving"><div class="creation-layout with-ocr"><TextFormIntake :key="ocrSession" ref="ocrPanel" :form="form" :photos="sceneFiles" :locked="saving||Boolean(pendingDraft)||Boolean(manualAttempt.form)" @merge="Object.assign(form,$event)" @blocked="ocrBlocked=$event" @photos="folderPhotos"/><div><IntakeFields :form="form" :disabled="saving" @merge="Object.assign(form,$event)"/><p class="hint">支持纯手工建单，文字导入和OCR均非必经步骤。草稿可缺项；正式建单须填写案件号、车主手机号、车牌或车架号、查勘员姓名和电话，并上传至少1张现场物损照片。</p><p v-if="missingFields.length" class="hint" role="status">正式建单还缺：{{ missingFields.join('、') }}。仍可保存草稿。</p><p v-if="ocrBlocked" role="alert">文字资料尚待提取或核对，请处理冲突；不采用时可在左侧明确取消文字导入，保留手填信息。</p><ScenePhotoIntake ref="photoPanel" v-model="sceneFiles" :locked="saving"/><p v-if="creationError" role="alert">{{ creationError }}</p><p v-if="manualAttempt.form&&!pendingDraft" class="hint" role="status">上次保存响应尚未确认；重试会先核对同一草稿，再保存当前修改，不重复建单。</p><p v-if="pendingDraft?.status==='DRAFT'" class="hint" role="status">草稿已保留。可补齐信息或重试上传，不会重复建单。</p></div></div><template #footer><ElButton :disabled="saving" @click="dialog=false">取消</ElButton><ElButton :loading="saving" :disabled="ocrBlocked" @click="create(false)">保存草稿</ElButton><ElButton type="primary" :loading="saving" :disabled="ocrBlocked" @click="create(true)">提交正式工单</ElButton></template></ElDialog>
   </div>
 </template>
 

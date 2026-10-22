@@ -193,12 +193,67 @@ class WorkOrderPostgresIT {
     }
 
     private JsonNode api(String token,String method,String path,Object body,String key,int code) throws Exception {
-        var request=switch(method){case "POST"->post(path);case "PUT"->put(path);default->get(path);};
+        var request=switch(method){case "POST"->post(path);case "PUT"->put(path);case "DELETE"->delete(path);default->get(path);};
         request.header("Authorization","Bearer "+token);if(key!=null)request.header("Idempotency-Key",key);
         if(body!=null)request.contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body));
         return json.readTree(mvc.perform(request).andExpect(status().is(code)).andReturn().getResponse().getContentAsString()).path("data");
     }
     private String uniquePhone(){return "139"+String.format("%08d",Math.abs(UUID.randomUUID().getMostSignificantBits()%100000000));}
+
+    @Test void manualCreateReplayDoesNotNeedTextOrOcrAndKeepsFormalValidationAndAudit() throws Exception {
+        String key="manual-"+UUID.randomUUID(),claim="MANUAL-"+UUID.randomUUID();
+        var input=Map.of("claimNo",claim,"ownerPhone",uniquePhone(),"vehiclePlate","粤B8Z71M","surveyorName","合成查勘","surveyorPhone","13900000001");
+        var draft=api(customerService,"POST","/api/v1/work-orders/drafts",input,key,200);
+        String id=draft.path("id").asText();
+        assertThat(api(customerService,"POST","/api/v1/work-orders/drafts",input,key,200).path("id").asText()).isEqualTo(id);
+        assertThat(draft.path("status").asText()).isEqualTo("DRAFT");assertThat(draft.path("dataSource").asText()).isEqualTo("MANUAL");
+        var missing=submit(customerService,id,false,null,"manual-submit-"+key,409);
+        assertThat(missing.path("code").asText()).isEqualTo("INTAKE_INCOMPLETE");assertThat(missing.path("message").asText()).contains("现场物损照片");
+        scenePhoto(customerService,id);
+        var formal=submit(customerService,id,false,null,"manual-submit-"+key,200).path("data");
+        assertThat(formal.path("status").asText()).isEqualTo("PENDING_DISPATCH");
+        assertThat(api(customerService,"POST","/api/v1/work-orders/drafts",input,key,200).path("status").asText()).isEqualTo("PENDING_DISPATCH");
+        assertThat(submit(customerService,id,false,null,"manual-submit-"+key,200).path("data").path("id").asText()).isEqualTo(id);
+        assertThat(db.queryForObject("SELECT count(*) FROM work_order WHERE claim_no=?",Integer.class,claim)).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT count(*) FROM text_draft_source WHERE work_order_id=?",Integer.class,UUID.fromString(id))).isZero();
+        assertThat(db.queryForObject("SELECT count(*) FROM audit_log WHERE object_id=? AND action='WORK_ORDER_DRAFT_CREATE'",Integer.class,id)).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT count(*) FROM audit_log WHERE object_id=? AND action='WORK_ORDER_SUBMIT'",Integer.class,id)).isEqualTo(1);
+    }
+
+    @Test void manualCreateKeyRejectsChangedBodiesAndForbiddenRolesButOtherActorsStayIsolated() throws Exception {
+        String key="manual-"+UUID.randomUUID();var input=Map.of("claimNo","MANUAL-"+UUID.randomUUID());
+        var draft=api(customerService,"POST","/api/v1/work-orders/drafts",input,key,200);
+        var changed=mvc.perform(post("/api/v1/work-orders/drafts").header("Authorization","Bearer "+customerService).header("Idempotency-Key",key).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("claimNo","changed"))))
+            .andExpect(status().isConflict()).andReturn().getResponse().getContentAsString();
+        assertThat(json.readTree(changed).path("code").asText()).isEqualTo("IDEMPOTENCY_CONFLICT");
+        assertThat(api(admin,"POST","/api/v1/work-orders/drafts",input,key,200).path("id").asText()).isNotEqualTo(draft.path("id").asText());
+        api(shop,"POST","/api/v1/work-orders/drafts",input,key,403);api(owner,"POST","/api/v1/work-orders/drafts",input,key,403);
+        api(customerService,"POST","/api/v1/work-orders/drafts",input," ",400);
+    }
+
+    @Test void keyedManualDraftStillSupportsAuthorizedExplicitDeletion() throws Exception {
+        String key="manual-delete-"+UUID.randomUUID();
+        String id=api(customerService,"POST","/api/v1/work-orders/drafts",Map.of("claimNo","MANUAL-"+UUID.randomUUID()),key,200).path("id").asText();
+        api(shop,"DELETE","/api/v1/work-orders/"+id+"/draft",null,null,403);
+        assertThat(db.queryForObject("SELECT count(*) FROM work_order_command WHERE work_order_id=? AND operation='CREATE_DRAFT'",Integer.class,UUID.fromString(id))).isEqualTo(1);
+        api(customerService,"DELETE","/api/v1/work-orders/"+id+"/draft",null,null,200);
+        assertThat(db.queryForObject("SELECT count(*) FROM work_order WHERE id=?",Integer.class,UUID.fromString(id))).isZero();
+        assertThat(db.queryForObject("SELECT count(*) FROM work_order_command WHERE work_order_id=?",Integer.class,UUID.fromString(id))).isZero();
+        assertThat(db.queryForObject("SELECT count(*) FROM audit_log WHERE object_id=? AND action='WORK_ORDER_DRAFT_DELETE'",Integer.class,id)).isEqualTo(1);
+    }
+
+    @Test void concurrentManualCreateWithOneKeyProducesOneDraftAndOneCreationAudit() throws Exception {
+        String key="manual-"+UUID.randomUUID(),claim="MANUAL-"+UUID.randomUUID();
+        var input=Map.of("claimNo",claim);
+        try(var executor=Executors.newFixedThreadPool(4)) {
+            var tasks=new ArrayList<Callable<String>>();
+            for(int i=0;i<4;i++)tasks.add(()->api(customerService,"POST","/api/v1/work-orders/drafts",input,key,200).path("id").asText());
+            var ids=new HashSet<String>();for(var future:executor.invokeAll(tasks))ids.add(future.get());
+            assertThat(ids).hasSize(1);
+            assertThat(db.queryForObject("SELECT count(*) FROM work_order WHERE claim_no=?",Integer.class,claim)).isEqualTo(1);
+            assertThat(db.queryForObject("SELECT count(*) FROM audit_log WHERE object_id=? AND action='WORK_ORDER_DRAFT_CREATE'",Integer.class,ids.iterator().next())).isEqualTo(1);
+        }
+    }
 
     @Test void minimalIntakeNeedsRequiredFieldsAndScenePhotoButVehicleDescriptionsAreOptional() throws Exception {
         var valid=new HashMap<String,Object>();valid.put("claimNo","INTAKE-"+UUID.randomUUID());valid.put("ownerPhone",uniquePhone());valid.put("vehiclePlate","粤B8Z71M");valid.put("surveyorName","合成查勘");valid.put("surveyorPhone","13926018473");

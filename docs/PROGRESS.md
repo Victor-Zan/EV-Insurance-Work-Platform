@@ -1,3 +1,23 @@
+## 2026-10-22 纯手工建单核查与重试恢复（独立功能分支）
+
+- 基于远程main `f3e3357a03dbc298a9ee6bfda06e082e1fd44fa8`（已含PR #7拖拽上传），独立工作区/分支 `manual-case-creation-fix` / `codex/manual-case-creation-fix`。交付前显式fetch main仍为该提交；默认fetch因配置引用已删除的旧网点OCR分支失败，未修改共享fetch配置或覆盖工作区。作者沿用本机Sherry070719。
+- **严格原投诉未复现**：修复前实际浏览器全新表单，不输入原文、不提取、不OCR，纯手填保存草稿和上传合成照片后正式建单均成功；不能宣称找到了原用户环境的统一根因。原本机5194→18089为不同旧预览，本轮保留，未将独立测试站冒充已更新的当前网站。
+- **相关缺陷已复现并修复**：原手工草稿POST忽略Idempotency-Key，同体/同键重放生成两个草稿。现复用既有命令表/请求摘要及事务锁，同操作者同体同键返回同一案件，改体同键409，4并发只创建1条；创建/审计/命令保持事务一致。旧无头客户端兼容，当前管理端每次尝试稳定复用键。无迁移变更。
+- 前端保留首次未知响应的请求体，恢复同一草稿ID后应用后续修改；上传/正式提交失败保留表单、照片和已知ID，先读状态再重试。新增持续缺项说明与明确取消文字导入，迟到的文件读取/提取/候选响应不再回填已取消资料；实际未处理冲突仍阻止保存。权限、必填、至少1张有效现场照片、重复检测、状态机、OCR来源与确认均未放宽或伪造。
+- 最终审查补齐原有显式删除草稿兼容：权限/状态校验后，同事务清理该草稿CREATE_DRAFT命令再删除，审计保留；不让新外键引用阻塞既有功能。新增删除及越权拒绝回归。补充构建首次因Windows运行中JAR占用而repackage失败，改用新backend-final-build目录完整重跑，于2026-10-22 22:30通过78+37测试与构建，未跳过检查。
+- 实际独立前端5210→后端18105，schema `manual_case_20261022_204936`，仅合成资料。修复后纯手填草稿DRAFT/v0；全新纯手填正式工单 `EVR-20261022-000002`（ID `869bdaaf-8f25-40b6-a531-afdfb76e484d`）为PENDING_DISPATCH/v1/MANUAL，有效照片1张。后端detail/source/materials读取均200，SQL复核案件1条、创建/提交审计各1条、文字来源0、OCR任务0。同键实际接口重放200/同ID，改体409/IDEMPOTENCY_CONFLICT。该工单仅在本轮schema，未碰旧高德同编号案例。
+
+| 本轮实际重新执行 | 结果 |
+| --- | --- |
+| 后端 `mvnw.cmd -B -ntp -Dvalidation.build.directory=C:/Users/Sherr/Documents/Codex/manual-case-runtime/backend-final-build -Dit.test=WorkOrderPostgresIT,OcrIntakePostgresIT,IdentityPostgresIT verify -Ppostgres-it` | BUILD SUCCESS；78单元+37选定PostgreSQL/MinIO集成测试，失败/错误/跳过0；完成Maven构建，不冒称全部领域IT |
+| 管理端 `npm run lint`、`npm run typecheck`、`npm test`、`npm run build` | 全部通过，157测试，失败/跳过0；包含新增实际建单组件与取消/恢复回归 |
+| H5相同四条命令 | 全部通过，42测试，失败/跳过0；H5源码未修改 |
+| Flyway | 新schema完整迁移；修复后JAR在本轮schema再次启动校验28资源/当前V26，无待执行迁移；所有旧schema/迁移文件保留，无repair/清库 |
+| 浏览器与读取核对 | 真实本地后端及私有存储：手工草稿、必要照片、正式提交、详情跳转、具体缺项、实际文字冲突及取消保留手填均通过；后端读取确认唯一性及审计 |
+| 安全/未验证 | 百度/高德真实调用0，未加载真实供应商凭据/改变预算；未复现原报错站点，浏览器断网/上传故障注入未做（恢复由组件测试+实际接口重放覆盖），实体手机/其他浏览器及Compose本轮未重跑，无生产部署 |
+
+详细规则/API兼容、复现条件和证据见[MANUAL_CASE_CREATION.md](MANUAL_CASE_CREATION.md)。仓库外manual-case-runtime保存实际截图6张、acceptance.html、脱敏final-readback及本轮日志；不提交原始日志、凭据或真实材料。运行包SHA256及源码基线见该说明，当前是独立测试实例，未替换旧网站。提交/推送及PR状态在完成GitHub交付后补记，不将本地测试通过写成已合并。
+
 ## 2026-10-22 现有上传入口拖拽交互增强（独立功能分支）
 
 - 从最新远程main `da081bdd3ddfc796a8b12182aeb25578d94a4f4c` 创建独立工作区/分支 `codex/file-drop-import`；原高德工作区仍干净，既有运行网站、数据库和真实调用台账未触动。该main已包含PR #6，下面早期“尚未合并”的记录仅代表各自历史时点。

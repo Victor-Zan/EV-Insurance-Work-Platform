@@ -99,7 +99,7 @@ export function workOrderApi(client: AxiosInstance) {
     mapCities:(query='',page=1)=>data<Page<RegionOption>>(client.get('/maps/cities',{params:{query,page,size:20}})),
     mapLocation:(address:string)=>data<MapLocation>(client.get('/maps/geocode',{params:{address}})),
     mapShops:(id:string,page=1)=>data<Page<MapShop>>(client.get(`/maps/cases/${id}/shops`,{params:{page,size:20}})),
-    create: (form: DraftForm) => data<WorkOrder>(client.post('/work-orders/drafts',draftPayload(form))),
+    create: (form: DraftForm,key=idempotencyKey('draft')) => data<WorkOrder>(client.post('/work-orders/drafts',draftPayload(form),{headers:{'Idempotency-Key':key}})),
     update: (id: string,form: DraftForm) => data<WorkOrder>(client.put(`/work-orders/${id}/draft`,draftPayload(form))),
     deleteDraft: (id: string) => data<void>(client.delete(`/work-orders/${id}/draft`)),
     detail: (id: string) => data<WorkOrder>(client.get(`/work-orders/${id}`)),

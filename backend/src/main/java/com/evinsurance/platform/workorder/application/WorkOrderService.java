@@ -52,6 +52,26 @@ public class WorkOrderService {
     }
 
     @Transactional
+    public WorkOrderViews.WorkOrder createDraft(WorkOrderRequests.Draft request,String key) {
+        var actor=requireStaff();
+        // Existing internal text/OCR services retain their own source-specific idempotency.
+        if(key==null)return createDraft(request);
+        validateKey(key);
+        mapper.lockDraftCreationCommand("manual-draft:"+actor.id()+":"+key);
+        String hash=com.evinsurance.platform.document.application.FileService.hash(json.writeValueAsString(request).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        var existing=mapper.command(actor.id(),"CREATE_DRAFT",key);
+        if(existing!=null) {
+            if(!hash.equals(mapper.draftCommandHash(actor.id(),key)))throw ApiException.conflict("IDEMPOTENCY_CONFLICT","本次建单请求已变化，请先核对原草稿，不要重复创建");
+            return get(existing.getWorkOrderId());
+        }
+        var result=createDraft(request);
+        if(mapper.reserveCommand(actor.id(),"CREATE_DRAFT",key,result.id(),null,Instant.now())!=1)throw ApiException.conflict("IDEMPOTENCY_CONFLICT","建单请求冲突，请先核对原草稿");
+        mapper.draftCommandHashSave(actor.id(),key,hash);
+        if(mapper.completeCommand(actor.id(),"CREATE_DRAFT",key,json.writeValueAsString(result))!=1)throw ApiException.conflict("IDEMPOTENCY_CONFLICT","建单结果尚未确认，请重试原请求");
+        return result;
+    }
+
+    @Transactional
     public WorkOrderViews.WorkOrder createDraft(WorkOrderRequests.Draft request) {
         var actor=requireStaff();
         var now=Instant.now();
@@ -86,6 +106,7 @@ public class WorkOrderService {
         var actor=requireStaff();
         var row=lock(id);
         requireDraftOwner(row,actor);
+        mapper.deleteDraftCreationCommands(id);
         if(mapper.deleteDraft(id,row.getVersion())!=1) throw state("Draft changed concurrently");
         audit.record(actor,Action.WORK_ORDER_DRAFT_DELETE,"WORK_ORDER",id,"Draft physically deleted by its creator or administrator");
     }
