@@ -17,12 +17,17 @@
   INSERT INTO shop_map_location(shop_id,version,district_id,address_snapshot,longitude,latitude,coordinate_system,source,created_by)
   VALUES(#{shopId},(SELECT COALESCE(max(version),0)+1 FROM shop_map_location WHERE shop_id=#{shopId}),#{districtId},#{address},#{longitude},#{latitude},'GCJ-02',#{source},#{actorId})
  </insert>
+ <insert id="addTestLocation">
+  INSERT INTO shop_map_location(shop_id,version,district_id,address_snapshot,coordinate_system,source,created_by,session_id,expires_at)
+  VALUES(#{shopId},(SELECT COALESCE(max(version),0)+1 FROM shop_map_location WHERE shop_id=#{shopId}),#{districtId},#{address},'GCJ-02','AMAP_TEST_SESSION',#{actorId},#{session},#{expires})
+ </insert>
  <sql id="candidateSet">
   WITH candidates AS (
    SELECT s.id,s.name,s.address,l.id AS location_id,l.longitude,l.latitude,l.source,c.id AS city_id,
     CASE WHEN NOT EXISTS(SELECT 1 FROM shop_model_capability x WHERE x.shop_id=s.id) THEN 'CAPABILITY_INCOMPLETE'
     WHEN NOT EXISTS(SELECT 1 FROM shop_model_capability x WHERE x.shop_id=s.id AND x.model_id=#{modelId}) THEN 'MODEL_NOT_MATCHED'
     WHEN l.id IS NULL THEN 'LOCATION_INCOMPLETE'
+    WHEN l.expires_at IS NOT NULL AND l.expires_at&lt;=CURRENT_TIMESTAMP THEN 'LOCATION_STALE'
     WHEN s.address IS DISTINCT FROM l.address_snapshot THEN 'LOCATION_STALE'
     WHEN NOT COALESCE(d.enabled AND c.enabled AND p.enabled AND d.level=3 AND c.level=2 AND p.level=1 AND p.code='440000' AND p.name='广东省' AND d.code ~ '^44[0-9]{4}$',false) THEN 'OUTSIDE_GUANGDONG'
     ELSE 'ELIGIBLE' END AS status
@@ -36,9 +41,9 @@
  <select id="candidateCount" resultType="long"><include refid="candidateSet"/>SELECT count(*) FROM candidates <include refid="candidateFilter"/></select>
  <select id="candidates" resultType="com.evinsurance.platform.integration.map.MapData$Shop"><include refid="candidateSet"/>SELECT id,name,address,status,location_id,longitude,latitude,source,city_id FROM candidates <include refid="candidateFilter"/> ORDER BY id LIMIT #{size} OFFSET #{offset}</select>
  <select id="candidate" resultType="com.evinsurance.platform.integration.map.MapData$Shop"><include refid="candidateSet"/>SELECT id,name,address,status,location_id,longitude,latitude,source,city_id FROM candidates WHERE id=#{shopId}</select>
- <insert id="beginQuery">INSERT INTO map_recommendation_query(id,actor_id,work_order_id,idempotency_key,fingerprint,model_id,direction,strategy,status,expires_at) VALUES(#{id},#{actorId},#{caseId},#{key},#{fingerprint},#{modelId},'VEHICLE_TO_SHOP',32,'RUNNING',#{expires}) ON CONFLICT(actor_id,idempotency_key) DO NOTHING</insert>
- <select id="queryByKey" resultType="com.evinsurance.platform.integration.map.MapData$Query">SELECT id,actor_id,work_order_id,fingerprint,model_id,status,expires_at FROM map_recommendation_query WHERE actor_id=#{actorId} AND idempotency_key=#{key}</select>
- <select id="query" resultType="com.evinsurance.platform.integration.map.MapData$Query">SELECT id,actor_id,work_order_id,fingerprint,model_id,status,expires_at FROM map_recommendation_query WHERE id=#{id}</select>
+ <insert id="beginQuery">INSERT INTO map_recommendation_query(id,actor_id,work_order_id,idempotency_key,fingerprint,model_id,work_order_version,direction,strategy,status,expires_at) VALUES(#{id},#{actorId},#{caseId},#{key},#{fingerprint},#{modelId},#{orderVersion},'VEHICLE_TO_SHOP',32,'RUNNING',#{expires}) ON CONFLICT(actor_id,idempotency_key) DO NOTHING</insert>
+ <select id="queryByKey" resultType="com.evinsurance.platform.integration.map.MapData$Query">SELECT id,actor_id,work_order_id,fingerprint,model_id,status,expires_at,work_order_version FROM map_recommendation_query WHERE actor_id=#{actorId} AND idempotency_key=#{key}</select>
+ <select id="query" resultType="com.evinsurance.platform.integration.map.MapData$Query">SELECT id,actor_id,work_order_id,fingerprint,model_id,status,expires_at,work_order_version FROM map_recommendation_query WHERE id=#{id}</select>
  <insert id="queryShop">INSERT INTO map_recommendation_shop(query_id,shop_id,location_id) VALUES(#{queryId},#{shopId},#{locationId})</insert>
  <select id="queryLocation" resultType="long">SELECT location_id FROM map_recommendation_shop WHERE query_id=#{queryId} AND shop_id=#{shopId}</select>
  <update id="attempted">UPDATE map_recommendation_query SET attempted_calls=attempted_calls+1 WHERE id=#{id} AND attempted_calls&lt;50</update>

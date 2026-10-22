@@ -20,7 +20,7 @@ function mount(client,props={}){
 const settle=async()=>{await Vue.nextTick();await new Promise(resolve=>setImmediate(resolve));await Vue.nextTick()}
 const cities=[{id:2,name:'广州市',adcode:'440100'}],districts=[{id:3,name:'天河区',adcode:'440106'}]
 const result={token:'synthetic-token',address:'合成停放地点',province:'广东省',city:'广州市',district:'天河区',adcode:'440106',level:'门牌号',status:'REQUIRES_CONFIRMATION',mock:false,point:{longitude:113.1,latitude:23.1}}
-function client(post){return {get:async(_url,{params})=>({data:{data:{total:1,records:params.cityId?districts:cities}}}),post}}
+function client(post){return {get:async(_url,{params}={params:{}})=>({data:{data:_url.endsWith('/budget')?{callsEnabled:true,reason:'合成测试预算'}:{total:1,records:params.cityId?districts:cities}}}),post}}
 
 test('parking city/district load and explicit action send only selected region and address',async()=>{
   const requests=[];const panel=mount(client(async(...args)=>{requests.push(args);return {data:{data:[{token:result.token,candidate:result}]}}}));await settle()
@@ -45,11 +45,18 @@ test('city change clears district and confirmation; no city-centre fallback',asy
 test('explicit confirmation/query, stable retry key and pagination never auto dispatch or recompute',async()=>{
   const requests=[],gets=[]
   const recommendation={queryId:'synthetic-query',provider:'AMAP_WEB_V1',mock:false,scope:'合成测试范围',complete:true,expiresAt:'2026-10-15T10:00:00Z',shops:{page:1,size:20,total:30,records:[]}}
-  const fake={post:async(url,body,config)=>{requests.push({url,body,config});return {data:{data:url.endsWith('/confirm')?null:url.endsWith('/recommendations')?recommendation:[{token:result.token,candidate:result}]}}},get:async(url,{params})=>{gets.push(url);return {data:{data:url.includes('/recommendations/')?{...recommendation,shops:{...recommendation.shops,page:params.page}}:url.includes('exclusions')?{total:0,records:[]}:{total:1,records:params.cityId?districts:cities}}}}}
+  const fake={post:async(url,body,config)=>{requests.push({url,body,config});return {data:{data:url.endsWith('/confirm')?null:url.endsWith('/recommendations')?recommendation:[{token:result.token,candidate:result}]}}},get:async(url,{params}={params:{}})=>{gets.push(url);return {data:{data:url.includes('/recommendations/')?{...recommendation,shops:{...recommendation.shops,page:params.page}}:url.includes('exclusions')?{total:0,records:[]}:{total:1,records:params.cityId?districts:cities}}}}}
   const panel=mount(fake,{caseId:'synthetic-case'}),s=panel.state;await settle();s.city='2';await settle();s.district='3';s.detail='合成街道10号';await settle()
   await s.resolve();await s.query();assert.equal(requests.length,1)
   await s.confirm(s.candidates[0]);assert.equal(requests.length,2);await s.query();await s.query()
   const queries=requests.filter(r=>r.url.endsWith('/recommendations'));assert.equal(queries.length,2);assert.equal(queries[0].config.headers['Idempotency-Key'],queries[1].config.headers['Idempotency-Key']);assert.equal(queries[0].config.timeout,75000)
   assert.deepEqual(queries[0].body,{locationToken:result.token,shopCityId:null});await s.resultPage(2);assert.equal(requests.length,4);assert.equal(s.recommendation.shops.page,2)
   await s.query(true);const fresh=requests.at(-1);assert.notEqual(fresh.config.headers['Idempotency-Key'],queries[0].config.headers['Idempotency-Key']);assert.equal(requests.some(r=>/dispatch|reassign/.test(r.url)),false);assert.ok(gets.includes('/maps/recommendations/synthetic-query'));panel.unmount()
+})
+
+test('closed persistent budget blocks resolve and recompute while preserving entered form',async()=>{
+ let calls=0;const fake={get:async(url)=>({data:{data:url.endsWith('/budget')?{callsEnabled:false,reason:'本轮真实调用预算已关闭'}:{total:0,records:[]}}}),post:async()=>{calls++;throw Error('must not call')}};
+ const panel=mount(fake,{caseId:'synthetic-case',initialAddress:'合成已填地址'});await settle();const state=panel.state;
+ state.district='3';state.confirmed=result;await state.resolve();await state.query();
+ assert.equal(calls,0);assert.equal(state.detail,'合成已填地址');assert.equal(state.budget.callsEnabled,false);panel.unmount();
 })

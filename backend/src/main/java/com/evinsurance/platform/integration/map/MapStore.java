@@ -28,9 +28,16 @@ public class MapStore {
         data.addLocation(shopId,district,address,longitude,latitude,source,actor.id());var location=data.latestLocation(shopId);
         audit.record(actor,AuditService.Action.MAP_SHOP_LOCATION,"REPAIR_SHOP",shopId,"locationVersion="+location.version()+"; districtId="+district+"; source="+source+"; coordinates and address omitted");
     }
+    @Transactional public MapData.Location testLocation(long shopId,long district,String address,UUID session,Instant expires){
+        var actor=CurrentUser.require();actor.requireAdmin();var shop=organization.lockShop(shopId);
+        if(shop==null||!Objects.equals(address,shop.getAddress()))throw ApiException.conflict("MAP_ADDRESS_CHANGED","Shop address changed");
+        data.addTestLocation(shopId,district,address,session,expires,actor.id());var added=data.latestLocation(shopId);
+        audit.record(actor,AuditService.Action.MAP_SHOP_LOCATION,"REPAIR_SHOP",shopId,"dev test-only provider session; version="+added.version()+"; no persistent provider coordinates");
+        return added;
+    }
     public record Begin(UUID id,boolean created){}
-    @Transactional public Begin begin(long actor,UUID caseId,String key,String fingerprint,long modelId,List<MapData.Shop> shops){
-        UUID id=UUID.randomUUID();if(data.beginQuery(id,actor,caseId,key,fingerprint,modelId,Instant.now().plusSeconds(120))==0)return new Begin(data.queryByKey(actor,key).id(),false);
+    @Transactional public Begin begin(long actor,UUID caseId,String key,String fingerprint,long modelId,long orderVersion,List<MapData.Shop> shops){
+        UUID id=UUID.randomUUID();if(data.beginQuery(id,actor,caseId,key,fingerprint,modelId,orderVersion,Instant.now().plusSeconds(120))==0)return new Begin(data.queryByKey(actor,key).id(),false);
         for(var shop:shops)data.queryShop(id,shop.id(),shop.locationId());return new Begin(id,true);
     }
     @Transactional public void finish(UUID id,String status,int count){

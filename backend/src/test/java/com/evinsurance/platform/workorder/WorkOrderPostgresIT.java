@@ -227,6 +227,18 @@ class WorkOrderPostgresIT {
         long jobsBefore=db.queryForObject("SELECT count(*) FROM ocr_job",Long.class);
         api(customerService,"POST","/api/v1/ocr",Map.of("fileId",photo),"scene-not-ocr-"+id,400);
         assertThat(db.queryForObject("SELECT count(*) FROM ocr_job",Long.class)).isEqualTo(jobsBefore);
+        assertThat(db.queryForObject("SELECT accident_region_id FROM work_order WHERE id=?::uuid",Long.class,id)).isNull();
+        assertThat(db.queryForObject("SELECT accident_address FROM work_order WHERE id=?::uuid",String.class,id)).isNull();
+        assertThat(db.queryForObject("SELECT parking_region_id FROM work_order WHERE id=?::uuid",Long.class,id)).isEqualTo(regionId);
+        assertThat(api(customerService,"GET","/api/v1/work-orders/"+id+"/eligible-shops?size=1",null,null,200).path("total").asLong()).isZero();
+        api(customerService,"POST","/api/v1/work-orders/"+id+"/dispatch",Map.of("shopId",shopId),"still-no-accident-"+id,409);
+    }
+    @Test void explicitAccidentDistrictKeepsMockRankingManualDispatchAndQuotationFlow() throws Exception {
+        var valid=new HashMap<String,Object>();valid.put("claimNo","EXPLICIT-REGION-"+UUID.randomUUID());valid.put("ownerPhone",uniquePhone());valid.put("vehiclePlate","粤B8Z71M");valid.put("surveyorName","合成查勘");valid.put("surveyorPhone","00000000001");valid.put("accidentRegionId",regionId);
+        String id=createDraft(customerService,valid).path("id").asText();
+        var formal=api(customerService,"POST","/api/v1/work-orders/"+id+"/submit",Map.of(),"submit-explicit-"+id,200);
+        var location=Map.of("expectedVersion",formal.path("version").asLong(),"regionId",regionId,"address","合成接车地点","confirmed",true);
+        api(customerService,"PUT","/api/v1/work-orders/"+id+"/dispatch-location",location,null,200);
         long nearest=createEligibleShop();db.update("UPDATE repair_shop SET address=? WHERE id=?","合成接车地点",nearest);db.update("UPDATE repair_shop SET address=? WHERE id=?","另一个合成地点",shopId);
         var shops=api(customerService,"GET","/api/v1/work-orders/"+id+"/eligible-shops?size=1",null,null,200);
         assertThat(shops.path("records").size()).isEqualTo(1);
@@ -628,6 +640,60 @@ class WorkOrderPostgresIT {
         mvc.perform(get("/api/v1/work-orders").header("Authorization","Bearer "+customerService)
             .param("query",prefix).param("excludeCompleted","true"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(4));
+    }
+
+    @Test void accidentDistrictReviewIsIndependentVersionedAuditedAndScoped() throws Exception {
+        var request=requiredDraft("DISTRICT-"+UUID.randomUUID(),uniquePhone(),"VIN-"+UUID.randomUUID(),Instant.now());
+        request.remove("accidentRegionId");request.put("accidentAddress","合成事故地址（保持原文）");
+        var draft=createDraft(customerService,request);String id=draft.path("id").asText();
+        var formal=submit(customerService,id,false,null,"district-submit-"+id,200).path("data");
+        String path="/api/v1/work-orders/"+id+"/accident-district";
+        var body=new HashMap<String,Object>(Map.of("expectedVersion",formal.path("version").asLong(),"regionId",regionId,"reason","人工核实合成事故记录","confirmed",true));
+        for(String token:List.of(shop,owner)){
+            api(token,"PUT",path,body,null,403);
+            api(token,"GET","/api/v1/work-orders/accident-districts",null,null,403);
+        }
+        var city=db.queryForObject("select parent_id from region where id=?",Long.class,regionId);
+        body.put("regionId",city);api(customerService,"PUT",path,body,null,400);
+        body.put("regionId",regionId);body.put("confirmed",false);api(customerService,"PUT",path,body,null,400);
+        body.put("confirmed",true);body.put("reason"," ");api(customerService,"PUT",path,body,null,400);
+        body.put("reason","人工核实合成事故记录");
+        var saved=api(customerService,"PUT",path,body,null,200);
+        assertThat(saved.path("accidentRegionId").asLong()).isEqualTo(regionId);
+        assertThat(saved.path("accidentAddress").asText()).isEqualTo("合成事故地址（保持原文）");
+        assertThat(saved.hasNonNull("parkingRegionId")).isFalse();assertThat(saved.hasNonNull("parkingAddress")).isFalse();
+        assertThat(saved.path("version").asLong()).isEqualTo(formal.path("version").asLong()+1);
+        api(customerService,"PUT",path,body,null,409);
+        var location=api(customerService,"PUT","/api/v1/work-orders/"+id+"/dispatch-location",Map.of("expectedVersion",saved.path("version").asLong(),"regionId",city,"address","另一个合成停放地址","confirmed",true),null,200);
+        body.put("expectedVersion",location.path("version").asLong());
+        var reviewed=api(admin,"PUT",path,body,null,200);
+        assertThat(reviewed.path("parkingRegionId").asLong()).isEqualTo(city);
+        assertThat(reviewed.path("parkingAddress").asText()).isEqualTo("另一个合成停放地址");
+        assertThat(reviewed.path("accidentAddress").asText()).isEqualTo("合成事故地址（保持原文）");
+        var districts=api(customerService,"GET","/api/v1/work-orders/accident-districts?size=1",null,null,200);
+        assertThat(districts.path("records").size()).isEqualTo(1);
+        assertThat(districts.path("records").get(0).path("name").asText()).contains(" / ");
+        api(customerService,"GET","/api/v1/work-orders/accident-districts?size=101",null,null,400);
+        var logs=db.queryForList("select summary from audit_log where object_id=? and summary like 'Accident district manually reviewed%'",id);
+        assertThat(logs).hasSize(2);assertThat(logs.toString()).contains("old=null","new="+regionId,"version=","人工核实合成事故记录").doesNotContain("合成事故地址","另一个合成停放地址");
+        db.update("update work_order set status='COMPLETED' where id=?::uuid",id);
+        body.put("expectedVersion",reviewed.path("version").asLong());api(customerService,"PUT",path,body,null,409);
+    }
+
+    @Test void accidentDistrictChangeCannotInvalidateLiveAssignmentOrExpandCityService() throws Exception {
+        var row=formal(customerService,"DISTRICT-LIVE-"+UUID.randomUUID(),uniquePhone(),"VIN-"+UUID.randomUUID(),Instant.now());
+        String id=row.path("id").asText();
+        var dispatched=dispatch(customerService,id,shopId,false,null,"district-dispatch-"+id,200).path("data");
+        long city=db.queryForObject("select parent_id from region where id=?",Long.class,regionId);
+        long another=db.queryForObject("insert into region(parent_id,level,name,code,enabled) values(?,3,'合成另一区县',?,true) returning id",Long.class,city,"TEST-"+UUID.randomUUID().toString().substring(0,8));
+        // A city service row does not grant service in its children.
+        db.update("insert into shop_service_region(shop_id,region_id) values(?,?) on conflict do nothing",shopId,city);
+        var body=Map.of("expectedVersion",dispatched.path("version").asLong(),"regionId",another,"reason","核查测试，不允许失效当前派单","confirmed",true);
+        api(customerService,"PUT","/api/v1/work-orders/"+id+"/accident-district",body,null,409);
+        assertThat(db.queryForObject("select accident_region_id from work_order where id=?::uuid",Long.class,id)).isEqualTo(regionId);
+        assertThat(db.queryForObject("select version from work_order where id=?::uuid",Long.class,id)).isEqualTo(dispatched.path("version").asLong());
+        assertThat(db.queryForObject("select count(*) from audit_log where object_id=? and summary like 'Accident district manually reviewed%'",Long.class,id)).isZero();
+        db.update("delete from shop_service_region where shop_id=? and region_id=?",shopId,city);
     }
 
     private long historyCount(String id,String action) {

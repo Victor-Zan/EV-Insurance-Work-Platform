@@ -75,7 +75,7 @@ class ShopQuoteOcrPostgresIT {
         assertThat(db.queryForObject("SELECT count(*) FROM quote_raw WHERE work_order_id=?::uuid",Long.class,c)).isEqualTo(2);assertThat(db.queryForObject("SELECT count(*) FROM quote_raw_ocr_line WHERE raw_quote_id=?::uuid",Long.class,quote)).isEqualTo(1);
         assertThatThrownBy(()->db.update("UPDATE quote_raw_item SET unit_price=1 WHERE raw_quote_id=?::uuid",quote)).isInstanceOf(org.springframework.dao.DataAccessException.class);
         assertThat(get(shop,base(c)+"/"+j+"/raw",200).path("text").asString()).isEqualTo(new String(raw,StandardCharsets.UTF_8));assertThat(get(shop,base(c)+"/"+j+"/program",200).at("/items/0/description").asString()).isEqualTo("合成轮胎");
-        var audit=json.writeValueAsString(db.queryForList("SELECT summary FROM audit_log WHERE object_id=?",j));assertThat(audit).doesNotContain("人工核对合成轮胎","access_token","13800000000","words_result");flyway.validate();assertThat(flyway.info().current().getVersion().toString()).isEqualTo("24");
+        var audit=json.writeValueAsString(db.queryForList("SELECT summary FROM audit_log WHERE object_id=?",j));assertThat(audit).doesNotContain("人工核对合成轮胎","access_token","13800000000","words_result");flyway.validate();assertThat(flyway.info().current().getVersion().toString()).isEqualTo("26");
     }
     @Test void roleCaseAssignmentAndFileCategoryBoundaries() throws Exception {
         String c=arrived(),j=upload(c);tick();for(String token:List.of(admin,cs)){get(token,base(c)+"/"+j,200);upload(token,c,1,"SHOP_QUOTE",image,UUID.randomUUID().toString(),403);post(token,base(c)+"/"+j+"/retry",Map.of(),403);post(token,base(c)+"/"+j+"/apply",Map.of("expectedVersion",0,"items",List.of(item("x","2","12.50"))),403);}

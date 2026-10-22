@@ -17,8 +17,8 @@ class MapLocationServiceTest {
     private void role(Role role){var user=new CurrentUser(1,"synthetic","合成客服",Set.of(role),null,0);SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(user,null,List.of()));}
     private RegionEntity region(long id,Long parent,int level,String code,String name){var r=new RegionEntity();r.setId(id);r.setParentId(parent);r.setLevel(level);r.setCode(code);r.setName(name);r.setEnabled(true);return r;}
     @Test void onlyExistingCustomerServiceRoleCanUseMapLocationApis(){
-        for(var r:List.of(Role.ADMIN,Role.REPAIR_SHOP,Role.OWNER)){role(r);assertThatThrownBy(service::configuration).isInstanceOf(com.evinsurance.platform.foundation.api.ApiException.class).extracting("code").isEqualTo("FORBIDDEN");assertThatThrownBy(()->service.resolve(3,"合成街道10号")).extracting("code").isEqualTo("FORBIDDEN");assertThatThrownBy(()->service.regions(null,1,20)).extracting("code").isEqualTo("FORBIDDEN");}
-        verifyNoInteractions(provider,regions);role(Role.CUSTOMER_SERVICE);when(provider.providerId()).thenReturn("AMAP_WEB_V1");assertThat(service.configuration().recommendationsAvailable()).isTrue();assertThat(service.configuration().mock()).isFalse();
+        for(var r:List.of(Role.REPAIR_SHOP,Role.OWNER)){role(r);assertThatThrownBy(service::configuration).isInstanceOf(com.evinsurance.platform.foundation.api.ApiException.class).extracting("code").isEqualTo("FORBIDDEN");assertThatThrownBy(()->service.resolve(3,"合成街道10号")).extracting("code").isEqualTo("FORBIDDEN");assertThatThrownBy(()->service.regions(null,1,20)).extracting("code").isEqualTo("FORBIDDEN");}
+        role(Role.ADMIN);assertThatThrownBy(()->service.resolve(3,"synthetic gate")).extracting("code").isEqualTo("FORBIDDEN");verifyNoInteractions(provider,regions);role(Role.CUSTOMER_SERVICE);when(provider.providerId()).thenReturn("AMAP_WEB_V1");assertThat(service.configuration().recommendationsAvailable()).isTrue();assertThat(service.configuration().mock()).isFalse();
     }
     @Test void hierarchyIsVerifiedBeforeAnyExternalLookup(){
         role(Role.CUSTOMER_SERVICE);var province=region(1,null,1,"440000","广东省");var city=region(2,1L,2,"440100","广州市");var district=region(3,2L,3,"440106","天河区");
@@ -31,5 +31,11 @@ class MapLocationServiceTest {
     @Test void pageLimitAndNoConfiguredGuangdongNeverCreateCityCentreFallback(){
         role(Role.CUSTOMER_SERVICE);assertThatThrownBy(()->service.regions(null,1,101)).isInstanceOf(com.evinsurance.platform.foundation.api.ApiException.class);
         assertThat(service.regions(null,1,20).records()).isEmpty();verifyNoInteractions(provider);
+    }
+    @Test void shenzhenUniversityProperNameDoesNotMaskForeignAdministrativeAddresses(){
+        for(String detail:List.of("龙翔大道2001号香港中文大学（深圳）东门","龙翔大道2001号香港中文大学(深圳)东门"))
+            assertThatCode(()->GuangdongAddress.validate(new MapProvider.Address("深圳市","440300","龙岗区","440307",detail))).doesNotThrowAnyException();
+        for(String detail:List.of("香港沙田马料水大学道1号","香港中文大学（深圳）旁香港特别行政区","福建省香港中文大学（深圳）"))
+            assertThatThrownBy(()->GuangdongAddress.validate(new MapProvider.Address("深圳市","440300","龙岗区","440307",detail))).hasMessageContaining("省外");
     }
 }

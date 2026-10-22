@@ -28,6 +28,8 @@ export interface WorkOrder {
   surveyorPhone?:string
   vehicleColor?:string
   dispatchAddressConfirmed?:boolean
+  parkingAddress?:string
+  parkingRegionId?:number
   vehicleBrand?: string
   vehicleModel?: string
   vehicleVin?: string
@@ -107,10 +109,12 @@ export function workOrderApi(client: AxiosInstance) {
     critical: (id: string,value: CriticalForm) => data<WorkOrder>(client.put(`/work-orders/${id}/critical-fields`,value)),
     shops: (id: string,page=1) => data<Page<ShopOption>>(client.get(`/work-orders/${id}/eligible-shops`,{ params:{ page,size:20 } })),
     dispatchLocation:(id:string,expectedVersion:number,regionId:number,address:string)=>data<WorkOrder>(client.put(`/work-orders/${id}/dispatch-location`,{expectedVersion,regionId,address,confirmed:true})),
-    dispatch: (id: string,shopId: number,confirmPossibleDuplicate=false,duplicateReason: string|null=null,recommendationId?:string) =>
-      data<WorkOrder>(client.post(recommendationId?`/maps/recommendations/${recommendationId}/dispatch`:`/work-orders/${id}/dispatch`,{ shopId,confirmPossibleDuplicate,duplicateReason },{ headers:{ 'Idempotency-Key':idempotencyKey('dispatch') } })),
-    reassign: (id: string,value: { shopId:number; assignmentVersion:number; reason:string; vehicleNotArrivedConfirmed:boolean; transferDescription:string|null; confirmPossibleDuplicate:boolean },recommendationId?:string) =>
-      data<WorkOrder>(client.post(recommendationId?`/maps/recommendations/${recommendationId}/reassign`:`/work-orders/${id}/reassign`,value,{ headers:{ 'Idempotency-Key':idempotencyKey('reassign') } })),
+    accidentDistricts:(query='',page=1)=>data<Page<{id:number;code:string;name:string}>>(client.get('/work-orders/accident-districts',{params:{query,page,size:20}})),
+    accidentDistrict:(id:string,expectedVersion:number,regionId:number,reason:string)=>data<WorkOrder>(client.put(`/work-orders/${id}/accident-district`,{expectedVersion,regionId,reason,confirmed:true})),
+    dispatch: (id: string,shopId: number,confirmPossibleDuplicate=false,duplicateReason: string|null=null,queryId?:string) =>
+      data<WorkOrder>(client.post(queryId?`/maps/recommendations/${queryId}/dispatch`:`/work-orders/${id}/dispatch`,{ shopId,confirmPossibleDuplicate,duplicateReason },{ headers:{ 'Idempotency-Key':idempotencyKey('dispatch') } })),
+    reassign: (id: string,value: { shopId:number; assignmentVersion:number; reason:string; vehicleNotArrivedConfirmed:boolean; transferDescription:string|null; confirmPossibleDuplicate:boolean },queryId?:string) =>
+      data<WorkOrder>(client.post(queryId?`/maps/recommendations/${queryId}/reassign`:`/work-orders/${id}/reassign`,value,{ headers:{ 'Idempotency-Key':idempotencyKey('reassign') } })),
     cancelAssignment: (id: string,assignmentVersion: number,reason: string) =>
       data<WorkOrder>(client.post(`/work-orders/${id}/cancel-assignment`,{ assignmentVersion,reason },{ headers:{ 'Idempotency-Key':idempotencyKey('cancel-assignment') } })),
     arrivalException: (id:string,assignmentVersion:number,reason:string) =>

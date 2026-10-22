@@ -17,6 +17,8 @@ public class MapLocationService {
     private final AuditService audit;
     private final Map<UUID,Session> sessions=new HashMap<>();
     public MapLocationService(MapProvider provider,RegionMapper regions,AuditService audit){this.provider=provider;this.regions=regions;this.audit=audit;}
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelay=60000)
+    public synchronized void purgeExpired(){sessions.values().removeIf(session->session.expires().isBefore(Instant.now()));}
     public record Configuration(String provider,boolean mock,String coordinateSystem,boolean recommendationsAvailable){}
     public record RegionOption(long id,String name,String adcode){}
     private static void access(){if(!CurrentUser.require().roles().contains(Role.CUSTOMER_SERVICE))throw ApiException.denied();}

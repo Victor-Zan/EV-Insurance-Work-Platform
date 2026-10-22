@@ -1,3 +1,15 @@
+## 2026-10-21 高德整合分支与隔离验收
+
+2026-10-22更新：最终合并版迁移为main原样V23账号开通/V24地图＋新增V25增量；只连接新schema `amap_main_final_20261022`。下述`amap_main_validation_20261021`/本地V23为已保留历史检查点，严禁新JAR连接。旧V17预览同样保留。数据库对应、恢复提交及后续升级门禁见[AMAP_MIGRATION_PLAN](AMAP_MIGRATION_PLAN.md)。本轮最终预览真实外呼上限0、不创建预算；Key仍仅后端私密文件，重启不解锁，页面明确关闭状态。
+
+从最新main增量整合的代码位于codex/amap-main-integration；不要将旧地图JAR连接main库。完整迁移含新V23，先在新隔离schema验收，旧地图V17及其他数据库不改历史、不repair。提交/合并审批未完成时，不替换现用main进程。
+
+后端私密配置使用MAP_PROVIDER=AMAP_WEB_V1、AMAP_WEB_SERVICE_KEY、AMAP_BUDGET_RUN_ID及进程防护上限；默认均不外呼。共享预算run/slot还须预登记已授权请求摘要；仅填写Key或重启不会取得额度。已有Load-AmapEnvironment.ps1白名单加载器支持新增预算ID和显式dev测试会话开关；Key只留被忽略的后端配置，不放VITE变量。APP_BUILD_COMMIT用于核对运行包来源，需同时核对JAR哈希和实际启动路径。
+
+本机本轮独立验收预定前端127.0.0.1:5194、后端127.0.0.1:18089，新schema amap_main_validation_20261021；旧5187/18088为历史预览，不能称当前main网站。启动/验证脚本及私密文件保留在仓库外amap-main-runtime，不复制别人的绝对路径；实际运行状态以PROGRESS最终证据为准。
+
+完整场景与停止/替换方法见[AMAP_VALIDATION](AMAP_VALIDATION.md)。验收后关闭共享run；页面必须提示不能继续查询，不宣称可持续正常使用。真实网点运营、生产和JS地图不在本轮范围。
+
 # 本地开发与启动
 
 当前 `C:\Users\zd070\Desktop\电动车保险工作平台` 的常驻入口与登录故障处理见 [当前电脑运行说明](LOCAL_RUNTIME.md)：根目录 `.env`、现有15432数据库／9000对象存储、Java21已验证运行包、5173管理端以及普通用户自启动／恢复任务。根目录提供启动、检查、停止三个 `.cmd`。下方 `local-validation/.env.phase5` 和 D 盘相关说明属于原环境，不能用于当前电脑。

@@ -17,6 +17,8 @@ public final class AmapMapProvider implements MapProvider {
     private final ObjectMapper json;
     private final OkHttpClient client;
     private final int budget,rate;
+    private MapCallBudget ledger;
+    public AmapMapProvider withLedger(MapCallBudget ledger){this.ledger=ledger;return this;}
     private final AtomicInteger requests=new AtomicInteger();
     private long windowStarted=System.nanoTime();
     private int windowRequests;
@@ -69,15 +71,16 @@ public final class AmapMapProvider implements MapProvider {
         String duration=text(path.path("cost"),"duration");
         return new DrivingRoute(metres,duration.isEmpty()?null:positiveLong(duration,false),strategy,0,false);
     }
-    private synchronized void reserve(){
+    private synchronized void reserve(String path,Map<String,String> params){
         long now=System.nanoTime();if(now-windowStarted>=TimeUnit.SECONDS.toNanos(1)){windowStarted=now;windowRequests=0;}
         if(windowRequests>=rate)throw MapFailure.of("RATE_LIMIT");
         if(requests.get()>=budget)throw MapFailure.of("LOCAL_BUDGET");
+        if(ledger!=null)ledger.reserve(path,params);
         windowRequests++;requests.incrementAndGet();
     }
     private JsonNode get(String path,Map<String,String> params){
         var url=Objects.requireNonNull(HttpUrl.parse(base+path)).newBuilder().addQueryParameter("key",key).addQueryParameter("output","JSON");
-        params.forEach(url::addQueryParameter);reserve();
+        params.forEach(url::addQueryParameter);reserve(path,params);
         try(var response=client.newCall(new Request.Builder().url(url.build()).get().build()).execute()){
             if(response.code()==429)throw MapFailure.of("RATE_LIMIT");
             if(response.code()==401)throw MapFailure.of("CREDENTIALS");
@@ -91,7 +94,7 @@ public final class AmapMapProvider implements MapProvider {
             String code=text(root,"infocode");
             if(!"1".equals(text(root,"status"))||!"10000".equals(code))throw MapFailure.of(error(code));
             return root;
-        }catch(MapFailure error){throw error;}
+        }catch(MapFailure error){if(ledger!=null)ledger.stopFor(error.code());throw error;}
         catch(SocketTimeoutException error){throw MapFailure.of("TIMEOUT");}
         catch(java.io.InterruptedIOException error){throw MapFailure.of("TIMEOUT");}
         catch(IOException error){throw MapFailure.of("NETWORK");}

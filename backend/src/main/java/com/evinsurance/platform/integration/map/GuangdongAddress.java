@@ -14,7 +14,11 @@ public final class GuangdongAddress {
             ||a.cityAdcode()==null||!a.cityAdcode().matches("44[0-9]{2}00")
             ||a.districtAdcode()==null||!a.districtAdcode().matches("44[0-9]{4}")
             ||!a.districtAdcode().startsWith(a.cityAdcode().substring(0,4)))throw ApiException.invalid("请选择广东城市、区县并填写明确详细位置");
-        if(FOREIGN.matcher(a.detail()).find())throw ApiException.invalid("详细地址包含广东省外行政区域，请核对车辆位置");
+        // This Shenzhen institution's proper name is not an administrative address.
+        // Preserve the exact submitted text for the provider and still reject any
+        // other foreign-region marker, including one alongside this proper name.
+        String administrative=a.detail().replace("香港中文大学（深圳）","").replace("香港中文大学(深圳)","");
+        if(FOREIGN.matcher(administrative).find())throw ApiException.invalid("详细地址包含广东省外行政区域，请核对车辆位置");
     }
     public static String status(MapProvider.Address input,MapProvider.AddressCandidate c){
         if(!inProvince(c)||!input.city().equals(c.city())||!input.district().equals(c.district())||!input.districtAdcode().equals(c.adcode()))return "REGION_MISMATCH";

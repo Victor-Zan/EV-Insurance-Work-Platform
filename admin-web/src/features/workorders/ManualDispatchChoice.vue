@@ -1,0 +1,17 @@
+<script setup lang="ts">
+import {onMounted,ref,watch} from 'vue'
+import {httpClient} from '@/shared/http/client'
+import {workOrderApi,type WorkOrder,type ShopOption} from './work-orders'
+const props=defineProps<{order:WorkOrder}>(),emit=defineEmits<{changed:[order:WorkOrder];pending:[value:boolean];select:[id:number|undefined]}>(),api=workOrderApi(httpClient)
+const address=ref(props.order.parkingAddress??''),district=ref(String(props.order.parkingRegionId??'')),confirmed=ref(false),busy=ref(false),error=ref(''),rows=ref<{id:number;name:string}[]>([]),regionPage=ref(0),regionTotal=ref(0),shops=ref<ShopOption[]>([]),shopPage=ref(0),shopTotal=ref(0),saved=ref(props.order.dispatchAddressConfirmed===true)
+function changed(){saved.value=false;confirmed.value=false;emit('select',undefined);emit('pending',true)}
+async function regions(){const result=await api.accidentDistricts('',regionPage.value+1);rows.value.push(...result.records);regionPage.value++;regionTotal.value=result.total}
+async function moreShops(){const result=await api.shops(props.order.id,shopPage.value+1);shops.value.push(...result.records);shopPage.value++;shopTotal.value=result.total}
+async function run(action:()=>Promise<void>){if(busy.value)return;busy.value=true;error.value='';try{await action()}catch(e){error.value=e instanceof Error?e.message:'人工派单资料加载失败'}finally{busy.value=false}}
+async function save(){if(!district.value||!address.value.trim()||!confirmed.value)return;await run(async()=>{const updated=await api.dispatchLocation(props.order.id,props.order.version,Number(district.value),address.value.trim());saved.value=true;emit('changed',updated);emit('pending',false)})}
+function select(id:number){if(saved.value&&!busy.value){emit('select',id);emit('pending',false)}}
+onMounted(()=>run(async()=>{await regions();if(props.order.accidentRegionId)await moreShops()}))
+watch(()=>props.order.accidentRegionId,()=>{shops.value=[];shopPage.value=0;shopTotal.value=0;emit('select',undefined);if(props.order.accidentRegionId)void run(moreShops)})
+</script>
+<template><details class="manual-dispatch"><summary>原人工派单（不调用地图）</summary><p>仅按原事故区县服务关系和网点启用状态选择，不提供道路距离排序，也不代表已核实车型能力。仍由原派单按钮提交。</p><p v-if="!order.accidentRegionId">请先在上方人工核实并补全事故区县。</p><label>车辆停放区县<select v-model="district" :disabled="busy" @change="changed"><option value="">请选择已核实区县</option><option v-for="row in rows" :key="row.id" :value="String(row.id)">{{ row.name }}</option></select></label><button v-if="rows.length<regionTotal" :disabled="busy" @click="run(regions)">更多停车区县</button><label>车辆停放地址<input v-model="address" :disabled="busy" maxlength="255" @input="changed"/></label><label><input v-model="confirmed" type="checkbox" :disabled="busy"/>已人工核实当前停放位置，不修改事故地址/区县</label><button :disabled="busy||!confirmed||!district||!address.trim()" @click="save">保存人工核对的停车位置</button><ul><li v-for="shop in shops" :key="shop.id">{{ shop.name }} · {{ shop.address||'地址待完善' }} · 距离未计算 <button :disabled="busy||!saved" @click="select(shop.id)">人工选择此网点</button></li></ul><button v-if="shops.length<shopTotal" :disabled="busy" @click="run(moreShops)">加载更多可派网点</button><p v-if="error" role="alert">{{ error }}</p></details></template>
+<style scoped>.manual-dispatch{padding:14px 0;border-top:1px solid #dce5e4}.manual-dispatch label{display:block;margin:10px 0}.manual-dispatch input:not([type=checkbox]),select{display:block;padding:8px;width:100%;box-sizing:border-box}.manual-dispatch p,.manual-dispatch li{font-size:13px;line-height:1.7}.manual-dispatch [role=alert]{color:#a7313c}</style>

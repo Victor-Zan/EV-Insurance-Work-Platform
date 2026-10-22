@@ -105,8 +105,18 @@ public class WorkOrderController {
 
     @PutMapping("/{id}/dispatch-location")
     @PreAuthorize("hasAnyRole('ADMIN','CUSTOMER_SERVICE')")
-    @Operation(summary="核对派单服务区域与实际接车地址；版本校验与审计")
+    @Operation(summary="确认车辆当前停放位置；不修改事故区县或事故地址；版本校验与审计")
     public ApiResponse<WorkOrderViews.WorkOrder> dispatchLocation(@PathVariable UUID id,@Valid @RequestBody WorkOrderRequests.DispatchLocation request){return ApiResponse.success(service.confirmDispatchLocation(id,request));}
+
+    @PutMapping("/{id}/accident-district")
+    @PreAuthorize("hasAnyRole('ADMIN','CUSTOMER_SERVICE')")
+    @Operation(summary="派单阶段独立人工核对事故区县；必填原因、版本、审计；不修改停车位置")
+    public ApiResponse<WorkOrderViews.WorkOrder> accidentDistrict(@PathVariable UUID id,@Valid @RequestBody WorkOrderRequests.AccidentDistrict request){return ApiResponse.success(service.confirmAccidentDistrict(id,request));}
+
+    @GetMapping("/accident-districts")
+    @PreAuthorize("hasAnyRole('ADMIN','CUSTOMER_SERVICE')")
+    @Operation(summary="启用的完整省市区县树中的区县分页查询；仅供人工核对，不自动展开城市服务关系")
+    public ApiResponse<PageResponse<WorkOrderRows.CityOption>> accidentDistricts(@RequestParam(defaultValue="") String query,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size){return ApiResponse.success(service.accidentDistricts(query,page,size));}
 
     @PostMapping("/{id}/dispatch")
     @PreAuthorize("hasAnyRole('ADMIN','CUSTOMER_SERVICE')")
