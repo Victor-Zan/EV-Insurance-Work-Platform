@@ -1,3 +1,10 @@
+## 2026-10-22 原高德预算恢复验收（执行记录继续补充）
+
+- 用户明确恢复本轮原未用4/1/3槽位，沿用EVR-20261022-000001及原四入口，不等待PR/main合并。外呼前只读确认原run关闭、8槽均未尝试，最终业务库预算run0；工单PENDING_DISPATCH/版本2/无派单，三个测试网点启用、南山区服务关系及车型1齐全，无学校账号或联系方式。
+- 预检发现原台账在旧schema而V25业务库无预算；新增可信配置AMAP_BUDGET_SCHEMA直接限定原两张表，默认原行为不变，不复制run/slot、不升级旧业务库。另修复完整专有名“香港中文大学（深圳）”被省外词误拒绝，保留原文及其他省外标记/返回地域校验。新增跨schema共享额度/不可重置及专有名/省外冲突测试，正在完整后端verify；未改前端、H5或任何迁移。
+- 首次完整verify的78单元通过，133集成中最后15个工单测试因PostgreSQL `too many clients already` 无法加载上下文（失败0、错误15、跳过0），日志backend-live-resume-verify.log保留。未降低测试要求；仅为本测试进程设SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=3后完整重跑，独立日志backend-live-resume-verify-pool3.log。原台账仍关闭，真实尝试0。
+- 真正启用/调用/关闭次数及验收结论以本节后续实际记录和结果报告为准，此处不提前宣称执行成功。GitHub既有403不再重试或绕过，不合并main。
+
 ## 2026-10-22 11时 高德main包含范围、真实验收与当前页面复核
 
 - 完整核查见 [AMAP_STATUS_AUDIT_20261022](AMAP_STATUS_AUDIT_20261022.md)。远程main仍94173d2：基础地图代码已通过普通整合提交5076429进入main；本轮安全整合代码7cb469e不是main祖先，V25仍未进入main，不把两者混称“全部已合并”。GitHub全部PR核查无地图PR；本轮创建Draft PR再次返回403 `Resource not accessible by integration`，未换渠道绕过或重试。手动创建链接见报告。关键真实验收未完成，不能普通合并。

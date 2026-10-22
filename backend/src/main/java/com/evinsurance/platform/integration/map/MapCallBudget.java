@@ -15,32 +15,39 @@ public class MapCallBudget {
     private final JdbcTemplate db;
     private final TransactionTemplate transaction;
     private final String run;
+    private final String runs,slots;
     public MapCallBudget(JdbcTemplate db,PlatformTransactionManager manager,Environment env){
         this.db=db;this.run=env.getProperty("AMAP_BUDGET_RUN_ID","");
+        // An isolated business schema can use the original ledger without copying
+        // or resetting any allowances. Only a trusted server setting selects it.
+        String schema=env.getProperty("AMAP_BUDGET_SCHEMA","");
+        if(!schema.isEmpty()&&!schema.matches("[a-z][a-z0-9_]{0,62}"))throw new IllegalArgumentException("Invalid Amap budget schema");
+        String prefix=schema.isEmpty()?"":"\""+schema+"\".";
+        runs=prefix+"map_call_budget_run";slots=prefix+"map_call_budget_slot";
         transaction=new TransactionTemplate(manager);
         transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
     public record Availability(boolean callsEnabled,int remaining,String reason){}
     public Availability availability(){
         if(run.isBlank())return new Availability(false,0,"未配置真实调用预算");
-        var rows=db.queryForList("SELECT enabled FROM map_call_budget_run WHERE id=?",Boolean.class,run);
+        var rows=db.queryForList("SELECT enabled FROM "+runs+" WHERE id=?",Boolean.class,run);
         if(rows.isEmpty()||!rows.getFirst())return new Availability(false,0,"本轮真实调用预算已关闭");
-        int remaining=db.queryForObject("SELECT count(*) FROM map_call_budget_slot WHERE run_id=? AND attempted_at IS NULL AND request_hash IS NOT NULL",Integer.class,run);
+        int remaining=db.queryForObject("SELECT count(*) FROM "+slots+" WHERE run_id=? AND attempted_at IS NULL AND request_hash IS NOT NULL",Integer.class,run);
         return new Availability(remaining>0,remaining,remaining>0?"按已授权的类别及地点限额调用":"本轮真实调用预算已用完");
     }
     public void reserve(String path,Map<String,String> parameters){
         if(run.isBlank())throw MapFailure.of("LOCAL_BUDGET");
         String digest=fingerprint(path,parameters);
         transaction.executeWithoutResult(status->{
-            var enabled=db.queryForList("SELECT enabled FROM map_call_budget_run WHERE id=? FOR UPDATE",Boolean.class,run);
+            var enabled=db.queryForList("SELECT enabled FROM "+runs+" WHERE id=? FOR UPDATE",Boolean.class,run);
             if(enabled.isEmpty()||!enabled.getFirst())throw MapFailure.of("LOCAL_BUDGET");
-            int changed=db.update("UPDATE map_call_budget_slot SET attempted_at=CURRENT_TIMESTAMP WHERE run_id=? AND operation=? AND request_hash=? AND attempted_at IS NULL",run,operation(path),digest);
+            int changed=db.update("UPDATE "+slots+" SET attempted_at=CURRENT_TIMESTAMP WHERE run_id=? AND operation=? AND request_hash=? AND attempted_at IS NULL",run,operation(path),digest);
             if(changed!=1)throw MapFailure.of("LOCAL_BUDGET");
         }); // Durable commit MUST finish before the caller opens the network connection.
     }
     public void stopFor(String code){
         if(!run.isBlank()&&Set.of("MAP_CREDENTIALS","MAP_PERMISSION","MAP_QUOTA","MAP_RATE_LIMIT").contains(code))
-            transaction.executeWithoutResult(status->db.update("UPDATE map_call_budget_run SET enabled=false WHERE id=?",run));
+            transaction.executeWithoutResult(status->db.update("UPDATE "+runs+" SET enabled=false WHERE id=?",run));
     }
     public static String operation(String path){return switch(path){
         case "/v3/geocode/geo" -> "GEOCODE";

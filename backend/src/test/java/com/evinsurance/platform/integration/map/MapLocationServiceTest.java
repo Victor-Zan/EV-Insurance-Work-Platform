@@ -32,4 +32,10 @@ class MapLocationServiceTest {
         role(Role.CUSTOMER_SERVICE);assertThatThrownBy(()->service.regions(null,1,101)).isInstanceOf(com.evinsurance.platform.foundation.api.ApiException.class);
         assertThat(service.regions(null,1,20).records()).isEmpty();verifyNoInteractions(provider);
     }
+    @Test void shenzhenUniversityProperNameDoesNotMaskForeignAdministrativeAddresses(){
+        for(String detail:List.of("龙翔大道2001号香港中文大学（深圳）东门","龙翔大道2001号香港中文大学(深圳)东门"))
+            assertThatCode(()->GuangdongAddress.validate(new MapProvider.Address("深圳市","440300","龙岗区","440307",detail))).doesNotThrowAnyException();
+        for(String detail:List.of("香港沙田马料水大学道1号","香港中文大学（深圳）旁香港特别行政区","福建省香港中文大学（深圳）"))
+            assertThatThrownBy(()->GuangdongAddress.validate(new MapProvider.Address("深圳市","440300","龙岗区","440307",detail))).hasMessageContaining("省外");
+    }
 }

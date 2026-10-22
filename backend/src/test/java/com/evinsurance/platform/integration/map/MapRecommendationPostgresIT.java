@@ -78,6 +78,25 @@ class MapRecommendationPostgresIT {
 
     @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
     @Autowired MapTestPositions testPositions;
+    @Test void separateBusinessSchemaUsesOriginalLedgerWithoutCopyingAllowances(){
+        String run="offline-external-"+UUID.randomUUID();
+        var parameters=Map.of("city","440300","address","synthetic-original-ledger");
+        String hash=MapCallBudget.fingerprint("/v3/geocode/geo",parameters);
+        db.update("insert into map_call_budget_run(id,enabled) values(?,true)",run);
+        db.update("insert into map_call_budget_slot(run_id,subject,operation,request_hash) values(?,'GEO_SUSTECH','GEOCODE',?)",run,hash);
+        String url=System.getenv("TEST_DB_URL");
+        var source=new org.springframework.jdbc.datasource.DriverManagerDataSource(url+(url.contains("?")?"&":"?")+"currentSchema=public",System.getenv("TEST_DB_USERNAME"),System.getenv("TEST_DB_PASSWORD"));
+        var otherDb=new JdbcTemplate(source);
+        var env=new org.springframework.mock.env.MockEnvironment().withProperty("AMAP_BUDGET_RUN_ID",run).withProperty("AMAP_BUDGET_SCHEMA",SCHEMA);
+        var ledger=new MapCallBudget(otherDb,new org.springframework.jdbc.datasource.DataSourceTransactionManager(source),env);
+        assertThat(ledger.availability().remaining()).isEqualTo(1);
+        ledger.reserve("/v3/geocode/geo",parameters);
+        var original=new MapCallBudget(db,transactions,new org.springframework.mock.env.MockEnvironment().withProperty("AMAP_BUDGET_RUN_ID",run));
+        assertThat(original.availability().remaining()).isZero();
+        assertThatThrownBy(()->original.reserve("/v3/geocode/geo",parameters)).extracting("code").isEqualTo("MAP_LOCAL_BUDGET");
+        ledger.stopFor("MAP_QUOTA");assertThat(original.availability().reason()).contains("关闭");
+        assertThatThrownBy(()->new MapCallBudget(db,transactions,env.withProperty("AMAP_BUDGET_SCHEMA","bad;schema"))).isInstanceOf(IllegalArgumentException.class);
+    }
     @Test void durableBudgetIsSharedAcrossInstancesAndCannotResetAnAttempt() throws Exception {
         String run="offline-"+UUID.randomUUID();
         db.update("insert into map_call_budget_run(id,enabled) values(?,true)",run);
