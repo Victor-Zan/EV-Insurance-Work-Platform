@@ -19,6 +19,7 @@ public class MapCallBudget {
     private final String ledgerSchema,extraAttempts;
     private final DevelopmentMapBudget development;
     private final PlaceSearchBudget places;
+    private final boolean publicWorkshopsEnabled;
     public MapCallBudget(JdbcTemplate db,PlatformTransactionManager manager,Environment env){
         this.db=db;this.run=env.getProperty("AMAP_BUDGET_RUN_ID","");
         // An isolated business schema can use the original ledger without copying
@@ -35,6 +36,7 @@ public class MapCallBudget {
         transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         development=env.getProperty("AMAP_DEV_BUDGET_ENABLED",Boolean.class,false)?new DevelopmentMapBudget(db,manager,env):null;
         places=env.getProperty("AMAP_PLACE_BUDGET_ENABLED",Boolean.class,false)?new PlaceSearchBudget(db,manager,env):null;
+        publicWorkshopsEnabled=env.getProperty("PUBLIC_WORKSHOP_ENABLED",Boolean.class,false);
     }
     public record OperationAllowance(String operation,int total,int used,int reserved,int remaining){}
     public record Availability(boolean callsEnabled,int remaining,String reason,List<OperationAllowance> operations){
@@ -57,7 +59,7 @@ public class MapCallBudget {
         return new Availability(remaining>0,remaining,remaining>0?"按已授权的类别及地点限额调用":"本轮真实调用预算已用完");
     }
     public void reserve(String path,Map<String,String> parameters){
-        if("/v5/place/text".equals(path)){if(places==null)throw MapFailure.of("LOCAL_BUDGET");places.reserve(path,parameters);return;}
+        if(Set.of("/v5/place/text","/v5/place/around").contains(path)){if(places==null||"/v5/place/around".equals(path)&&!publicWorkshopsEnabled)throw MapFailure.of("LOCAL_BUDGET");places.reserve(path,parameters);return;}
         if(development!=null){development.reserve(path,parameters);return;}
         if(run.isBlank())throw MapFailure.of("LOCAL_BUDGET");
         String digest=fingerprint(path,parameters);
@@ -88,7 +90,7 @@ public class MapCallBudget {
         case "/v3/geocode/geo" -> "GEOCODE";
         case "/v3/geocode/regeo" -> "REVERSE";
         case "/v5/direction/driving" -> "DRIVING";
-        case "/v5/place/text" -> "POI_SEARCH";
+        case "/v5/place/text","/v5/place/around" -> "POI_SEARCH";
         default -> throw MapFailure.of("UNSUPPORTED_OPERATION");
     };}
     public static String fingerprint(String path,Map<String,String> parameters){

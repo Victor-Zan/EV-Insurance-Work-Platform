@@ -6,7 +6,8 @@ import {mapPreviewClientKey} from './map-preview-client'
 import DispatchMapCanvas from './DispatchMapCanvas.vue'
 import DispatchCandidateList from './DispatchCandidateList.vue'
 import AmapLocationMap from './AmapLocationMap.vue'
-const props=defineProps<{caseId?:string;selectedShopId?:number;initialAddress?:string;previewOnly?:boolean}>()
+import PublicWorkshopPanel from './PublicWorkshopPanel.vue'
+const props=defineProps<{caseId?:string;selectedShopId?:number;initialAddress?:string;previewOnly?:boolean;parkingSaved?:boolean}>()
 const emit=defineEmits<{choose:[value:{shopId:number;queryId:string;name:string}|undefined];pending:[value:boolean];confirmed:[value:{districtId:number;address:string}]}>()
 const injectedPreviewClient=inject(mapPreviewClientKey,undefined)
 if(props.previewOnly&&!injectedPreviewClient)throw new Error('合成预览必须提供隔离传输，不允许回退真实接口')
@@ -25,6 +26,8 @@ const searchAvailable=computed(()=>props.previewOnly?geocodeAvailable.value:plac
 const searchMaximum=computed(()=>props.previewOnly?200:80)
 function operationAvailable(operation:string){if(!budget.value?.callsEnabled)return false;const row=budget.value.operations?.find(item=>item.operation===operation);return !row||row.remaining>0}
 const selectedPoint=ref<{longitude:number;latitude:number}>()
+const publicMarkers=ref<{id:string;name:string;point:{longitude:number;latitude:number}}[]>([]),publicFocus=ref<{longitude:number;latitude:number}>(),publicInspectedId=ref<string>(),showLegacyRecommendations=ref(false)
+watch(()=>confirmed.value?.token,()=>{publicMarkers.value=[];publicFocus.value=undefined;publicInspectedId.value=undefined})
 const reverseAvailable=computed(()=>operationAvailable('REVERSE'))
 const geocodeAvailable=computed(()=>operationAvailable('GEOCODE')),drivingAvailable=computed(()=>operationAvailable('DRIVING'))
 const estimate=ref<{candidates:number;maximumRouteCalls:number;routesRemaining:number|null;fits:boolean}>(),estimateFresh=ref(false)
@@ -99,7 +102,7 @@ onMounted(async()=>{await loadBudget();await regions('city');if(props.caseId)try
    <header class="dispatch-card-header"><div><span class="step-label">01 · 确认位置</span><h3>车辆当前停放位置</h3></div><span class="location-state" :class="{ready:confirmed}">{{ confirmed?'已确认':'待核对' }}</span></header>
    <p v-if="previewOnly" class="preview-notice" role="note">Mock交互预览：所有地址、网点与排序数值均为合成资料，不调用高德、不提交正式派单。</p>
    <p class="section-hint">停车位置只用于送店距离；事故服务区县单独核实，不随选点改变。</p>
-   <AmapLocationMap v-if="!previewOnly" :point="selectedPoint??confirmed?.point??candidatePreview?.point" :confirmed="Boolean(confirmed)" :disabled="busy" :shops="recommendation?.shops.records" :selected-shop-id="props.selectedShopId" @pick="pickRealPoint" @choose="selectShop"/>
+   <AmapLocationMap v-if="!previewOnly" :point="selectedPoint??confirmed?.point??candidatePreview?.point" :confirmed="Boolean(confirmed)" :disabled="busy" :shops="recommendation?.shops.records" :selected-shop-id="props.selectedShopId" :public-shops="publicMarkers" :public-focus="publicFocus" @inspect="publicInspectedId=$event" @pick="pickRealPoint" @choose="selectShop"/>
    <DispatchMapCanvas v-else :preview="previewOnly" :confirmed="Boolean(confirmed)" :disabled="busy" :markers="previewMarkers" :label="confirmed?'已确认：'+confirmed.address:candidates.length?'待核对：'+(candidates[0]?.address??''):'尚未确认停车位置，请搜索地址或在合成预览中选点'" @pick="previewPick" @choose="selectShop"/>
    <div v-if="selectedPoint&&!previewOnly" class="query-confirmation"><p>暂选坐标（GCJ-02）：{{ selectedPoint.longitude.toFixed(6) }}，{{ selectedPoint.latitude.toFixed(6) }}。尚未确认车辆位置。</p><button type="button" class="primary-action" :disabled="busy||!district||!reverseAvailable" @click="verifyPoint">核验所选位置（最多1次逆地理核验）</button><p v-if="!district">请先选择停车城市和区县。</p><p v-else-if="!reverseAvailable">逆地理核验额度未开放或已用完。</p></div>
    <fieldset class="location-search" :disabled="busy"><legend class="sr-only">搜索车辆停放地址</legend>
@@ -116,7 +119,9 @@ onMounted(async()=>{await loadBudget();await regions('city');if(props.caseId)try
    <p v-if="confirmed" class="confirmed-note" role="status">位置已确认；修改地址后需重新核对。仅在本次确认有效期内使用。</p>
   </article>
   <p v-if="error" class="dispatch-error" role="alert">{{ error }}</p>
-  <article class="dispatch-card candidates-card">
+  <PublicWorkshopPanel v-if="!previewOnly" :case-id="props.caseId" :location-token="confirmed?.token" :parking-ready="props.parkingSaved" :inspected-id="publicInspectedId" @choose="emit('choose',$event)" @markers="publicMarkers=$event" @focus="publicFocus=$event" @budget="loadBudget"/>
+  <button v-if="!previewOnly" type="button" @click="showLegacyRecommendations=!showLegacyRecommendations">{{ showLegacyRecommendations?'收起原合作网点推荐':'原合作网点推荐（保留既有流程）' }}</button>
+  <article v-if="previewOnly||showLegacyRecommendations" class="dispatch-card candidates-card">
    <header class="dispatch-card-header"><div><span class="step-label">02 · 选择网点</span><h3>智能分拨候选</h3></div><button type="button" class="primary-action" :disabled="!drivingAvailable||busy||!confirmed||!props.caseId" @click="query(Boolean(recommendation))">{{ busy?'处理中…':recommendation?'重新查询网点':'查询推荐网点' }}</button></header>
    <div class="candidate-toolbar"><p class="section-hint">先筛选服务资格，再按车辆→网点的道路距离排序，最终由你选择。</p><label>查询范围<select v-model="shopCity" :disabled="busy" aria-label="推荐网点所在城市"><option value="">全部广东合作网点</option><option v-for="item in cities" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select></label></div>
    <p v-if="!busy&&!confirmed" class="inline-warning">请先确认上方停车位置。</p><p v-else-if="!drivingAvailable" class="inline-warning">道路查询额度未开放或已用完，可使用下方人工派单。</p>

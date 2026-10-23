@@ -81,6 +81,17 @@ public final class AmapMapProvider implements MapProvider {
         return c;
         });
     }
+    public Workshops workshops(Point center,int page){
+        GuangdongAddress.point(center);if(page<1||page>10)throw MapFailure.of("INVALID_REQUEST");
+        return get("/v5/place/around",Map.of("location",coordinate(center),"keywords","电动自行车维修","radius","10000","page_size","20","page_num",Integer.toString(page)),root->{
+            var nodes=root.path("pois");if(!nodes.isArray()||nodes.size()>20)throw MapFailure.of("BAD_RESPONSE");var rows=new ArrayList<Workshop>();
+            for(var n:nodes){String name=text(n,"name"),id=text(n,"id");if(name.isBlank()||name.length()>200||id.isBlank()||id.length()>100)throw MapFailure.of("BAD_RESPONSE");
+                String province=text(n,"pname"),city=text(n,"cityname"),district=text(n,"adname"),adcode=text(n,"adcode");
+                if(!"广东省".equals(province)||!adcode.matches("44[0-9]{4}"))continue;
+                rows.add(new Workshop(id,name,province+city+district+text(n,"address"),parsePoint(text(n,"location")),province,city,district,adcode,text(n,"type"),text(n,"typecode"),false));
+            }return new Workshops(page,nodes.size()==20&&page<10,List.copyOf(rows));
+        });
+    }
     public DrivingRoute driving(Point from,Point to,int strategy){
         GuangdongAddress.point(from);GuangdongAddress.point(to);
         if(!Set.of(0,1,2,32,33,34,35,36,37,38,39,40,41,42,43,44,45).contains(strategy))throw MapFailure.of("UNSUPPORTED_OPERATION");
@@ -104,7 +115,7 @@ public final class AmapMapProvider implements MapProvider {
     private <T> T get(String path,Map<String,String> params,Function<JsonNode,T> decode){
         long started=System.nanoTime();int httpStatus=0;String infoCode="-";boolean reserved=false;
         try {
-        var url=Objects.requireNonNull(HttpUrl.parse(base+path)).newBuilder().addQueryParameter("key",key).addQueryParameter("output","/v5/place/text".equals(path)?"json":"JSON");
+        var url=Objects.requireNonNull(HttpUrl.parse(base+path)).newBuilder().addQueryParameter("key",key).addQueryParameter("output",path.startsWith("/v5/place/")?"json":"JSON");
         params.forEach(url::addQueryParameter);reserve(path,params);reserved=true;
         try(var response=client.newCall(new Request.Builder().url(url.build()).get().build()).execute()){
             httpStatus=response.code();
@@ -123,14 +134,14 @@ public final class AmapMapProvider implements MapProvider {
         }
         }catch(MapFailure error){
             failure(path,error,started,httpStatus,infoCode);
-            if(reserved&&ledger!=null){if("/v5/place/text".equals(path))ledger.stopPlaceFor(error.code());else ledger.stopFor(error.code());}throw error;
+            if(reserved&&ledger!=null){if(path.startsWith("/v5/place/"))ledger.stopPlaceFor(error.code());else ledger.stopFor(error.code());}throw error;
         }
         catch(java.io.InterruptedIOException error){throw failure(path,MapFailure.of("TIMEOUT"),started,httpStatus,infoCode);}
         catch(IOException error){throw failure(path,MapFailure.of("NETWORK"),started,httpStatus,infoCode);}
         catch(RuntimeException error){if(!reserved)throw error;throw failure(path,MapFailure.of("BAD_RESPONSE"),started,httpStatus,infoCode);}
     }
     private static MapFailure failure(String path,MapFailure error,long started,int httpStatus,String infoCode){
-        String operation=switch(path){case "/v3/geocode/geo"->"GEOCODE";case "/v3/geocode/regeo"->"REVERSE";case "/v5/direction/driving"->"DRIVING";case "/v5/place/text"->"POI_SEARCH";default->"UNKNOWN";};
+        String operation=switch(path){case "/v3/geocode/geo"->"GEOCODE";case "/v3/geocode/regeo"->"REVERSE";case "/v5/direction/driving"->"DRIVING";case "/v5/place/text","/v5/place/around"->"POI_SEARCH";default->"UNKNOWN";};
         String trace=TraceContext.currentTraceId();
         if(trace==null||!trace.matches("[A-Za-z0-9._-]{1,64}"))trace="-";
         // Deliberately no exception/cause, URL, parameters, address, coordinates or response body.

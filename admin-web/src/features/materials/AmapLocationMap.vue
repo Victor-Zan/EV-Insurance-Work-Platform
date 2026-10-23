@@ -2,15 +2,15 @@
 import {onMounted,onUnmounted,ref,watch} from 'vue'
 import {httpClient} from '@/shared/http/client'
 import {loadAmapJs,pointFromEvent,type MapPoint,type AmapNamespace,type JsMap,type JsMarker,type JsBootstrap,type JsEvent} from './amap-js'
-const props=defineProps<{point?:MapPoint;confirmed?:boolean;disabled?:boolean;selectedShopId?:number;shops?:{shopId:number;name:string;status:string;point?:MapPoint;mock?:boolean}[]}>()
-const emit=defineEmits<{pick:[point:MapPoint];choose:[id:number]}>()
+const props=defineProps<{point?:MapPoint;confirmed?:boolean;disabled?:boolean;selectedShopId?:number;shops?:{shopId:number;name:string;status:string;point?:MapPoint;mock?:boolean}[];publicShops?:{id:string;name:string;point:MapPoint}[];publicFocus?:MapPoint}>()
+const emit=defineEmits<{pick:[point:MapPoint];choose:[id:number];inspect:[id:string]}>()
 const host=ref<HTMLElement>(),state=ref<'idle'|'loading'|'ready'|'failed'>('idle'),error=ref(''),configuration=ref<{enabled:boolean;configured:boolean;reason:string}>()
 let mapTimer:ReturnType<typeof setTimeout>|undefined
 let api:AmapNamespace|undefined,map:JsMap|undefined,parking:JsMarker|undefined,markers:JsMarker[]=[],disposed=false,issued=false
 async function configurationStatus(){try{configuration.value=(await httpClient.get('/maps/js/configuration')).data.data}catch{error.value='无法读取真实地图配置；地址搜索仍可使用'}}
 function pick(event:JsEvent){if(props.disabled||disposed)return;const point=pointFromEvent(event);if(point){position(point);emit('pick',point)}}
 function position(point:MapPoint){if(!map||!api)return;if(!parking){parking=new api.Marker({position:[point.longitude,point.latitude],draggable:!props.disabled,title:'车辆停车位置（待人工核验）'});parking.on('dragend',()=>{if(parking)pick({lnglat:parking.getPosition()})});map.add(parking)}else parking.setPosition([point.longitude,point.latitude])}
-function renderShopMarkers(){if(!map||!api)return;map.remove(markers);markers=[];for(const [index,shop] of (props.shops??[]).entries()){if(!shop.point||shop.mock||shop.status!=='READY')continue;const label=document.createElement('button');label.type='button';label.className='amap-shop-marker'+(shop.shopId===props.selectedShopId?' is-selected':'');label.textContent=String(index+1);label.setAttribute('aria-label','选择'+shop.name);label.disabled=Boolean(props.disabled);const marker=new api.Marker({position:[shop.point.longitude,shop.point.latitude],content:label,title:shop.name,bubble:false});marker.on('click',()=>{if(!props.disabled)emit('choose',shop.shopId)});map.add(marker);markers.push(marker)}}
+function renderShopMarkers(){if(!map||!api)return;map.remove(markers);markers=[];for(const [index,shop] of (props.shops??[]).entries()){if(!shop.point||shop.mock||shop.status!=='READY')continue;const label=document.createElement('button');label.type='button';label.className='amap-shop-marker'+(shop.shopId===props.selectedShopId?' is-selected':'');label.textContent=String(index+1);label.setAttribute('aria-label','选择'+shop.name);label.disabled=Boolean(props.disabled);const marker=new api.Marker({position:[shop.point.longitude,shop.point.latitude],content:label,title:shop.name,bubble:false});marker.on('click',()=>{if(!props.disabled)emit('choose',shop.shopId)});map.add(marker);markers.push(marker)}for(const [index,shop] of (props.publicShops??[]).entries()){const label=document.createElement('button');label.type='button';label.className='amap-shop-marker';label.textContent='修'+(index+1);label.setAttribute('aria-label','核实公开门店'+shop.name);label.disabled=Boolean(props.disabled);const marker=new api.Marker({position:[shop.point.longitude,shop.point.latitude],content:label,title:shop.name+'（维修能力待核实）',bubble:false});marker.on('click',()=>{if(!props.disabled)emit('inspect',shop.id)});map.add(marker);markers.push(marker)}}
 async function load(){
  if(disposed||state.value==='loading'||state.value==='ready'||!configuration.value?.enabled||!host.value)return
  state.value='loading';error.value=''
@@ -23,7 +23,8 @@ async function load(){
 }
 async function revoke(){if(issued){issued=false;try{await fetch('/api/v1/maps/js-proxy/session',{method:'DELETE',credentials:'same-origin',keepalive:true})}catch{/* No credential or transport details in browser logs. */}}}
 watch(()=>props.point,point=>{if(point){position(point);map?.setCenter([point.longitude,point.latitude])}else if(parking){map?.remove(parking);parking=undefined}},{deep:true})
-watch(()=>[props.shops,props.selectedShopId,props.disabled],()=>{parking?.setDraggable(!props.disabled);renderShopMarkers()},{deep:true})
+watch(()=>[props.shops,props.selectedShopId,props.disabled,props.publicShops],()=>{parking?.setDraggable(!props.disabled);renderShopMarkers()},{deep:true})
+watch(()=>props.publicFocus,point=>{if(point)map?.setCenter([point.longitude,point.latitude])},{deep:true})
 onMounted(configurationStatus)
 onUnmounted(()=>{disposed=true;clearTimeout(mapTimer);map?.destroy();map=undefined;void revoke()})
 </script>

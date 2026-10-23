@@ -27,7 +27,7 @@ final class PlaceSearchBudget {
     }
     private static int number(Map<String,Object> row,String name){return ((Number)row.get(name)).intValue();}
     void reserve(String path,Map<String,String> parameters){
-        if(!"/v5/place/text".equals(path))throw MapFailure.of("UNSUPPORTED_OPERATION");
+        if(!Set.of("/v5/place/text","/v5/place/around").contains(path))throw MapFailure.of("UNSUPPORTED_OPERATION");
         transaction.executeWithoutResult(status->{
             var open=db.queryForList("SELECT enabled FROM "+runs+" WHERE id=? FOR UPDATE",Boolean.class,run);
             if(open.isEmpty()||!open.getFirst())throw MapFailure.of("LOCAL_BUDGET");
