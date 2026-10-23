@@ -56,6 +56,22 @@ public final class AmapMapProvider implements MapProvider {
         return List.copyOf(result);
         });
     }
+    public PlacePage places(Address a,int page){
+        GuangdongAddress.validate(a);
+        if(a.detail().length()>80||page<1||page>20)throw MapFailure.of("INVALID_REQUEST");
+        return get("/v5/place/text",Map.of("keywords",a.detail().trim(),"region",a.districtAdcode(),"city_limit","true","page_size","10","page_num",Integer.toString(page)),root->{
+            var nodes=root.path("pois");if(!nodes.isArray()||nodes.size()>10)throw MapFailure.of("BAD_RESPONSE");
+            var result=new ArrayList<AddressCandidate>();
+            for(var node:nodes){
+                String name=text(node,"name"),street=text(node,"address");
+                if(name.isBlank())throw MapFailure.of("BAD_RESPONSE");
+                String province=text(node,"pname"),city=text(node,"cityname"),district=text(node,"adname");
+                var raw=new AddressCandidate(province+city+district+street+" · "+name,parsePoint(text(node,"location")),province,city,district,text(node,"adcode"),"兴趣点","REQUIRES_CONFIRMATION",false);
+                result.add(new AddressCandidate(raw.address(),raw.point(),province,city,district,raw.adcode(),"地点名称候选（请人工核对具体入口）",GuangdongAddress.status(a,raw),false));
+            }
+            return new PlacePage(page,10,nodes.size()==10&&page<20,List.copyOf(result));
+        });
+    }
     public AddressCandidate locate(Point p){
         GuangdongAddress.point(p);
         return get("/v3/geocode/regeo",Map.of("location",coordinate(p),"extensions","base","radius","100"),root->{
@@ -88,7 +104,7 @@ public final class AmapMapProvider implements MapProvider {
     private <T> T get(String path,Map<String,String> params,Function<JsonNode,T> decode){
         long started=System.nanoTime();int httpStatus=0;String infoCode="-";boolean reserved=false;
         try {
-        var url=Objects.requireNonNull(HttpUrl.parse(base+path)).newBuilder().addQueryParameter("key",key).addQueryParameter("output","JSON");
+        var url=Objects.requireNonNull(HttpUrl.parse(base+path)).newBuilder().addQueryParameter("key",key).addQueryParameter("output","/v5/place/text".equals(path)?"json":"JSON");
         params.forEach(url::addQueryParameter);reserve(path,params);reserved=true;
         try(var response=client.newCall(new Request.Builder().url(url.build()).get().build()).execute()){
             httpStatus=response.code();
@@ -107,14 +123,14 @@ public final class AmapMapProvider implements MapProvider {
         }
         }catch(MapFailure error){
             failure(path,error,started,httpStatus,infoCode);
-            if(reserved&&ledger!=null)ledger.stopFor(error.code());throw error;
+            if(reserved&&ledger!=null){if("/v5/place/text".equals(path))ledger.stopPlaceFor(error.code());else ledger.stopFor(error.code());}throw error;
         }
         catch(java.io.InterruptedIOException error){throw failure(path,MapFailure.of("TIMEOUT"),started,httpStatus,infoCode);}
         catch(IOException error){throw failure(path,MapFailure.of("NETWORK"),started,httpStatus,infoCode);}
         catch(RuntimeException error){if(!reserved)throw error;throw failure(path,MapFailure.of("BAD_RESPONSE"),started,httpStatus,infoCode);}
     }
     private static MapFailure failure(String path,MapFailure error,long started,int httpStatus,String infoCode){
-        String operation=switch(path){case "/v3/geocode/geo"->"GEOCODE";case "/v3/geocode/regeo"->"REVERSE";case "/v5/direction/driving"->"DRIVING";default->"UNKNOWN";};
+        String operation=switch(path){case "/v3/geocode/geo"->"GEOCODE";case "/v3/geocode/regeo"->"REVERSE";case "/v5/direction/driving"->"DRIVING";case "/v5/place/text"->"POI_SEARCH";default->"UNKNOWN";};
         String trace=TraceContext.currentTraceId();
         if(trace==null||!trace.matches("[A-Za-z0-9._-]{1,64}"))trace="-";
         // Deliberately no exception/cause, URL, parameters, address, coordinates or response body.

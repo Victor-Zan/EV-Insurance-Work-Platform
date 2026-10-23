@@ -43,6 +43,18 @@ public class MapLocationService {
         access();var address=address(districtId,detail);var result=provider.resolve(address);
         return remember(districtId,result);
     }
+    public record PlaceChoices(int page,int size,boolean hasMore,List<Choice> records){}
+    public PlaceChoices places(long districtId,String keywords,int page){
+        access();var expected=address(districtId,keywords);
+        if(keywords.length()>80||page<1||page>20)throw ApiException.invalid("地点名称最多80个字符，页码范围1至20");
+        ensurePlaceCapacity();
+        var result=provider.places(expected,page);
+        return new PlaceChoices(result.page(),result.size(),result.hasMore(),remember(districtId,result.records()));
+    }
+    private synchronized void ensurePlaceCapacity(){
+        sessions.values().removeIf(s->s.expires().isBefore(Instant.now()));long actor=CurrentUser.require().id();
+        if(sessions.size()+10>1000||sessions.values().stream().filter(s->s.actorId()==actor).count()+10>40)throw ApiException.conflict("MAP_SESSION_LIMIT","当前位置候选过多，请稍后再搜索；尚未调用高德");
+    }
     public List<Choice> selectedPoint(long districtId,MapProvider.Point point){
         access();var expected=address(districtId,"地图选点人工核对");GuangdongAddress.point(point);
         var result=provider.locate(point);

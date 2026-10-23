@@ -18,6 +18,7 @@ public class MapCallBudget {
     private final String runs,slots;
     private final String ledgerSchema,extraAttempts;
     private final DevelopmentMapBudget development;
+    private final PlaceSearchBudget places;
     public MapCallBudget(JdbcTemplate db,PlatformTransactionManager manager,Environment env){
         this.db=db;this.run=env.getProperty("AMAP_BUDGET_RUN_ID","");
         // An isolated business schema can use the original ledger without copying
@@ -33,12 +34,20 @@ public class MapCallBudget {
         transaction=new TransactionTemplate(manager);
         transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         development=env.getProperty("AMAP_DEV_BUDGET_ENABLED",Boolean.class,false)?new DevelopmentMapBudget(db,manager,env):null;
+        places=env.getProperty("AMAP_PLACE_BUDGET_ENABLED",Boolean.class,false)?new PlaceSearchBudget(db,manager,env):null;
     }
     public record OperationAllowance(String operation,int total,int used,int reserved,int remaining){}
     public record Availability(boolean callsEnabled,int remaining,String reason,List<OperationAllowance> operations){
         public Availability(boolean callsEnabled,int remaining,String reason){this(callsEnabled,remaining,reason,List.of());}
     }
     public Availability availability(){
+        var existing=existingAvailability();if(places==null)return existing;
+        var search=places.availability();var operations=new ArrayList<OperationAllowance>();
+        for(var row:existing.operations())operations.add(existing.callsEnabled()?row:new OperationAllowance(row.operation(),row.total(),row.used(),row.reserved(),0));
+        operations.add(search);int remaining=(existing.callsEnabled()?existing.remaining():0)+search.remaining();
+        return new Availability(remaining>0,remaining,remaining>0?"按各类别独立持久额度调用；地点搜索不占地址/逆编码/路线额度":"地图调用预算未配置、已关闭或已用完",List.copyOf(operations));
+    }
+    private Availability existingAvailability(){
         if(development!=null)return development.availability();
         if(run.isBlank())return new Availability(false,0,"未配置真实调用预算");
         var rows=db.queryForList("SELECT enabled FROM "+runs+" WHERE id=?",Boolean.class,run);
@@ -48,6 +57,7 @@ public class MapCallBudget {
         return new Availability(remaining>0,remaining,remaining>0?"按已授权的类别及地点限额调用":"本轮真实调用预算已用完");
     }
     public void reserve(String path,Map<String,String> parameters){
+        if("/v5/place/text".equals(path)){if(places==null)throw MapFailure.of("LOCAL_BUDGET");places.reserve(path,parameters);return;}
         if(development!=null){development.reserve(path,parameters);return;}
         if(run.isBlank())throw MapFailure.of("LOCAL_BUDGET");
         String digest=fingerprint(path,parameters);
@@ -67,6 +77,7 @@ public class MapCallBudget {
         if(!run.isBlank()&&Set.of("MAP_CREDENTIALS","MAP_PERMISSION","MAP_QUOTA","MAP_RATE_LIMIT").contains(code))
             transaction.executeWithoutResult(status->db.update("UPDATE "+runs+" SET enabled=false WHERE id=?",run));
     }
+    public void stopPlaceFor(String code){if(places!=null&&Set.of("MAP_CREDENTIALS","MAP_PERMISSION","MAP_QUOTA","MAP_RATE_LIMIT").contains(code))places.stop();}
     public interface DrivingAllowance extends AutoCloseable { @Override void close(); }
     public DrivingAllowance reserveDriving(int count){
         if(development==null)return ()->{};
@@ -77,6 +88,7 @@ public class MapCallBudget {
         case "/v3/geocode/geo" -> "GEOCODE";
         case "/v3/geocode/regeo" -> "REVERSE";
         case "/v5/direction/driving" -> "DRIVING";
+        case "/v5/place/text" -> "POI_SEARCH";
         default -> throw MapFailure.of("UNSUPPORTED_OPERATION");
     };}
     public static String fingerprint(String path,Map<String,String> parameters){

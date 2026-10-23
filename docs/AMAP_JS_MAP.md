@@ -39,3 +39,15 @@ POST /api/v1/maps/locations/point：{districtId,longitude,latitude}；只有客�
 ## 当前验证边界
 
 管理端189项测试及lint/typecheck/build，后端94单元+23隔离PostgreSQL集成及Flyway/JAR通过。模拟HTTP验证固定路径、敏感响应阻断、四角色、Cookie范围/过期/停用、限流、不重试、选点行政核验及不写案件；前端模拟SDK验证显式加载、完成事件、离页回收、点击不外呼、迟到响应丢弃。真实高德JS加载、Key域名/权限和真实选点效果未验证，由用户明确点击验收，不把离线结果写成真实联网成功。本轮代理新增真实高德/百度请求0。
+
+## 地点名称搜索
+
+客服派单页的“搜索方式”可选“地点名称（学校、校门等）”或“完整地址（街道、门牌）”；不自动判断或失败回退。先选广东城市/区县，再填写4—80字地点名称，点击“搜索地点”。后端使用官方GET https://restapi.amap.com/v5/place/text（region=区县adcode、city_limit=true、page_size=10、page_num=人工所选页），复核返回pname/cityname/adname/adcode，跨区候选不可确认。不请求联系人、照片、额外业务字段或子POI，不自动查询下一页。
+
+POST /api/v1/maps/locations/places：{districtId,keywords,page}，页码1—20；只允许CUSTOMER_SERVICE，经现有JWT和当前账号校验。返回{page,size,hasMore,records:[{token,candidate}]}。每次搜索/翻页最多1次POI_SEARCH，失败超时计次；满页仅表示可尝试下一页，不承诺有更多结果。空页提示补充名称/改用完整地址/地图选点，不自动扩大范围。
+
+结果带完整名称、地址、行政区和“地点名称候选（请人工核对具体入口）”标识。可明确点击“在地图上查看”定位标记（已加载底图可能请求地图资源，但不发起新的搜索/逆编码/路线）；不默认标记第一条或确认校园中心。人工核对入口后才点击原确认位置，沿原停车保存、版本、资格及派单服务，不改事故区县，不新增合作网点。候选仅在后端内存短期保留10分钟，保留既有会话上限；超限在发出请求前阻止并提示。
+
+新增AMAP_PLACE_BUDGET_ENABLED（默认false）、AMAP_PLACE_BUDGET_SCHEMA、AMAP_PLACE_BUDGET_RUN_ID，仅显式dev+AMAP_WEB_V1可启用。独立Flyway位置db/map-place-budget，历史表flyway_place_budget_history，不改旧业务/预算迁移。启动只建表/校验，不创建授权或调用槽位。只有可信本机操作脚本能按本次授权一次性准备10槽位；数据库保护额度不可扩展、已尝试槽位不可重置/删除、已关闭run不可恢复，重跑配置不补次数。仅保存请求摘要和时间，无明文关键词、坐标或凭据。POI接口认证/权限/供应商额度/限流错误关闭该独立POI授权，不消费或恢复其他分类额度。原进程总量防线在本机对应增加10，不代表自动新增任何其他分类授权。
+
+官方文档：https://lbs.amap.com/api/webservice/guide/api-advanced/newpoisearch 。Web服务搜索接口的权限、费用和供应商配额仍需用户实际账户验证；JS底图成功不代表该高级搜索服务有权限。本轮用户明确自行测试，仅编译打包，未运行测试、浏览器联调或真实调用，不能将本功能标为已完成真实搜索验收。

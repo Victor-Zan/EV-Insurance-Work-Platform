@@ -25,6 +25,9 @@ public class MapLocationController {
     public record Resolve(@Positive long districtId,@NotBlank @Size(min=4,max=200) String detail){}
     @PostMapping("/resolve") @Operation(summary="解析车辆停放地址候选；需人工确认，不更改案件地址或派单")
     public ApiResponse<List<MapLocationService.Choice>> resolve(@Valid @RequestBody Resolve request){return ApiResponse.success(service.resolve(request.districtId(),request.detail()));}
+    public record Places(@Positive long districtId,@NotBlank @Size(min=4,max=80) String keywords,@Min(1) @Max(20) int page){}
+    @PostMapping("/places") @Operation(summary="客服明确搜索地点名称：一页10个候选，单独POI_SEARCH额度；不自动确认、补查或创建合作网点")
+    public ApiResponse<MapLocationService.PlaceChoices> places(@Valid @RequestBody Places request){return ApiResponse.success(service.places(request.districtId(),request.keywords(),request.page()));}
     public record SelectedPoint(@Positive long districtId,@NotNull @DecimalMin("-180") @DecimalMax("180") java.math.BigDecimal longitude,@NotNull @DecimalMin("-90") @DecimalMax("90") java.math.BigDecimal latitude){}
     @PostMapping("/point") @Operation(summary="客服明确核验地图选点：最多一次REVERSE，核对所选广东区县；不写案件")
     public ApiResponse<List<MapLocationService.Choice>> selectedPoint(@Valid @RequestBody SelectedPoint request){return ApiResponse.success(service.selectedPoint(request.districtId(),new MapProvider.Point(request.latitude().doubleValue(),request.longitude().doubleValue())));}
