@@ -107,7 +107,7 @@ export function workOrderApi(client: AxiosInstance) {
       data<WorkOrder>(client.post(`/work-orders/${id}/submit`,{ confirmPossibleDuplicate,duplicateReason },{ headers:{ 'Idempotency-Key':key } })),
     bindOwner: (id:string,expectedVersion:number,reason:string,key=idempotencyKey('owner-bind')) => data<WorkOrder>(client.post(`/work-orders/${id}/owner-binding`,{expectedVersion,reason},{headers:{'Idempotency-Key':key}})),
     critical: (id: string,value: CriticalForm) => data<WorkOrder>(client.put(`/work-orders/${id}/critical-fields`,value)),
-    shops: (id: string,page=1) => data<Page<ShopOption>>(client.get(`/work-orders/${id}/eligible-shops`,{ params:{ page,size:20 } })),
+    shops: (id: string,page=1,includeMockDistances=true) => data<Page<ShopOption>>(client.get(`/work-orders/${id}/eligible-shops`,{ params:{ page,size:20,...(includeMockDistances?{}:{includeMockDistances:false}) } })),
     dispatchLocation:(id:string,expectedVersion:number,regionId:number,address:string)=>data<WorkOrder>(client.put(`/work-orders/${id}/dispatch-location`,{expectedVersion,regionId,address,confirmed:true})),
     accidentDistricts:(query='',page=1)=>data<Page<{id:number;code:string;name:string}>>(client.get('/work-orders/accident-districts',{params:{query,page,size:20}})),
     accidentDistrict:(id:string,expectedVersion:number,regionId:number,reason:string)=>data<WorkOrder>(client.put(`/work-orders/${id}/accident-district`,{expectedVersion,regionId,reason,confirmed:true})),

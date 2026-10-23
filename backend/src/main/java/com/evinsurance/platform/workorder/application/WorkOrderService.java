@@ -160,12 +160,17 @@ public class WorkOrderService {
 
     @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public PageResponse<WorkOrderRows.ShopOption> eligibleShops(UUID id,int page,int size) {
+        return eligibleShops(id,page,size,true);
+    }
+
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public PageResponse<WorkOrderRows.ShopOption> eligibleShops(UUID id,int page,int size,boolean includeMockDistances) {
         var actor=requireStaff();
         var row=requireVisible(id,actor,false);
         int offset=PageResponse.offset(page,size);
         if(row.getAccidentRegionId()==null)return new PageResponse<>(page,size,0,List.of());
         long count=mapper.eligibleShopCount(row.getAccidentRegionId());
-        if(!"MOCK_V1".equals(maps.providerId())||!row.isDispatchAddressConfirmed()||(trim(row.getParkingAddress())==null&&trim(row.getAccidentAddress())==null))return new PageResponse<>(page,size,count,mapper.eligibleShops(row.getAccidentRegionId(),offset,size));
+        if(!includeMockDistances||!"MOCK_V1".equals(maps.providerId())||!row.isDispatchAddressConfirmed()||(trim(row.getParkingAddress())==null&&trim(row.getAccidentAddress())==null))return new PageResponse<>(page,size,count,mapper.eligibleShops(row.getAccidentRegionId(),offset,size));
         // Mock geocoding is local. Read candidates in bounded batches, rank before pagination.
         var ranked=new java.util.ArrayList<WorkOrderRows.ShopOption>();var origin=maps.geocode(row.getParkingAddress()!=null?row.getParkingAddress():row.getAccidentAddress()).point();
         for(int start=0;start<count;start+=100){var batch=mapper.eligibleShops(row.getAccidentRegionId(),start,100);for(var shop:batch){if(trim(shop.getAddress())!=null)shop.setDistanceMetres(maps.distance(origin,maps.geocode(shop.getAddress()).point()).metres());ranked.add(shop);}}

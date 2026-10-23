@@ -1,5 +1,11 @@
 # 广东合作网点驾车距离推荐
 
+## 2026-10-23 Mock人工派单修复
+
+本轮仅修复开发测试环境的人工派单路径，不恢复真实高德预算或历史路线。Mock模式默认展示原人工停车确认与网点选择；模拟地图仅为可选辅助，不是原派单接口的前置条件。事故区县服务关系及网点启用校验保留，停车不改事故字段，候选距离未知保留为空。
+
+`GET /work-orders/{id}/eligible-shops` 新增可选 `includeMockDistances=false`，只读取已有资格SQL、按名称/ID分页，不调用MapProvider；默认true维持旧Mock接口及排序兼容。四角色、案件可见性、正式派单状态机/幂等/审计不变。真实推荐接口和供应商开关均未放宽。实测根因、合成案件、两套代码与V26/V28隔离验证见[MOCK_MANUAL_DISPATCH.md](MOCK_MANUAL_DISPATCH.md)。下文此前高德真实验收属于其历史任务，本轮不重算、不重派其案件。
+
 ## 2026-10-22 状态修正
 
 下述d28d19e/V23是本地检查点历史。用户已批准[AMAP_MIGRATION_PLAN](AMAP_MIGRATION_PLAN.md)：普通合并main 94173d2，原样保留共享V23账号开通/V24地图，旧本地V23保留在a6aa673/9701373及旧schema，从最终目录撤下，新增V25仅增量修改已有结构。最终程序只允许连接全新schema amap_main_final_20261022；旧schema不升级/repair。完整迁移、再次启动、测试与运行版本证据以PROGRESS最终记录为准。

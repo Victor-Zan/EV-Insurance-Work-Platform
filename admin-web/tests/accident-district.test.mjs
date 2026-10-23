@@ -34,6 +34,6 @@ test('manual dispatch remains available without map calls and explicitly keeps p
  const calls=[],client={get:async(path)=>{calls.push(path);return {data:{data:{total:1,records:path.endsWith('eligible-shops')?[{id:7,name:'合成可派网点'}]:[{id:3,name:'合成区县'}]}}}},put:async(path,body)=>{calls.push([path,body]);return {data:{data:{}}}}}
  const p=mount(client,{order:{id:'case',version:4,accidentRegionId:3}},'ManualDispatchChoice');await settle()
  assert.equal(p.s.shops[0].id,7);p.s.district='3';p.s.address='合成当前停放地址';await p.s.save();assert.equal(calls.length,2)
- p.s.confirmed=true;await p.s.save();assert.deepEqual(calls.at(-1),['/work-orders/case/dispatch-location',{expectedVersion:4,regionId:3,address:'合成当前停放地址',confirmed:true}]);assert.equal(p.s.saved,true)
+ p.s.confirmed=true;await p.s.save();assert.deepEqual(calls.find(c=>Array.isArray(c)),['/work-orders/case/dispatch-location',{expectedVersion:4,regionId:3,address:'合成当前停放地址',confirmed:true}]);assert.equal(calls.at(-1),'/work-orders/case/eligible-shops');assert.equal(p.s.saved,true)
  p.s.changed();assert.equal(p.s.saved,false);assert.equal(calls.some(c=>typeof c==='string'&&c.includes('/maps/')),false);p.unmount()
 })
