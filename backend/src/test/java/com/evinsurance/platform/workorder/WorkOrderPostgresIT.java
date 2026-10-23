@@ -288,6 +288,35 @@ class WorkOrderPostgresIT {
         assertThat(api(customerService,"GET","/api/v1/work-orders/"+id+"/eligible-shops?size=1",null,null,200).path("total").asLong()).isZero();
         api(customerService,"POST","/api/v1/work-orders/"+id+"/dispatch",Map.of("shopId",shopId),"still-no-accident-"+id,409);
     }
+    @Test void mockManualDispatchNeedsOnlyReviewedParkingAndEligibleShopWithReplayAndScopeChecks() throws Exception {
+        var input=requiredDraft("MOCK-MANUAL-"+UUID.randomUUID(),uniquePhone(),"VIN-"+UUID.randomUUID(),Instant.now().minus(90,ChronoUnit.DAYS));
+        input.put("accidentAddress","合成事故原地址，不是停车位置");
+        String id=createDraft(customerService,input).path("id").asText();
+        var formal=api(customerService,"POST","/api/v1/work-orders/"+id+"/submit",Map.of(),"submit-manual-"+id,200);
+        String path="/api/v1/work-orders/"+id;
+        api(customerService,"POST",path+"/dispatch",Map.of("shopId",shopId),"no-reviewed-parking-"+id,409);
+        var location=Map.of("expectedVersion",formal.path("version").asLong(),"regionId",regionId,"address","合成车辆当前停放入口","confirmed",true);
+        api(shop,"PUT",path+"/dispatch-location",location,null,403);api(owner,"PUT",path+"/dispatch-location",location,null,403);
+        api(customerService,"PUT",path+"/dispatch-location",location,null,200);
+        long disabled=createEligibleShop();db.update("UPDATE repair_shop SET enabled=false WHERE id=?",disabled);
+        long outside=api(admin,"POST","/api/v1/admin/shops",Map.of("name","合成未配置服务区网点","code","OUT-"+UUID.randomUUID().toString().substring(0,8),"enabled",true),null,200).path("id").asLong();
+        var candidates=api(customerService,"GET",path+"/eligible-shops?includeMockDistances=false&size=100",null,null,200).path("records");
+        assertThat(candidates).anyMatch(row->row.path("id").asLong()==shopId);
+        for(var candidate:candidates){assertThat(candidate.hasNonNull("distanceMetres")).isFalse();assertThat(candidate.path("id").asLong()).isNotIn(disabled,outside);}
+        api(shop,"GET",path+"/eligible-shops?includeMockDistances=false",null,null,403);api(owner,"GET",path+"/eligible-shops?includeMockDistances=false",null,null,403);
+        api(customerService,"POST",path+"/dispatch",Map.of(),"no-shop-"+id,400);
+        for(long target:List.of(disabled,outside))api(customerService,"POST",path+"/dispatch",Map.of("shopId",target),"invalid-shop-"+target+id,409);
+        api(shop,"POST",path+"/dispatch",Map.of("shopId",shopId),"shop-forbidden-"+id,403);api(owner,"POST",path+"/dispatch",Map.of("shopId",shopId),"owner-forbidden-"+id,403);
+        String key="manual-dispatch-"+id;var result=api(customerService,"POST",path+"/dispatch",Map.of("shopId",shopId),key,200);
+        assertThat(result.path("status").asText()).isEqualTo("PENDING_ACCEPTANCE");assertThat(result.path("currentAssignment").path("shopId").asLong()).isEqualTo(shopId);
+        assertThat(api(customerService,"POST",path+"/dispatch",Map.of("shopId",shopId),key,200)).isEqualTo(result);
+        assertThat(db.queryForObject("SELECT count(*) FROM work_order_assignment WHERE work_order_id=?::uuid",Long.class,id)).isEqualTo(1L);
+        assertThat(db.queryForObject("SELECT count(*) FROM audit_log WHERE object_id=? AND action='WORK_ORDER_DISPATCH'",Long.class,id)).isEqualTo(1L);
+        assertThat(db.queryForObject("SELECT accident_address FROM work_order WHERE id=?::uuid",String.class,id)).isEqualTo("合成事故原地址，不是停车位置");
+        assertThat(db.queryForObject("SELECT accident_region_id FROM work_order WHERE id=?::uuid",Long.class,id)).isEqualTo(regionId);
+        assertThat(db.queryForObject("SELECT count(*) FROM map_call_budget_slot WHERE attempted_at IS NOT NULL",Long.class)).isZero();
+    }
+
     @Test void explicitAccidentDistrictKeepsMockRankingManualDispatchAndQuotationFlow() throws Exception {
         var valid=new HashMap<String,Object>();valid.put("claimNo","EXPLICIT-REGION-"+UUID.randomUUID());valid.put("ownerPhone",uniquePhone());valid.put("vehiclePlate","粤B8Z71M");valid.put("surveyorName","合成查勘");valid.put("surveyorPhone","00000000001");valid.put("accidentRegionId",regionId);
         String id=createDraft(customerService,valid).path("id").asText();

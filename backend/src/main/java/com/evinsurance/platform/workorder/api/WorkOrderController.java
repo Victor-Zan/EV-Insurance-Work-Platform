@@ -99,9 +99,11 @@ public class WorkOrderController {
 
     @GetMapping("/{id}/eligible-shops")
     @PreAuthorize("hasAnyRole('ADMIN','CUSTOMER_SERVICE')")
+    @Operation(summary="按事故区县与网点启用状态读取可派网点；includeMockDistances=false不调用地图，距离为空")
     public ApiResponse<PageResponse<WorkOrderRows.ShopOption>> eligibleShops(@PathVariable UUID id,
-        @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size) {
-        return ApiResponse.success(service.eligibleShops(id,page,size));
+        @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size,
+        @RequestParam(defaultValue="true") boolean includeMockDistances) {
+        return ApiResponse.success(service.eligibleShops(id,page,size,includeMockDistances));
     }
 
     @PutMapping("/{id}/dispatch-location")
