@@ -25,6 +25,9 @@ public class MapLocationController {
     public record Resolve(@Positive long districtId,@NotBlank @Size(min=4,max=200) String detail){}
     @PostMapping("/resolve") @Operation(summary="解析车辆停放地址候选；需人工确认，不更改案件地址或派单")
     public ApiResponse<List<MapLocationService.Choice>> resolve(@Valid @RequestBody Resolve request){return ApiResponse.success(service.resolve(request.districtId(),request.detail()));}
+    public record SelectedPoint(@Positive long districtId,@NotNull @DecimalMin("-180") @DecimalMax("180") java.math.BigDecimal longitude,@NotNull @DecimalMin("-90") @DecimalMax("90") java.math.BigDecimal latitude){}
+    @PostMapping("/point") @Operation(summary="客服明确核验地图选点：最多一次REVERSE，核对所选广东区县；不写案件")
+    public ApiResponse<List<MapLocationService.Choice>> selectedPoint(@Valid @RequestBody SelectedPoint request){return ApiResponse.success(service.selectedPoint(request.districtId(),new MapProvider.Point(request.latitude().doubleValue(),request.longitude().doubleValue())));}
     @PostMapping("/{token}/confirm") @Operation(summary="客服明确确认当前停车位置，不更新工单地址")
     public ApiResponse<Void> confirm(@PathVariable UUID token){service.confirm(token);return ApiResponse.success(null);}
     @GetMapping("/admin-regions") public ApiResponse<PageResponse<MapLocationService.RegionOption>> adminRegions(@RequestParam(required=false) Long cityId,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size){return ApiResponse.success(service.adminRegions(cityId,page,size));}

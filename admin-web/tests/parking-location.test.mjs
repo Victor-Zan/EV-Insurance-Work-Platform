@@ -12,7 +12,7 @@ function mount(client,props={}){
   code=code.replace(/import\s*\{([^}]+)\}\s*from\s*['"]vue['"];?/g,(_,names)=>`const {${names.replace(/\s+as\s+/g,':')}}=Vue;`)
   code=code.replace(/import\s*\{\s*mapStatus\s*\}\s*from[^\n]+/g,'const mapStatus=()=>"";')
   code=code.replace(/import\s*\{\s*mapPreviewClientKey\s*\}\s*from[^\n]+/g,'const mapPreviewClientKey=Symbol();')
-  code=code.replace(/import\s+(DispatchMapCanvas|DispatchCandidateList)\s+from[^\n]+/g,'const $1={};')
+  code=code.replace(/import\s+(DispatchMapCanvas|DispatchCandidateList|AmapLocationMap)\s+from[^\n]+/g,'const $1={};')
   code=code.replace(/import\s*\{\s*httpClient\s*\}\s*from[^\n]+/g,'const httpClient=client;').replace('export default','return')
   const component=new Function('Vue','client',code)(Vue,client);component.render=()=>null
   const renderer=Vue.createRenderer({createComment:()=>({}),insert(){},remove(){},parentNode:()=>null,nextSibling:()=>null})
@@ -109,4 +109,17 @@ test('a completed recommendation may preselect the nearest known ready row witho
  const choices=[],posts=[];const fake=client(async(url)=>{posts.push(url);return {data:{data:{queryId:'synthetic-default',expiresAt:new Date(Date.now()+60000).toISOString(),shops:{records:[{shopId:4,name:'合成最近网点',status:'READY',metres:1500}]}}}}})
  const panel=mount(fake,{caseId:'synthetic',onChoose:v=>choices.push(v)});await settle();const s=panel.state;s.confirmed=result;s.estimate={candidates:1,fits:true,maximumRouteCalls:1};await s.performQuery()
  assert.equal(choices.at(-1).shopId,4);assert.equal(choices.at(-1).queryId,'synthetic-default');assert.deepEqual(posts,['/maps/cases/synthetic/recommendations']);panel.unmount()
+})
+
+
+test('real map pick is local until explicit reverse verification; changed input discards its late response',async()=>{
+ const requests=[];let release;const fake=client(async(url,body)=>{requests.push({url,body});return new Promise(resolve=>{release=resolve})});const panel=mount(fake,{caseId:'synthetic'});await settle();const s=panel.state
+ s.district='3';await settle();s.pickRealPoint({longitude:113.1,latitude:23.1});assert.equal(requests.length,0);assert.equal(s.confirmed,undefined)
+ const verifying=s.verifyPoint();assert.equal(requests.length,1);assert.equal(requests[0].url,'/maps/locations/point');assert.deepEqual(requests[0].body,{districtId:3,longitude:113.1,latitude:23.1})
+ s.detail='用户已修改的合成地址';await settle();release({data:{data:[{token:result.token,candidate:result}]}});await verifying;assert.deepEqual(s.candidates,[]);assert.equal(s.selectedPoint,undefined);panel.unmount()
+})
+
+test('confirming a verified point persists the selected canonical address rather than old typed text',async()=>{
+ const confirmations=[];const panel=mount(client(async()=>({data:{data:null}})),{onConfirmed:value=>confirmations.push(value)});await settle();const s=panel.state;s.district='3';s.detail='旧的合成手填地址';await settle();await s.confirm({...result,address:'新的已核对选点地址'})
+ assert.deepEqual(confirmations.at(-1),{districtId:3,address:'新的已核对选点地址'});panel.unmount()
 })

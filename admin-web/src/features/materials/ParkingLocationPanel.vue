@@ -5,6 +5,7 @@ import {mapStatus} from './map-recommendation'
 import {mapPreviewClientKey} from './map-preview-client'
 import DispatchMapCanvas from './DispatchMapCanvas.vue'
 import DispatchCandidateList from './DispatchCandidateList.vue'
+import AmapLocationMap from './AmapLocationMap.vue'
 const props=defineProps<{caseId?:string;selectedShopId?:number;initialAddress?:string;previewOnly?:boolean}>()
 const emit=defineEmits<{choose:[value:{shopId:number;queryId:string;name:string}|undefined];pending:[value:boolean];confirmed:[value:{districtId:number;address:string}]}>()
 const injectedPreviewClient=inject(mapPreviewClientKey,undefined)
@@ -19,6 +20,8 @@ const cities=ref<Region[]>([]),districts=ref<Region[]>([]),city=ref(''),district
 const budget=ref<{callsEnabled:boolean;reason:string;operations?:{operation:string;total:number;used:number;reserved:number;remaining:number}[]}>()
 const operationName:Record<string,string>={GEOCODE:'地址解析',REVERSE:'逆地理核验',DRIVING:'驾车路线'}
 function operationAvailable(operation:string){if(!budget.value?.callsEnabled)return false;const row=budget.value.operations?.find(item=>item.operation===operation);return !row||row.remaining>0}
+const selectedPoint=ref<{longitude:number;latitude:number}>()
+const reverseAvailable=computed(()=>operationAvailable('REVERSE'))
 const geocodeAvailable=computed(()=>operationAvailable('GEOCODE')),drivingAvailable=computed(()=>operationAvailable('DRIVING'))
 const estimate=ref<{candidates:number;maximumRouteCalls:number;routesRemaining:number|null;fits:boolean}>(),estimateFresh=ref(false)
 const resolveReasons=computed(()=>[...(!geocodeAvailable.value?['地址解析额度尚未开放或已用完']:[]),...(!city.value?['请选择车辆停放城市']:[]),...(!district.value?['请选择车辆停放区县']:[]),...(detail.value.trim().length<4?['请填写至少4个字符的街道、门牌或明确地标']:[])])
@@ -29,6 +32,13 @@ const context=ref<{accidentRegion:string;vehicleBrand:string;vehicleModel:string
 let queryKey='',queryIdentity=''
 const previewMarkers=computed(()=>props.previewOnly?(recommendation.value?.shops.records??[]).map((row,index)=>({id:row.shopId,name:row.name,x:22+index*25,y:36+(index%2)*35,selected:props.selectedShopId===row.shopId})):[])
 function selectShop(id:number){const query=recommendation.value,row=query?.shops.records.find(item=>item.shopId===id);if(query&&new Date(query.expiresAt).getTime()<=Date.now()){error.value='本次推荐已过期，请明确重新查询；未自动重算';emit('choose',undefined);return}if(!busy.value&&query&&row?.status==='READY')emit('choose',{shopId:id,queryId:query.queryId,name:row.name})}
+function pickRealPoint(point:{longitude:number;latitude:number}){if(props.previewOnly||busy.value)return;generation++;selectedPoint.value=point;confirmed.value=undefined;candidates.value=[];error.value='';clearRecommendation()}
+async function verifyPoint(){
+ if(props.previewOnly||busy.value||!selectedPoint.value||!district.value||!reverseAvailable.value)return
+ busy.value=true;error.value='';const requestGeneration=generation
+ try{const choices=(await client.post('/maps/locations/point',{districtId:Number(district.value),...selectedPoint.value},{timeout:15000})).data.data as {token:string;candidate:Candidate}[];if(requestGeneration===generation)candidates.value=choices.map(item=>({...item.candidate,token:item.token}))}
+ catch(e){error.value=e instanceof Error?e.message:'选点核验失败；未自动重试'}finally{busy.value=false;await loadBudget()}
+}
 async function previewPick(point:{x:number;y:number}){if(!props.previewOnly||busy.value)return;if(!city.value||!district.value){error.value='请先选择合成城市和区县，再在模拟网格选点';return}detail.value=`合成测试入口（网格 ${Math.round(point.x)} / ${Math.round(point.y)}）`;await nextTick();await resolve()}
 
 function clearRecommendation(){emit('pending',!confirmed.value);recommendation.value=undefined;estimate.value=undefined;exclusions.value=[];excludedPage.value=1;excludedTotal.value=0;emit('choose',undefined)}
@@ -41,15 +51,15 @@ async function regions(kind:'city'|'district'){
   }catch(e){error.value=e instanceof Error?e.message:'区域加载失败'}finally{busy.value=false}
 }
 watch(city,async()=>{generation++;district.value='';districts.value=[];districtPage.value=1;districtTotal.value=0;if(city.value)await regions('district')})
-watch([city,district,detail],()=>{generation++;confirmed.value=undefined;candidates.value=[];clearRecommendation()})
+watch([city,district,detail],()=>{generation++;confirmed.value=undefined;selectedPoint.value=undefined;candidates.value=[];clearRecommendation()})
 watch(shopCity,()=>{generation++;clearRecommendation()})
 async function resolve(){
   if(busy.value||!geocodeAvailable.value||!district.value||detail.value.trim().length<4)return
-  busy.value=true;error.value='';confirmed.value=undefined;candidates.value=[];const requestGeneration=generation
+  busy.value=true;error.value='';confirmed.value=undefined;selectedPoint.value=undefined;candidates.value=[];const requestGeneration=generation
   try{const response=(await client.post('/maps/locations/resolve',{districtId:Number(district.value),detail:detail.value.trim()},{timeout:15000})).data.data as {token:string;candidate:Candidate}[];if(requestGeneration===generation)candidates.value=response.map(item=>({...item.candidate,token:item.token}))}
   catch(e){error.value=e instanceof Error?e.message:'地址解析失败，未自动重试'}finally{busy.value=false;await loadBudget()}
 }
-async function confirm(item:Candidate){if(busy.value)return;const requestGeneration=generation;busy.value=true;error.value='';try{await client.post(`/maps/locations/${item.token}/confirm`);if(requestGeneration!==generation)return;confirmed.value=item;clearRecommendation();const selectedCity=cities.value.find(row=>String(row.id)===city.value);const selectedDistrict=districts.value.find(row=>String(row.id)===district.value);emit('confirmed',{districtId:Number(district.value),address:`广东省${selectedCity?.name??''}${selectedDistrict?.name??''}${detail.value.trim()}`})}catch(e){error.value=e instanceof Error?e.message:'位置确认失败'}finally{busy.value=false}}
+async function confirm(item:Candidate){if(busy.value)return;const requestGeneration=generation;busy.value=true;error.value='';try{await client.post(`/maps/locations/${item.token}/confirm`);if(requestGeneration!==generation)return;confirmed.value=item;clearRecommendation();emit('confirmed',{districtId:Number(district.value),address:item.address})}catch(e){error.value=e instanceof Error?e.message:'位置确认失败'}finally{busy.value=false}}
 async function excluded(page=1){if(!props.caseId)return;const value=(await client.get(`/maps/cases/${props.caseId}/recommendation-exclusions`,{params:{page,size:20,shopCityId:shopCity.value?Number(shopCity.value):undefined}})).data.data as {total:number;records:Exclusion[]};exclusions.value=value.records;excludedPage.value=page;excludedTotal.value=value.total}
 async function query(fresh=false){
   if(busy.value||!drivingAvailable.value||!confirmed.value||!props.caseId)return
@@ -76,7 +86,9 @@ onMounted(async()=>{await loadBudget();await regions('city');if(props.caseId)try
    <header class="dispatch-card-header"><div><span class="step-label">01 · 确认位置</span><h3>车辆当前停放位置</h3></div><span class="location-state" :class="{ready:confirmed}">{{ confirmed?'已确认':'待核对' }}</span></header>
    <p v-if="previewOnly" class="preview-notice" role="note">Mock交互预览：所有地址、网点与排序数值均为合成资料，不调用高德、不提交正式派单。</p>
    <p class="section-hint">停车位置只用于送店距离；事故服务区县单独核实，不随选点改变。</p>
-   <DispatchMapCanvas :preview="previewOnly" :confirmed="Boolean(confirmed)" :disabled="busy" :markers="previewMarkers" :label="confirmed?'已确认：'+confirmed.address:candidates.length?'待核对：'+(candidates[0]?.address??''):'尚未确认停车位置，请搜索地址或在合成预览中选点'" @pick="previewPick" @choose="selectShop"/>
+   <AmapLocationMap v-if="!previewOnly" :point="selectedPoint??confirmed?.point??candidates[0]?.point" :confirmed="Boolean(confirmed)" :disabled="busy" :shops="recommendation?.shops.records" :selected-shop-id="props.selectedShopId" @pick="pickRealPoint" @choose="selectShop"/>
+   <DispatchMapCanvas v-else :preview="previewOnly" :confirmed="Boolean(confirmed)" :disabled="busy" :markers="previewMarkers" :label="confirmed?'已确认：'+confirmed.address:candidates.length?'待核对：'+(candidates[0]?.address??''):'尚未确认停车位置，请搜索地址或在合成预览中选点'" @pick="previewPick" @choose="selectShop"/>
+   <div v-if="selectedPoint&&!previewOnly" class="query-confirmation"><p>暂选坐标（GCJ-02）：{{ selectedPoint.longitude.toFixed(6) }}，{{ selectedPoint.latitude.toFixed(6) }}。尚未确认车辆位置。</p><button type="button" class="primary-action" :disabled="busy||!district||!reverseAvailable" @click="verifyPoint">核验所选位置（最多1次逆地理核验）</button><p v-if="!district">请先选择停车城市和区县。</p><p v-else-if="!reverseAvailable">逆地理核验额度未开放或已用完。</p></div>
    <fieldset class="location-search" :disabled="busy"><legend class="sr-only">搜索车辆停放地址</legend>
     <label>城市<select v-model="city" aria-label="车辆停放城市"><option value="">请选择广东城市</option><option v-for="item in cities" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select></label><button v-if="cities.length<cityTotal" type="button" @click="regions('city')">更多城市</button>
     <label>区县<select v-model="district" aria-label="车辆停放区县"><option value="">请选择区县</option><option v-for="item in districts" :key="item.id" :value="String(item.id)">{{ item.name }}</option></select></label><button v-if="districts.length<districtTotal" type="button" @click="regions('district')">更多区县</button>
@@ -97,7 +109,7 @@ onMounted(async()=>{await loadBudget();await regions('city');if(props.caseId)try
    <DispatchCandidateList :rows="recommendation?.shops.records??[]" :selected-shop-id="props.selectedShopId" :busy="busy" :preview="previewOnly" :complete="recommendation?.complete" :page="recommendation?.shops.page" :total="recommendation?.shops.total" :expires-at="recommendation?.expiresAt" @choose="selectShop" @page="resultPage"/>
    <p class="submission-hint">03 · 核对所选网点后，点击下方原派单按钮。选择或推荐均不会自动提交。</p>
   </article>
-  <details class="map-service-details"><summary>服务状态与高级信息</summary><button type="button" :disabled="busy" @click="loadBudget">刷新地图服务状态（不新增地图调用）</button><p v-if="budget?.callsEnabled===false" role="status">{{ budget.reason }}。不会自动调用高德。</p><div v-if="budget?.operations?.length" class="map-allowance" role="status"><strong>{{ previewOnly?'合成预览用量（不关联网站真实预算）':'本轮开发测试额度（不是高德账户余额）' }}</strong><p v-for="row in budget.operations" :key="row.operation">{{ operationName[row.operation]??row.operation }}：剩余 {{ row.remaining }} / {{ row.total }} 次，已尝试 {{ row.used }} 次，查询预留 {{ row.reserved }} 次。</p><p>失败、超时计次；刷新和重启不补次数，无自动重试。</p></div><p>省份固定广东省。位置确认最多10分钟，推荐以服务端有效期为准；过期需明确重新查询，提交仍由后端复核。</p><p v-if="context">事故服务区域：{{ context.accidentRegion }} · 车型：{{ context.vehicleBrand }} / {{ context.vehicleModel }}</p><p v-if="recommendation">供应商：{{ recommendation.provider }} · 方向：车辆→网点 · 推荐有效至 {{ new Date(recommendation.expiresAt).toLocaleTimeString() }}。道路规划距离不是理论最短路、实际里程或拖车报价。</p><p>若名称含【测试／非真实合作方】，仅用于隔离联调；学校不是合作维修商，不代表具备维修能力。</p><p>当前没有加载真实高德交互底图或POI搜索；正式地图选点需要另行配置JS API与安全代理。Mock网格不产生真实位置授权。</p>
+  <details class="map-service-details"><summary>服务状态与高级信息</summary><button type="button" :disabled="busy" @click="loadBudget">刷新地图服务状态（不新增地图调用）</button><p v-if="budget?.callsEnabled===false" role="status">{{ budget.reason }}。不会自动调用高德。</p><div v-if="budget?.operations?.length" class="map-allowance" role="status"><strong>{{ previewOnly?'合成预览用量（不关联网站真实预算）':'本轮开发测试额度（不是高德账户余额）' }}</strong><p v-for="row in budget.operations" :key="row.operation">{{ operationName[row.operation]??row.operation }}：剩余 {{ row.remaining }} / {{ row.total }} 次，已尝试 {{ row.used }} 次，查询预留 {{ row.reserved }} 次。</p><p>失败、超时计次；刷新和重启不补次数，无自动重试。</p></div><p>省份固定广东省。位置确认最多10分钟，推荐以服务端有效期为准；过期需明确重新查询，提交仍由后端复核。</p><p v-if="context">事故服务区域：{{ context.accidentRegion }} · 车型：{{ context.vehicleBrand }} / {{ context.vehicleModel }}</p><p v-if="recommendation">供应商：{{ recommendation.provider }} · 方向：车辆→网点 · 推荐有效至 {{ new Date(recommendation.expiresAt).toLocaleTimeString() }}。道路规划距离不是理论最短路、实际里程或拖车报价。</p><p>若名称含【测试／非真实合作方】，仅用于隔离联调；学校不是合作维修商，不代表具备维修能力。</p><p>真实底图仅在明确点击加载后请求在线资源；地图点击/拖动不自动核验。选点核验、地址搜索、道路计算分别计入原REVERSE/GEOCODE/DRIVING预算。未启用POI搜索或设备定位；Mock网格不产生真实位置授权。</p>
    <details v-if="excludedTotal"><summary>未进入推荐的资料提示（{{ excludedTotal }}个）</summary><p v-for="item in exclusions" :key="item.id">{{ item.name }}：{{ mapStatus(item.status) }}</p><button :disabled="busy||excludedPage<=1" @click="excludedPageChange(excludedPage-1)">上一页</button><button :disabled="busy||excludedPage*20>=excludedTotal" @click="excludedPageChange(excludedPage+1)">下一页</button></details>
   </details>
  </section>

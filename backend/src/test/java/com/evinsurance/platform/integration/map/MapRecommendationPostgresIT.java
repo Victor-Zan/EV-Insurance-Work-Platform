@@ -274,4 +274,12 @@ class MapRecommendationPostgresIT {
         db.update("update work_order set status='CANCELLED' where id=?",caseId);
         int before=routes.get();query(position(),UUID.randomUUID().toString(),null,409);assertThat(routes.get()).isEqualTo(before);
     }
+
+    @Test void selectedPointApiKeepsRolesAndDoesNotWriteCaseOrAccidentData()throws Exception{
+        var before=db.queryForMap("select version,accident_region_id,parking_region_id,parking_address from work_order where id=?",caseId);
+        for(String token:List.of(admin,shop,owner))postJson("/api/v1/maps/locations/point",token,Map.of("districtId",district,"longitude",113.1,"latitude",23.1),null,403);
+        var result=postJson("/api/v1/maps/locations/point",cs,Map.of("districtId",district,"longitude",113.1,"latitude",23.1),null,200);
+        assertThat(result.path("data").get(0).path("candidate").path("status").asString()).isEqualTo("REQUIRES_CONFIRMATION");
+        assertThat(db.queryForMap("select version,accident_region_id,parking_region_id,parking_address from work_order where id=?",caseId)).isEqualTo(before);
+    }
 }

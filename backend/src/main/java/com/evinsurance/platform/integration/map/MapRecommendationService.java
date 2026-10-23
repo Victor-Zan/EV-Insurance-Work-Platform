@@ -28,7 +28,7 @@ public class MapRecommendationService {
     public MapRecommendationService(MapDataMapper data,MapStore store,MapLocationService locations,MapProvider provider,WorkOrderService orders,WorkOrderMapper workOrders,OrganizationRelationsMapper organization,MapTestPositions testPositions,MapCallBudget budget){this.budget=budget;this.testPositions=testPositions;this.data=data;this.store=store;this.locations=locations;this.provider=provider;this.orders=orders;this.workOrders=workOrders;this.organization=organization;}
     @org.springframework.scheduling.annotation.Scheduled(fixedDelay=60000)
     public void purgeExpired(){snapshots.values().removeIf(snapshot->snapshot.expires().isBefore(Instant.now()));}
-    public record Row(long shopId,String name,String address,String qualification,String status,Long metres,Long seconds,Instant calculatedAt,Long locationId,boolean mock){}
+    public record Row(long shopId,String name,String address,String qualification,String status,Long metres,Long seconds,Instant calculatedAt,Long locationId,boolean mock,MapProvider.Point point){}
     private record Snapshot(UUID id,UUID caseId,long actorId,long modelId,Long cityId,Instant expires,List<Row> rows,String provider){}
     public record Result(UUID queryId,String provider,boolean mock,String direction,int strategy,String scope,boolean complete,Instant expiresAt,PageResponse<Row> shops){}
     public record Context(String accidentRegion,String vehicleBrand,String vehicleModel){}
@@ -64,7 +64,7 @@ public class MapRecommendationService {
             var begun=store.begin(actor.id(),caseId,key,fingerprint,modelId,order.version(),shops);if(!begun.created())return result(begun.id(),1,20);queryId=begun.id();
             var rows=new ArrayList<Row>();long start=System.nanoTime(),lastCall=0;String supplierBlocked=null;
             for(var shop:shops){
-                String status="READY";Long metres=null,seconds=null;Instant calculated=null;
+                String status="READY";Long metres=null,seconds=null;Instant calculated=null;MapProvider.Point shopPoint=null;
                 boolean mock="MOCK_V1".equals(provider.providerId());
                 if(supplierBlocked!=null)status=supplierBlocked;
                 else if(mock||center.candidate().mock()||!Set.of("ADMIN_CONFIRMED_GCJ02","AMAP_TEST_SESSION").contains(shop.source()))status=mock?"MOCK_NO_ROAD_DISTANCE":"COORDINATE_SOURCE_UNKNOWN";
@@ -77,11 +77,11 @@ public class MapRecommendationService {
                         long pause=TimeUnit.MILLISECONDS.toNanos(550)-(System.nanoTime()-lastCall);if(pause>0)LockSupport.parkNanos(pause);
                         if(Thread.currentThread().isInterrupted())throw MapFailure.of("TIMEOUT");
                         data.attempted(queryId);lastCall=System.nanoTime();
-                        var route=provider.driving(center.candidate().point(),testPositions.point(shop),32);
+                        shopPoint=testPositions.point(shop);var route=provider.driving(center.candidate().point(),shopPoint,32);
                         if(route.mock())throw MapFailure.of("BAD_RESPONSE");metres=route.metres();seconds=route.seconds();calculated=Instant.now();
                     }catch(MapFailure failure){status=failure.code();if(Set.of("MAP_CREDENTIALS","MAP_PERMISSION","MAP_QUOTA","MAP_LOCAL_BUDGET","MAP_RATE_LIMIT").contains(status))supplierBlocked=status;}
                 }
-                rows.add(new Row(shop.id(),shop.name(),shop.address(),"事故区县服务匹配；启用；车型精确匹配",status,metres,seconds,calculated,shop.locationId(),mock));
+                rows.add(new Row(shop.id(),shop.name(),shop.address(),"事故区县服务匹配；启用；车型精确匹配",status,metres,seconds,calculated,shop.locationId(),mock,"READY".equals(status)?shopPoint:null));
             }
             rows.sort(Comparator.comparing(Row::metres,Comparator.nullsLast(Long::compareTo)).thenComparingLong(Row::shopId));
             var snapshot=new Snapshot(queryId,caseId,actor.id(),modelId,cityId,Instant.now().plusSeconds(120),List.copyOf(rows),provider.providerId());snapshots.put(queryId,snapshot);

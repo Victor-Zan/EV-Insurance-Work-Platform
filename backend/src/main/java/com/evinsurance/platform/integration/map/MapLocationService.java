@@ -43,6 +43,13 @@ public class MapLocationService {
         access();var address=address(districtId,detail);var result=provider.resolve(address);
         return remember(districtId,result);
     }
+    public List<Choice> selectedPoint(long districtId,MapProvider.Point point){
+        access();var expected=address(districtId,"地图选点人工核对");GuangdongAddress.point(point);
+        var result=provider.locate(point);
+        boolean same=GuangdongAddress.inProvince(result)&&expected.city().equals(result.city())&&expected.district().equals(result.district())&&expected.districtAdcode().equals(result.adcode());
+        String status=!same?"REGION_MISMATCH":result.address()==null||result.address().isBlank()?"NEEDS_DETAIL":"REQUIRES_CONFIRMATION";
+        return remember(districtId,List.of(new MapProvider.AddressCandidate(result.address(),point,result.province(),result.city(),result.district(),result.adcode(),"地图选点·行政核验",status,result.mock())));
+    }
     synchronized List<Choice> remember(long district,List<MapProvider.AddressCandidate> candidates){
         sessions.values().removeIf(s->s.expires().isBefore(Instant.now()));
         long actor=CurrentUser.require().id();
