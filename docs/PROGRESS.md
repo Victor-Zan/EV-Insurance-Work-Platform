@@ -21,6 +21,13 @@
 
 当前5210→18105为原基线29b792d＋本轮受控补丁，数据库127.0.0.1:55432/ev_auth_phase2_test中的上述独立schema。后端实际标签 `29b792d+mock-dispatch-622e929b7435`，JAR SHA256 `4CDBF899B3E50E97DEFD54F4B31F7132F1C8885B3CA4199DDD83DC4C7FF924F5`。最终运行代码补丁SHA256 `622E929B74354273A131D788EC7A86BBAA9DAD356FFD98724A288EE0CB7F4F3C`，单独前端文件摘要在仓库外manifest记录。最终候选查询补齐原只读REPEATABLE_READ事务后，两套后端完整重跑80+45/48并构建通过，仅替换本轮后端，重读/同键重放结果仍一致，未重派。不是main升级/生产部署。截图5张、acceptance.html、脱敏读取、运行脚本/清单/备份/日志均在仓库外mock-manual-dispatch-runtime；不提交凭据、私密.env、原始材料、备份或日志。Git交付状态在提交推送后补记。
 
+交付补记：实现提交 `9b1b024`（fix(dispatch): decouple manual assignment from mock geocoding）已正常推送。作者沿用本机Sherry070719，暂存范围/敏感模式及git diff --check通过。最终包再次校验V26无迁移，读回同一合成案件待接单/v5/派单v1，DEV-SHOP匹配；同键重放仍200且记录/审计各1。
+
+- 分支：https://github.com/Victor-Zan/EV-Insurance-Work-Platform/tree/codex/mock-manual-dispatch-fix
+- GitHub集成仅尝试一次创建Draft PR，返回 `403 Resource not accessible by integration`（FORBIDDEN）；PR未创建，未换渠道绕过、重试、合并或部署生产。
+- 有权限人员手动创建Draft PR：https://github.com/Victor-Zan/EV-Insurance-Work-Platform/compare/main...codex/mock-manual-dispatch-fix?expand=1 ，base=main，compare=codex/mock-manual-dispatch-fix。请在创建菜单选择Draft；可复制说明位于仓库外mock-manual-dispatch-runtime/PR_DESCRIPTION.md。
+- 上述Git状态随后以文档提交推送原分支；不改变已测代码。当前本地5210保留验收后的待接单页面及原开发客服登录，不继续接单/报价或其他阶段。
+
 ## 2026-10-23 最近拉取与本机成果整合完成
 
 用户确认前次检查的六项建议并要求同步本地。以 main d59eba0 为基础，逐项恢复 GitHub Desktop stash 中的有效本机成果，保留远端事故区县/停车位置分离、地图推荐、人工派单和移动端更新。恢复重复报案号测试规则、保险公司下拉框、无密钥地图配置及本地城市兼容接口、隐藏守护启动；保留接单幂等重放前当前网点可见性校验。原 stash 未删除，原有模拟网点配置及先前其他任务的文档记录保留。没有执行 git stash pop 或覆盖整份派单组件。
