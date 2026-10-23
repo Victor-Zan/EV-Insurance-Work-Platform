@@ -96,3 +96,40 @@ test('multipart uploads preserve file bytes instead of JSON serialization',async
  }
  await api.client.post('/funds/imports',form)
 })
+
+
+test('controlled map errors retain distinct safe guidance, trace and status without retry or logout',async()=>{
+ const expected={MAP_TIMEOUT:'请求超时',MAP_NETWORK:'无法连接',MAP_NO_RESULT:'未解析到位置',MAP_NO_ROUTE:'未找到可行驶路线',MAP_CREDENTIALS:'凭据无效',MAP_PERMISSION:'安全配置',MAP_QUOTA:'额度不足',MAP_RATE_LIMIT:'过于频繁',MAP_LOCAL_BUDGET:'预算未启用',MAP_BAD_RESPONSE:'数据格式异常',MAP_UPSTREAM:'服务返回异常'}
+ for(const [code,hint] of Object.entries(expected))for(const status of [502,504]){
+  const session=new AuthSession(storage());session.set(result());const api=createClient(session,'/api/v1');let calls=0
+  api.client.defaults.adapter=async config=>{calls++;throw new AxiosError('secret URL must not be shown','ERR_BAD_RESPONSE',config,{}, {status,statusText:'',headers:{},config,data:{code,message:'供应商原文包含私密地址和密钥',traceId:'synthetic-trace-123'}})}
+  await assert.rejects(api.client.post('/maps/parking/resolve',{}),error=>error instanceof ApiError && error.status===status && error.code===code && error.traceId==='synthetic-trace-123' && error.message.includes(hint) && error.message.includes(code) && error.message.includes('synthetic-trace-123') && !error.message.includes('供应商原文') && !error.message.includes('secret URL'))
+  assert.equal(calls,1);assert.equal(session.valid(),true)
+ }
+})
+
+test('map diagnostics reject untrusted trace identifiers and unknown map codes remain generic at gateway',async()=>{
+ for(const code of ['MAP_TIMEOUT','MAP_UNKNOWN','__proto__']){
+  const api=createClient(new AuthSession(storage()),'/api/v1')
+  api.client.defaults.adapter=async config=>{throw new AxiosError('failure','ERR_BAD_RESPONSE',config,{}, {status:502,statusText:'',headers:{},config,data:{code,message:'不可信响应',traceId:'unsafe\nprivate-address'}})}
+  await assert.rejects(api.client.get('/maps/status'),error=>error.traceId===undefined && !error.message.includes('private-address') && !error.message.includes('不可信响应') && (code==='MAP_TIMEOUT'?error.message.includes('请求超时'):error.message.includes('后台服务暂不可用')))
+ }
+})
+
+test('controlled map codes do not override authentication or permission boundaries',async()=>{
+ for(const status of [401,403]){
+  const session=new AuthSession(storage());session.set(result());const api=createClient(session,'/api/v1')
+  api.client.defaults.adapter=async config=>{throw new AxiosError('failure','ERR_TEST',config,{}, {status,statusText:'',headers:{},config,data:{code:'MAP_TIMEOUT',traceId:'synthetic'}})}
+  await assert.rejects(api.me(),error=>status===401?error.message==='登录失效，请重新登录':error.message==='没有访问权限')
+  assert.equal(session.valid(),status!==401)
+ }
+})
+
+
+test('browser map timeout reports an unknown potentially charged attempt without retry',async()=>{
+ const api=createClient(new AuthSession(storage()),'/api/v1');let calls=0
+ api.client.defaults.adapter=async config=>{calls++;throw new AxiosError('timeout','ECONNABORTED',config)}
+ await assert.rejects(api.client.post('/maps/locations/resolve',{}),error=>/结果未知/.test(error.message)&&/可能已计入调用量/.test(error.message))
+ assert.equal(calls,1)
+ await assert.rejects(api.me(),error=>error.message==='网络连接失败，请检查后重试')
+})

@@ -36,7 +36,7 @@ watch(shopCity,()=>{generation++;clearRecommendation()})
 async function resolve(){
   if(busy.value||!geocodeAvailable.value||!district.value||detail.value.trim().length<4)return
   busy.value=true;error.value='';confirmed.value=undefined;candidates.value=[];const requestGeneration=generation
-  try{const response=(await httpClient.post('/maps/locations/resolve',{districtId:Number(district.value),detail:detail.value.trim()})).data.data as {token:string;candidate:Candidate}[];if(requestGeneration===generation)candidates.value=response.map(item=>({...item.candidate,token:item.token}))}
+  try{const response=(await httpClient.post('/maps/locations/resolve',{districtId:Number(district.value),detail:detail.value.trim()},{timeout:15000})).data.data as {token:string;candidate:Candidate}[];if(requestGeneration===generation)candidates.value=response.map(item=>({...item.candidate,token:item.token}))}
   catch(e){error.value=e instanceof Error?e.message:'地址解析失败，未自动重试'}finally{busy.value=false;await loadBudget()}
 }
 async function confirm(item:Candidate){if(busy.value)return;busy.value=true;error.value='';try{await httpClient.post(`/maps/locations/${item.token}/confirm`);confirmed.value=item;clearRecommendation();const selectedCity=cities.value.find(row=>String(row.id)===city.value);const selectedDistrict=districts.value.find(row=>String(row.id)===district.value);emit('confirmed',{districtId:Number(district.value),address:`广东省${selectedCity?.name??''}${selectedDistrict?.name??''}${detail.value.trim()}`})}catch(e){error.value=e instanceof Error?e.message:'位置确认失败'}finally{busy.value=false}}

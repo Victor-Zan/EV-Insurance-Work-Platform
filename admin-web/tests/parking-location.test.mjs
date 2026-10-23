@@ -26,7 +26,7 @@ test('parking city/district load and explicit action send only selected region a
   const requests=[];const panel=mount(client(async(...args)=>{requests.push(args);return {data:{data:[{token:result.token,candidate:result}]}}}));await settle()
   const s=panel.state;assert.equal(s.cities[0].id,2);s.city='2';await settle();assert.equal(s.districts[0].id,3)
   s.district='3';s.detail='合成街道10号';await settle();assert.equal(requests.length,0)
-  await s.resolve();assert.deepEqual(requests,[['/maps/locations/resolve',{districtId:3,detail:'合成街道10号'}]])
+  await s.resolve();assert.deepEqual(requests,[['/maps/locations/resolve',{districtId:3,detail:'合成街道10号'},{timeout:15000}]])
   assert.equal(s.confirmed,undefined);assert.deepEqual(s.candidates,[result]);s.confirmed=result;s.detail='新的合成街道20号';await settle();assert.equal(s.confirmed,undefined);assert.deepEqual(s.candidates,[]);panel.unmount()
 })
 test('duplicate clicks cause one lookup and changed input rejects stale response',async()=>{

@@ -1,16 +1,20 @@
 package com.evinsurance.platform.integration.map;
 
 import java.io.*;
-import java.net.SocketTimeoutException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import com.evinsurance.platform.foundation.web.TraceContext;
 import okhttp3.*;
 import tools.jackson.databind.*;
 
 public final class AmapMapProvider implements MapProvider {
+    private static final Logger LOG=LoggerFactory.getLogger(AmapMapProvider.class);
     private static final String OFFICIAL="https://restapi.amap.com";
     private static final int RESPONSE_LIMIT=1024*1024;
     private final String key,base;
@@ -43,26 +47,28 @@ public final class AmapMapProvider implements MapProvider {
 
     public List<AddressCandidate> resolve(Address a){
         GuangdongAddress.validate(a);
-        var root=get("/v3/geocode/geo",Map.of("address","广东省"+a.city()+a.district()+a.detail().trim(),"city",a.cityAdcode()));
+        return get("/v3/geocode/geo",Map.of("address","广东省"+a.city()+a.district()+a.detail().trim(),"city",a.cityAdcode()),root->{
         var nodes=root.path("geocodes");if(!nodes.isArray()||nodes.isEmpty())throw MapFailure.of("NO_RESULT");
         if(nodes.size()>20)throw MapFailure.of("BAD_RESPONSE");
         var result=new ArrayList<AddressCandidate>();
         for(var node:nodes){var c=candidate(node,parsePoint(text(node,"location")),text(node,"formatted_address"),text(node,"level"));
             result.add(new AddressCandidate(c.address(),c.point(),c.province(),c.city(),c.district(),c.adcode(),c.level(),GuangdongAddress.status(a,c),false));}
         return List.copyOf(result);
+        });
     }
     public AddressCandidate locate(Point p){
         GuangdongAddress.point(p);
-        var root=get("/v3/geocode/regeo",Map.of("location",coordinate(p),"extensions","base","radius","100"));
+        return get("/v3/geocode/regeo",Map.of("location",coordinate(p),"extensions","base","radius","100"),root->{
         var regeo=root.path("regeocode");var component=regeo.path("addressComponent");
         var c=candidate(component,p,text(regeo,"formatted_address"),"REVERSE");
         if(!GuangdongAddress.inProvince(c))throw MapFailure.of("REGION_MISMATCH");
         return c;
+        });
     }
     public DrivingRoute driving(Point from,Point to,int strategy){
         GuangdongAddress.point(from);GuangdongAddress.point(to);
         if(!Set.of(0,1,2,32,33,34,35,36,37,38,39,40,41,42,43,44,45).contains(strategy))throw MapFailure.of("UNSUPPORTED_OPERATION");
-        var root=get("/v5/direction/driving",Map.of("origin",coordinate(from),"destination",coordinate(to),"strategy",Integer.toString(strategy),"show_fields","cost"));
+        return get("/v5/direction/driving",Map.of("origin",coordinate(from),"destination",coordinate(to),"strategy",Integer.toString(strategy),"show_fields","cost"),root->{
         var route=root.path("route");
         if(!samePoint(text(route,"origin"),from)||!samePoint(text(route,"destination"),to))throw MapFailure.of("BAD_RESPONSE");
         var paths=route.path("paths");if(!paths.isArray()||paths.isEmpty())throw MapFailure.of("NO_ROUTE");
@@ -70,6 +76,7 @@ public final class AmapMapProvider implements MapProvider {
         var path=paths.get(0);long metres=positiveLong(text(path,"distance"),false);
         String duration=text(path.path("cost"),"duration");
         return new DrivingRoute(metres,duration.isEmpty()?null:positiveLong(duration,false),strategy,0,false);
+        });
     }
     private synchronized void reserve(String path,Map<String,String> params){
         long now=System.nanoTime();if(now-windowStarted>=TimeUnit.SECONDS.toNanos(1)){windowStarted=now;windowRequests=0;}
@@ -78,10 +85,13 @@ public final class AmapMapProvider implements MapProvider {
         if(ledger!=null)ledger.reserve(path,params);
         windowRequests++;requests.incrementAndGet();
     }
-    private JsonNode get(String path,Map<String,String> params){
+    private <T> T get(String path,Map<String,String> params,Function<JsonNode,T> decode){
+        long started=System.nanoTime();int httpStatus=0;String infoCode="-";boolean reserved=false;
+        try {
         var url=Objects.requireNonNull(HttpUrl.parse(base+path)).newBuilder().addQueryParameter("key",key).addQueryParameter("output","JSON");
-        params.forEach(url::addQueryParameter);reserve(path,params);
+        params.forEach(url::addQueryParameter);reserve(path,params);reserved=true;
         try(var response=client.newCall(new Request.Builder().url(url.build()).get().build()).execute()){
+            httpStatus=response.code();
             if(response.code()==429)throw MapFailure.of("RATE_LIMIT");
             if(response.code()==401)throw MapFailure.of("CREDENTIALS");
             if(response.code()==403)throw MapFailure.of("PERMISSION");
@@ -91,14 +101,26 @@ public final class AmapMapProvider implements MapProvider {
             if(bytes.length>RESPONSE_LIMIT)throw MapFailure.of("BAD_RESPONSE");
             JsonNode root=json.readTree(bytes);
             if(root==null||!root.isObject())throw MapFailure.of("BAD_RESPONSE");
-            String code=text(root,"infocode");
+            String code=text(root,"infocode");infoCode=code.matches("[0-9]{5,6}")?code:"-";
             if(!"1".equals(text(root,"status"))||!"10000".equals(code))throw MapFailure.of(error(code));
-            return root;
-        }catch(MapFailure error){if(ledger!=null)ledger.stopFor(error.code());throw error;}
-        catch(SocketTimeoutException error){throw MapFailure.of("TIMEOUT");}
-        catch(java.io.InterruptedIOException error){throw MapFailure.of("TIMEOUT");}
-        catch(IOException error){throw MapFailure.of("NETWORK");}
-        catch(RuntimeException error){throw MapFailure.of("BAD_RESPONSE");}
+            return decode.apply(root);
+        }
+        }catch(MapFailure error){
+            failure(path,error,started,httpStatus,infoCode);
+            if(reserved&&ledger!=null)ledger.stopFor(error.code());throw error;
+        }
+        catch(java.io.InterruptedIOException error){throw failure(path,MapFailure.of("TIMEOUT"),started,httpStatus,infoCode);}
+        catch(IOException error){throw failure(path,MapFailure.of("NETWORK"),started,httpStatus,infoCode);}
+        catch(RuntimeException error){if(!reserved)throw error;throw failure(path,MapFailure.of("BAD_RESPONSE"),started,httpStatus,infoCode);}
+    }
+    private static MapFailure failure(String path,MapFailure error,long started,int httpStatus,String infoCode){
+        String operation=switch(path){case "/v3/geocode/geo"->"GEOCODE";case "/v3/geocode/regeo"->"REVERSE";case "/v5/direction/driving"->"DRIVING";default->"UNKNOWN";};
+        String trace=TraceContext.currentTraceId();
+        if(trace==null||!trace.matches("[A-Za-z0-9._-]{1,64}"))trace="-";
+        // Deliberately no exception/cause, URL, parameters, address, coordinates or response body.
+        LOG.warn("Amap request failed: operation={} code={} httpStatus={} infocode={} elapsedMs={} traceId={}",
+            operation,error.code(),httpStatus,infoCode,TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-started),trace);
+        return error;
     }
     private static String error(String code){return switch(code){
         case "10001","10013" -> "CREDENTIALS";
