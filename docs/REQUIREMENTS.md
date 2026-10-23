@@ -528,3 +528,7 @@ XLSX/UTF-8 CSV为10MiB/2000行，双编号必须一致否则人工选择案件�
 ## 2026-10-19 受邀开通与统一登录
 
 按本轮用户确认实施，不公开注册或角色自选；新邀请24小时、一次性、摘要存储、重发失效、停用不可借邀请恢复。OWNER只经明确案件/本人核实开通，不按未核实手机号合并；既有账号密码与绑定保留。完整规则见ACCOUNT_ACTIVATION.md。
+
+### 2026-10-23 Local 5210 developer-operated Amap allowance
+
+Confirmed allowance: 10 address geocodes, 5 reverse checks, 20 driving routes, only in the designated development instance; no automatic retry/refill or agent-initiated real calls. The UI must show category counts, distinguish local allowance from supplier quota, and stop a route query before calling if all qualified candidates cannot fit its remaining route allowance. Missing Guangdong region/shop data remains a separate prerequisite; no synthetic partners or region/service links are created by this allowance.

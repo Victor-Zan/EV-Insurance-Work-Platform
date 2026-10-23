@@ -1700,3 +1700,21 @@ GitHub集成已尝试创建以main为目标的Draft PR，返回准确错误：`4
 验收：管理端 lint、typecheck、test、build 通过；H5 lint、typecheck、test、build 通过；后端单元测试 76 项通过。隔离 PostgreSQL/MinIO 的完整集成回归中，地图推荐以外的 114 项通过；地图推荐夹具先因缺现场照片、隔离 MinIO 配置、派单接车地址确认失败，按主线前置条件补齐后单独重跑 11 项全部通过（`local-validation/amap-merge-focused/failsafe-reports`）。Flyway 在新 schema 迁移及 validate 均到 V24。完整回归与地图专项分两轮执行，没有将一次失败回归写成全量通过。GitHub 推送状态以本节后续记录为准。未调用真实高德、百度，不更新既有业务数据库，也未部署。
 
 推送前发现远端 main 已增加工作台、金属登录图和通知未读数修复（`d28d19e`），本次继续合入该远端提交，保留工作台与登录视觉，同时保留受邀开通的统一登录及交接码路径；通知集成测试保留异步投影等待和新增未读数权限断言。合并后管理端 lint、typecheck、test、build 均通过；后端隔离回归（`local-validation/workflow-fixes-20261021-231104`）compose 配置通过、76 项单元及 125 项 PostgreSQL/MinIO 集成测试 0 失败/错误/跳过，JAR 构建成功，完整迁移及 validate 到 V24。H5 没有受该远端提交改动，前述门禁对应最终 H5 源码。
+
+## 2026-10-23：本地5210分类预算开放（独立开发分支）
+
+用户明确批准：在5210/18105本地开发环境新增地址解析10次、逆地理核验5次、驾车路线20次；由用户点击实际使用，代理不做真实高德测试。不恢复旧学校验收预算、不自动重试、不按日或重启补次数。
+
+代码分支codex/amap-controlled-dev-budget，基线为当前5210实际代码：29b792d加既有手工派单修复；已用本地检查点681f5ee保留，不替换远程main，也不声称是最新main整合版。原工作区和未提交补丁保留。
+
+实现：独立开发预算schema及单独Flyway历史，新增db/map-budget/V1和V2，不修改任何现有业务迁移。按分类固定槽位，调用前独立事务持久占用，失败/超时计次；关闭不可重开，启动不授予额度。路线查询先核对整个合格集合用量，再由用户确认；后台原子预留全部路线额度，正常结束释放未调用槽位；进程崩溃遗留预留不自动回收。原供应商/权限/广东/资格/派单门禁保留。
+
+页面显示三类剩余/已用/预留次数，明确不是高德账户余额；预算不足不静默计算部分网点。普通禁用光标改为not-allowed，加载用aria-busy及文字区分，列出地址缺项。已有手工派单和客服建单修复保留。
+
+本轮验证：管理端npm run lint/typecheck/test/build全部通过，166测试，0失败/跳过。后端mvnw verify -Ppostgres-it（DevelopmentMapBudgetPostgresIT、MapRecommendationPostgresIT、MapMigrationPostgresIT）最终80单元+22集成通过，0失败/错误/跳过，JAR构建成功。用新随机schema验证业务完整迁移和独立预算迁移、并发扣次、相同地址独立计次、重启不补额度、超额批次0扣次、未用槽位正常释放、崩溃保留、不可重置/扩容、非dev拒绝、旧台账机制回归、只读用量预估四角色权限。初次受限沙箱Mockito启动卡住后中止，未计通过；首次独立schema触发器作用域失败通过追加V2修复后重跑通过，未改旧迁移或删测试。
+
+运行：5210前端已换为该独立分支，仍请求18105；后端使用同分支新JAR。数据库仍ev_auth_phase2_test/manual_case_20261022_204936，业务Flyway V26原样保留；仅新增预算schema amap_dev_budget_5210_20261023及独立history V2。run localhost-5210-20261023-approved-10-5-20由本地授权脚本一次性录入，当前三类已用/预留均0、剩余10/5/20。只读查看页面确认上述额度和not-allowed光标，未点击解析/路线/派单，未修改案件或网点资料。
+
+本轮没有真实百度/高德请求，真实识别/地址/路线结果未验证，由用户测试；H5未改未重跑，未执行生产部署或GitHub推送/PR。当前案件仍缺事故服务区县；当前库无符合要求的广东区域资料，只有开发网点DEV-SHOP，不自动补充这些资料。开放额度不能代替资料维护，当前尚不能完成真实网点推荐全链路。
+
+日志、安装前manifest、原JAR及页面截图保留在仓库外的mock-manual-dispatch-runtime。私密Key只从原被忽略的.env.amap读取，没有写入源码、文档或PR。后续重启使用Install-Controlled-Budget.ps1，不运行历史Mock或预算关闭脚本；Provision-Controlled-Budget.ps1可重复核对但不补已用次数，关闭或身份不符则拒绝。后续追加额度须另获确认。

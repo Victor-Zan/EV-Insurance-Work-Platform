@@ -507,3 +507,9 @@ PR #4 集成时将原 OCR D-044 重编号为 D-045，避免与 main 已有工作
 用户明确恢复本轮原未使用预算，沿用四个确认入口及EVR-20261022-000001。最终业务库保留V25，不复制原权威run/slot；后端可由可信环境变量AMAP_BUDGET_SCHEMA（严格小写标识符校验）限定两张预算表的schema，默认仍为当前schema。占用、剩余数及停止均读写同一原台账，持久占用先于HTTP。仅更新该run启停和未尝试槽位的请求白名单摘要，不清空/重置尝试，不涉及旧业务库迁移。进程上限只是额外防线，不是新的8次授权。解析歧义/失败停下，不盲选/补发，测试结束关闭。
 
 广东地域规则不变：允许完整专有名称“香港中文大学（深圳）”而不把名称当作香港行政地址；原文原样交给Provider，其他外省标记及供应商返回省市区/adcode校验继续拒绝。短期dev测试位置沿用地理编码地域核验，无需逐店逆编码；学校仍为虚构合作方。
+
+## 2026-10-23 Local 5210 controlled Amap development allowance
+
+Confirmed in this conversation: only the local 5210/18105 development instance may use a new, independent allowance of 10 GEOCODE, 5 REVERSE and 20 DRIVING attempts. The operator explicitly clicks the existing controls; no automatic external verification is authorized for the agent. Past acceptance ledgers remain unchanged and closed. This is not a daily allowance: process restart and date changes never refill it. Timeout/failed requests count after durable reservation. Existing roles, Guangdong validation, candidate qualification and manual dispatch remain unchanged.
+
+Technical implementation: separate opt-in development ledger schema with its own Flyway history and migration location, no change to existing business migrations/schema. No calls granted by migrations or startup. The approved run is provisioned once by an idempotent local operator script; operation slots are bounded and attempts immutable. Pre-reserve all route slots for a query before any route call, release only unused slots in its normal finally block; after a process crash, reserved slots fail closed and require audit rather than automatic recycling. Only request digests/times are retained, not coordinates, full addresses or credentials. Supplier authentication/quota/rate failures close the run. UI displays per-operation remaining counts and projected route cost; server remains authoritative.

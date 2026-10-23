@@ -21,10 +21,11 @@ public class MapRecommendationService {
     private static final int LIMIT=50;
     private final MapDataMapper data;private final MapStore store;private final MapLocationService locations;private final MapProvider provider;
     private final MapTestPositions testPositions;
+    private final MapCallBudget budget;
     private final WorkOrderService orders;private final WorkOrderMapper workOrders;private final OrganizationRelationsMapper organization;
     private final Map<UUID,Snapshot> snapshots=new ConcurrentHashMap<>();
     private final Set<Long> running=ConcurrentHashMap.newKeySet();
-    public MapRecommendationService(MapDataMapper data,MapStore store,MapLocationService locations,MapProvider provider,WorkOrderService orders,WorkOrderMapper workOrders,OrganizationRelationsMapper organization,MapTestPositions testPositions){this.testPositions=testPositions;this.data=data;this.store=store;this.locations=locations;this.provider=provider;this.orders=orders;this.workOrders=workOrders;this.organization=organization;}
+    public MapRecommendationService(MapDataMapper data,MapStore store,MapLocationService locations,MapProvider provider,WorkOrderService orders,WorkOrderMapper workOrders,OrganizationRelationsMapper organization,MapTestPositions testPositions,MapCallBudget budget){this.budget=budget;this.testPositions=testPositions;this.data=data;this.store=store;this.locations=locations;this.provider=provider;this.orders=orders;this.workOrders=workOrders;this.organization=organization;}
     @org.springframework.scheduling.annotation.Scheduled(fixedDelay=60000)
     public void purgeExpired(){snapshots.values().removeIf(snapshot->snapshot.expires().isBefore(Instant.now()));}
     public record Row(long shopId,String name,String address,String qualification,String status,Long metres,Long seconds,Instant calculatedAt,Long locationId,boolean mock){}
@@ -32,6 +33,13 @@ public class MapRecommendationService {
     public record Result(UUID queryId,String provider,boolean mock,String direction,int strategy,String scope,boolean complete,Instant expiresAt,PageResponse<Row> shops){}
     public record Context(String accidentRegion,String vehicleBrand,String vehicleModel){}
     public Context context(UUID caseId){var order=order(caseId);return new Context(locations.regionLabel(order.accidentRegionId()),order.vehicleBrand(),order.vehicleModel());}
+    public record Estimate(long candidates,long maximumRouteCalls,Integer routesRemaining,boolean fits){}
+    public Estimate estimate(UUID caseId,Long cityId){
+        var order=order(caseId);long modelId=model(order);if(cityId!=null)locations.validateCity(cityId);
+        long count=data.candidateCount(order.accidentRegionId(),modelId,cityId,true);
+        var available=budget.availability();Integer remaining=available.operations().stream().filter(row->"DRIVING".equals(row.operation())).map(MapCallBudget.OperationAllowance::remaining).findFirst().orElse(null);
+        return new Estimate(count,count,remaining,count<=LIMIT&&(remaining==null||available.callsEnabled()&&count<=remaining));
+    }
     private static CurrentUser access(){var actor=CurrentUser.require();if(!actor.roles().contains(Role.CUSTOMER_SERVICE))throw ApiException.denied();return actor;}
     private WorkOrderViews.WorkOrder order(UUID id){access();var order=orders.get(id);if(!Set.of("PENDING_DISPATCH","PENDING_ACCEPTANCE","PENDING_ARRIVAL","ARRIVAL_EXCEPTION").contains(order.status()))throw ApiException.conflict("MAP_CASE_READ_ONLY","当前案件不在客服派单/改派阶段");if(order.accidentRegionId()==null)throw ApiException.conflict("MAP_ACCIDENT_REGION_REQUIRED","请先人工核对事故服务区县；停车位置不会自动补写事故区域");
         try{locations.address(order.accidentRegionId(),"事故服务区县核验");}catch(ApiException invalid){throw ApiException.conflict("MAP_ACCIDENT_REGION_REQUIRED","事故服务区域须为已核对的广东区县，不能以停车城市代替");}
@@ -44,12 +52,13 @@ public class MapRecommendationService {
         var existing=data.queryByKey(actor.id(),key);
         if(existing!=null){if(!existing.fingerprint().equals(fingerprint))throw ApiException.conflict("IDEMPOTENCY_CONFLICT","同一查询键不能用于不同位置或范围");return result(existing.id(),1,20);}
         if(!running.add(actor.id()))throw ApiException.conflict("MAP_QUERY_IN_PROGRESS","该客服已有地图查询进行中，请等待");
-        UUID queryId=null;
+        UUID queryId=null;MapCallBudget.DrivingAllowance allowance=null;
         try{
             var order=order(caseId);long modelId=model(order);if(cityId!=null)locations.validateCity(cityId);
             var center=locations.session(location,true);
             if(data.candidateCount(order.accidentRegionId(),modelId,cityId,true)>LIMIT)throw ApiException.conflict("MAP_CANDIDATE_LIMIT","合格网点超过50个。请明确选择网点所在城市收窄查询范围，或申请增加预算；不要修改真实事故区域或车型");
             var shops=data.candidates(order.accidentRegionId(),modelId,cityId,true,0,LIMIT);
+            if("AMAP_WEB_V1".equals(provider.providerId()))allowance=budget.reserveDriving(shops.size());
             snapshots.values().removeIf(s->s.expires().isBefore(Instant.now()));
             if(snapshots.size()>=1000)throw ApiException.conflict("MAP_QUERY_LIMIT","当前地图查询较多，请稍后再试");
             var begun=store.begin(actor.id(),caseId,key,fingerprint,modelId,order.version(),shops);if(!begun.created())return result(begun.id(),1,20);queryId=begun.id();
@@ -78,7 +87,7 @@ public class MapRecommendationService {
             var snapshot=new Snapshot(queryId,caseId,actor.id(),modelId,cityId,Instant.now().plusSeconds(120),List.copyOf(rows),provider.providerId());snapshots.put(queryId,snapshot);
             store.finish(queryId,"READY",shops.size());return result(queryId,1,20);
         }catch(RuntimeException error){if(queryId!=null){snapshots.remove(queryId);store.finish(queryId,"FAILED",0);}throw error;}
-        finally{running.remove(actor.id());}
+        finally{try{if(allowance!=null)allowance.close();}finally{running.remove(actor.id());}}
     }
     public Result result(UUID id,int page,int size){
         var actor=access();int offset=PageResponse.offset(page,size);var query=data.query(id);

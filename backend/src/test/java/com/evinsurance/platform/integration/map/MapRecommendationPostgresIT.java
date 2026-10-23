@@ -256,6 +256,13 @@ class MapRecommendationPostgresIT {
             var completed=first.get();query(token,key,null,200);assertThat(completed.path("data").path("shops").path("total").asInt()).isEqualTo(3);assertThat(routes.get()).isEqualTo(3);
         }
     }
+    @Test void estimateChecksWholeQualifiedSetWithoutCallingProviderAndKeepsRoleBoundary() throws Exception {
+        int before=routes.get();
+        mvc.perform(get("/api/v1/maps/cases/"+caseId+"/recommendation-estimate").header("Authorization","Bearer "+cs))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.candidates").value(3)).andExpect(jsonPath("$.data.maximumRouteCalls").value(3));
+        for(String token:List.of(admin,shop,owner))mvc.perform(get("/api/v1/maps/cases/"+caseId+"/recommendation-estimate").header("Authorization","Bearer "+token)).andExpect(status().isForbidden());
+        assertThat(routes.get()).isEqualTo(before);
+    }
     @Test void configuredOtherModelAndChangedServiceRegionCannotBypassSelectionOrReadonlyCase() throws Exception {
         String id=query(position(),UUID.randomUUID().toString(),null,200).path("data").path("queryId").asString();
         long otherModel=db.queryForObject("insert into price_model(brand_id,code,name,created_by,updated_by) select brand_id,?,'其他合成车型',created_by,updated_by from price_model where id=? returning id",Long.class,UUID.randomUUID().toString(),model);

@@ -17,6 +17,7 @@ public class MapCallBudget {
     private final String run;
     private final String runs,slots;
     private final String ledgerSchema,extraAttempts;
+    private final DevelopmentMapBudget development;
     public MapCallBudget(JdbcTemplate db,PlatformTransactionManager manager,Environment env){
         this.db=db;this.run=env.getProperty("AMAP_BUDGET_RUN_ID","");
         // An isolated business schema can use the original ledger without copying
@@ -31,9 +32,14 @@ public class MapCallBudget {
         extraAttempts=extraSchema.isEmpty()?null:"\""+extraSchema+"\".map_call_budget_extra_attempt";
         transaction=new TransactionTemplate(manager);
         transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        development=env.getProperty("AMAP_DEV_BUDGET_ENABLED",Boolean.class,false)?new DevelopmentMapBudget(db,manager,env):null;
     }
-    public record Availability(boolean callsEnabled,int remaining,String reason){}
+    public record OperationAllowance(String operation,int total,int used,int reserved,int remaining){}
+    public record Availability(boolean callsEnabled,int remaining,String reason,List<OperationAllowance> operations){
+        public Availability(boolean callsEnabled,int remaining,String reason){this(callsEnabled,remaining,reason,List.of());}
+    }
     public Availability availability(){
+        if(development!=null)return development.availability();
         if(run.isBlank())return new Availability(false,0,"未配置真实调用预算");
         var rows=db.queryForList("SELECT enabled FROM "+runs+" WHERE id=?",Boolean.class,run);
         if(rows.isEmpty()||!rows.getFirst())return new Availability(false,0,"本轮真实调用预算已关闭");
@@ -42,6 +48,7 @@ public class MapCallBudget {
         return new Availability(remaining>0,remaining,remaining>0?"按已授权的类别及地点限额调用":"本轮真实调用预算已用完");
     }
     public void reserve(String path,Map<String,String> parameters){
+        if(development!=null){development.reserve(path,parameters);return;}
         if(run.isBlank())throw MapFailure.of("LOCAL_BUDGET");
         String digest=fingerprint(path,parameters);
         transaction.executeWithoutResult(status->{
@@ -56,8 +63,15 @@ public class MapCallBudget {
         return "FROM "+extraAttempts+" e JOIN "+slots+" s ON s.run_id=e.run_id AND s.subject=e.subject AND s.operation=e.operation AND s.request_hash=e.request_hash WHERE e.ledger_schema=? AND e.run_id=? AND s.attempted_at IS NOT NULL";
     }
     public void stopFor(String code){
+        if(development!=null){if(Set.of("MAP_CREDENTIALS","MAP_PERMISSION","MAP_QUOTA","MAP_RATE_LIMIT").contains(code))development.stop();return;}
         if(!run.isBlank()&&Set.of("MAP_CREDENTIALS","MAP_PERMISSION","MAP_QUOTA","MAP_RATE_LIMIT").contains(code))
             transaction.executeWithoutResult(status->db.update("UPDATE "+runs+" SET enabled=false WHERE id=?",run));
+    }
+    public interface DrivingAllowance extends AutoCloseable { @Override void close(); }
+    public DrivingAllowance reserveDriving(int count){
+        if(development==null)return ()->{};
+        AutoCloseable reservation=development.reserveDriving(count);
+        return ()->{try{reservation.close();}catch(RuntimeException error){throw error;}catch(Exception error){throw new IllegalStateException("Route allowance release failed");}};
     }
     public static String operation(String path){return switch(path){
         case "/v3/geocode/geo" -> "GEOCODE";

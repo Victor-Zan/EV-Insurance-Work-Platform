@@ -45,13 +45,13 @@ test('city change clears district and confirmation; no city-centre fallback',asy
 test('explicit confirmation/query, stable retry key and pagination never auto dispatch or recompute',async()=>{
   const requests=[],gets=[]
   const recommendation={queryId:'synthetic-query',provider:'AMAP_WEB_V1',mock:false,scope:'合成测试范围',complete:true,expiresAt:'2026-10-15T10:00:00Z',shops:{page:1,size:20,total:30,records:[]}}
-  const fake={post:async(url,body,config)=>{requests.push({url,body,config});return {data:{data:url.endsWith('/confirm')?null:url.endsWith('/recommendations')?recommendation:[{token:result.token,candidate:result}]}}},get:async(url,{params}={params:{}})=>{gets.push(url);return {data:{data:url.includes('/recommendations/')?{...recommendation,shops:{...recommendation.shops,page:params.page}}:url.includes('exclusions')?{total:0,records:[]}:{total:1,records:params.cityId?districts:cities}}}}}
+  const fake={post:async(url,body,config)=>{requests.push({url,body,config});return {data:{data:url.endsWith('/confirm')?null:url.endsWith('/recommendations')?recommendation:[{token:result.token,candidate:result}]}}},get:async(url,{params}={params:{}})=>{gets.push(url);return {data:{data:url.endsWith('/budget')?{callsEnabled:true,reason:'synthetic allowance'}:url.endsWith('/recommendation-estimate')?{candidates:3,maximumRouteCalls:3,routesRemaining:20,fits:true}:url.includes('/recommendations/')?{...recommendation,shops:{...recommendation.shops,page:params.page}}:url.includes('exclusions')?{total:0,records:[]}:{total:1,records:params.cityId?districts:cities}}}}}
   const panel=mount(fake,{caseId:'synthetic-case'}),s=panel.state;await settle();s.city='2';await settle();s.district='3';s.detail='合成街道10号';await settle()
   await s.resolve();await s.query();assert.equal(requests.length,1)
-  await s.confirm(s.candidates[0]);assert.equal(requests.length,2);await s.query();await s.query()
+  await s.confirm(s.candidates[0]);assert.equal(requests.length,2);await s.query();assert.equal(requests.length,2);await s.performQuery();await s.query();await s.performQuery()
   const queries=requests.filter(r=>r.url.endsWith('/recommendations'));assert.equal(queries.length,2);assert.equal(queries[0].config.headers['Idempotency-Key'],queries[1].config.headers['Idempotency-Key']);assert.equal(queries[0].config.timeout,75000)
   assert.deepEqual(queries[0].body,{locationToken:result.token,shopCityId:null});await s.resultPage(2);assert.equal(requests.length,4);assert.equal(s.recommendation.shops.page,2)
-  await s.query(true);const fresh=requests.at(-1);assert.notEqual(fresh.config.headers['Idempotency-Key'],queries[0].config.headers['Idempotency-Key']);assert.equal(requests.some(r=>/dispatch|reassign/.test(r.url)),false);assert.ok(gets.includes('/maps/recommendations/synthetic-query'));panel.unmount()
+  await s.query(true);await s.performQuery();const fresh=requests.at(-1);assert.notEqual(fresh.config.headers['Idempotency-Key'],queries[0].config.headers['Idempotency-Key']);assert.equal(requests.some(r=>/dispatch|reassign/.test(r.url)),false);assert.ok(gets.includes('/maps/recommendations/synthetic-query'));panel.unmount()
 })
 
 test('closed persistent budget blocks resolve and recompute while preserving entered form',async()=>{
@@ -59,4 +59,14 @@ test('closed persistent budget blocks resolve and recompute while preserving ent
  const panel=mount(fake,{caseId:'synthetic-case',initialAddress:'合成已填地址'});await settle();const state=panel.state;
  state.district='3';state.confirmed=result;await state.resolve();await state.query();
  assert.equal(calls,0);assert.equal(state.detail,'合成已填地址');assert.equal(state.budget.callsEnabled,false);panel.unmount();
+})
+
+test('category exhaustion does not borrow another category and estimate never calls routes',async()=>{
+ const posts=[];let routesRemaining=2
+ const fake={get:async(url)=>({data:{data:url.endsWith('/budget')?{callsEnabled:true,reason:'合成预算',operations:[{operation:'GEOCODE',total:10,used:10,reserved:0,remaining:0},{operation:'DRIVING',total:20,used:18,reserved:0,remaining:routesRemaining}]}:url.endsWith('/recommendation-estimate')?{candidates:3,maximumRouteCalls:3,routesRemaining,fits:routesRemaining>=3}:{total:0,records:[]}}}),post:async(url)=>{posts.push(url);return {data:{data:{}}}}}
+ const panel=mount(fake,{caseId:'synthetic-case'});await settle();const s=panel.state
+ s.district='3';s.detail='合成停车地址';await settle();await s.resolve();assert.equal(posts.length,0)
+ s.confirmed=result;await s.query();assert.equal(s.estimate.candidates,3);assert.equal(s.estimate.fits,false);await s.performQuery();assert.equal(posts.length,0)
+ routesRemaining=3;await s.query();assert.equal(s.estimate.fits,true);assert.equal(posts.length,0)
+ s.detail='另一合成地址';await settle();assert.equal(s.estimate,undefined);assert.equal(s.confirmed,undefined);panel.unmount()
 })
