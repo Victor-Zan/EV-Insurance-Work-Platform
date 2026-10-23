@@ -32,7 +32,7 @@ onBeforeUnmount(()=>{window.removeEventListener('online',updateOnline);window.re
     <p v-if="!online" class="offline-banner" role="alert">连接已断开。已填写内容会保留，请恢复网络后手动重试。</p>
     <main id="main-content" class="h5-content" tabindex="-1"><slot /></main>
     <Tabbar :model-value="active" safe-area-inset-bottom placeholder>
-      <TabbarItem v-for="tab in tabs" :key="tab.to" :name="tab.to" @click="navigate(tab.to)"><template #icon><svg class="tab-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><template v-if="tab.glyph==='home'"><path d="m3 11 9-8 9 8v9H3z"/><path d="M9 20v-6h6v6"/></template><template v-else-if="tab.glyph==='case'"><path d="M5 5h14v16H5zM9 5V3h6v2M8 10h8M8 14h8"/></template><template v-else-if="tab.glyph==='bell'"><path d="M5 17h14l-2-3V9a5 5 0 0 0-10 0v5zM10 20h4"/></template><template v-else><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></template></svg></template>{{ tab.label }}</TabbarItem>
+      <TabbarItem v-for="tab in tabs" :key="tab.to" :name="tab.to" :class="`tab-tone-${tab.glyph}`" @click="navigate(tab.to)"><template #icon><svg class="tab-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><template v-if="tab.glyph==='home'"><path d="m3 11 9-8 9 8v9H3z"/><path d="M9 20v-6h6v6"/></template><template v-else-if="tab.glyph==='case'"><path d="M5 5h14v16H5zM9 5V3h6v2M8 10h8M8 14h8"/></template><template v-else-if="tab.glyph==='bell'"><path d="M5 17h14l-2-3V9a5 5 0 0 0-10 0v5zM10 20h4"/></template><template v-else><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></template></svg></template>{{ tab.label }}</TabbarItem>
     </Tabbar>
   </div>
 </template>
@@ -46,7 +46,7 @@ onBeforeUnmount(()=>{window.removeEventListener('online',updateOnline);window.re
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 58px;
+  min-height: 62px;
   overflow: hidden;
   padding: 8px 16px;
   border-bottom: 1px solid var(--color-border);
@@ -78,8 +78,8 @@ onBeforeUnmount(()=>{window.removeEventListener('online',updateOnline);window.re
 .brand { display: flex; align-items: center; gap: 9px; padding: 0; border: 0; background: transparent; color: var(--color-text); text-align: left; font: inherit; }
 .brand-mark {
   display: grid;
-  width: 34px;
-  height: 34px;
+  width: 38px;
+  height: 38px;
   place-items: center;
   border: 1px solid rgba(255,255,255,.94);
   border-radius: 10px;
@@ -88,13 +88,13 @@ onBeforeUnmount(()=>{window.removeEventListener('online',updateOnline);window.re
   color: var(--color-accent);
   font-size: 20px;
 }
-.brand-mark svg { width: 20px; height: 20px; }
+.brand-mark svg { width: 22px; height: 22px; }
 .brand strong,.brand small { display: block; }
-.brand strong { font-size: 15px; letter-spacing: .02em; }
-.brand small { margin-top: 1px; color: var(--color-text-secondary); font-size: 10px; }
-.role-chip { position: relative; z-index: 1; padding: 5px 8px; border: 1px solid var(--color-border); border-radius: 999px; background: rgba(255,254,250,.84); color: var(--color-text-secondary); font-size: 11px; }
+.brand strong { font-size: 18px; line-height: 1.15; letter-spacing: .02em; }
+.brand small { margin-top: 2px; color: var(--color-text-secondary); font-size: 12px; line-height: 1.25; }
+.role-chip { position: relative; z-index: 1; padding: 6px 10px; border: 1px solid var(--color-border); border-radius: 999px; background: rgba(255,254,250,.84); color: var(--color-text-secondary); font-size: 12px; line-height: 1.3; white-space: nowrap; }
 .offline-banner { margin: 0; padding: 10px 16px; background: var(--color-warning-soft); color: var(--color-warning); font-size: 13px; line-height: 20px; }
-.h5-content { min-height: calc(100dvh - 58px); padding-bottom: calc(20px + env(safe-area-inset-bottom)); outline: none; }
+.h5-content { min-height: calc(100dvh - 62px); padding-bottom: calc(20px + env(safe-area-inset-bottom)); outline: none; }
 :deep(.van-tabbar) {
   border-top: 1px solid var(--color-border);
   background: var(--glass-surface)!important;
@@ -102,13 +102,17 @@ onBeforeUnmount(()=>{window.removeEventListener('online',updateOnline);window.re
   backdrop-filter:blur(16px) saturate(.78);
 }
 :deep(.van-tabbar-item) { position: relative; min-height: 56px; background: transparent; transition: background-color 180ms var(--motion-fluid),color 180ms ease,transform 220ms var(--motion-fluid); }
-:deep(.van-tabbar-item::before) { position: absolute; top: 0; left: 50%; width: 28px; height: 2px; border-radius: 0 0 2px 2px; background: var(--color-accent); content: ''; transform: translateX(-50%) scaleX(0); transition: transform 220ms var(--motion-fluid); }
-:deep(.van-tabbar-item--active) { background: var(--color-accent-soft); transform: translate3d(0,-2px,0); }
+:deep(.van-tabbar-item::before) { position: absolute; top: 0; left: 50%; width: 28px; height: 2px; border-radius: 0 0 2px 2px; background: var(--tab-icon-active,#c1d3ec); content: ''; transform: translateX(-50%) scaleX(0); transition: transform 220ms var(--motion-fluid); }
+:deep(.van-tabbar-item--active) { background: var(--color-accent); color: #fff; box-shadow: inset 0 1px 0 rgba(255,255,255,.28),0 -5px 16px rgba(65,55,38,.13); transform: translate3d(0,-2px,0); }
 :deep(.van-tabbar-item--active::before) { transform: translateX(-50%) scaleX(1); }
-:deep(.van-tabbar-item--active .tab-glyph) { transform: scale(1.08); filter: drop-shadow(0 3px 5px rgba(53,56,59,.18)); }
-.tab-glyph { display: block; width: 22px; height: 22px; transition: transform 220ms var(--motion-fluid),filter 220ms var(--motion-fluid); }
+:deep(.van-tabbar-item--active .tab-glyph) { color: var(--tab-icon-active); transform: scale(1.08); filter: drop-shadow(0 3px 5px rgba(0,0,0,.2)); }
+.tab-glyph { display: block; width: 23px; height: 23px; color: var(--tab-icon); transition: color 180ms ease,transform 220ms var(--motion-fluid),filter 220ms var(--motion-fluid); }
+:deep(.tab-tone-home) { --tab-icon:#426f96; --tab-icon-active:#b3d9f5; }
+:deep(.tab-tone-case) { --tab-icon:#9a6939; --tab-icon-active:#f2c894; }
+:deep(.tab-tone-bell) { --tab-icon:#9a7624; --tab-icon-active:#f4d58b; }
+:deep(.tab-tone-user) { --tab-icon:#5e7087; --tab-icon-active:#c1d3ec; }
 :deep(.van-tabbar-item:active) { transform: translate3d(0,0,0) scale(.97); }
-:deep(.van-tabbar-item:focus-visible) { background: var(--color-surface-muted); }
+:deep(.van-tabbar-item:focus-visible:not(.van-tabbar-item--active)) { background: var(--color-surface-muted); }
 @media(hover:hover) { :deep(.van-tabbar-item:hover:not(.van-tabbar-item--active)) { background: var(--color-surface-muted); }:deep(.van-tabbar-item:hover:not(.van-tabbar-item--active) .tab-glyph) { transform: scale(1.04); } }
 :deep(.van-tabbar-item__icon) { font-size: 21px; }
 :deep(.van-tabbar-item__text) { font-size: 11px; }

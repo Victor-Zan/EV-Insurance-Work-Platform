@@ -36,6 +36,7 @@ button:active,.van-button:active{transform:scale(.98)}
 .skip-link{position:fixed;top:8px;left:8px;z-index:1000;padding:10px 12px;transform:translateY(-160%);border-radius:6px;background:var(--color-text);color:#fff;text-decoration:none}.skip-link:focus{transform:none}
 .mobile-page{min-height:calc(100dvh - 58px);padding-bottom:16px}
 .mobile-shell{min-height:100dvh;padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+.van-nav-bar__title{font-size:18px;font-weight:600;line-height:1.35}
 .page-lead,.intro{padding:28px 20px 20px}.page-lead h1,.intro h1{margin:4px 0 8px;font-size:24px;line-height:1.25;letter-spacing:-.02em}.page-lead p:last-child,.intro p{margin:0;color:var(--color-text-secondary);font-size:14px;line-height:1.7}
 .eyebrow{margin:0;color:var(--color-accent);font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase}
 .page-actions,.actions{display:flex;gap:10px;padding:18px 20px}.page-actions .van-button,.actions .van-button{min-height:48px}

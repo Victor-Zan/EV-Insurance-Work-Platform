@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
-/** Only new isolated schemas: validates shared V24 -> additive V25/V26. */
+/** Only new isolated schemas: validates shared V24 -> additive map migrations. */
 class MapMigrationPostgresIT {
     @Test void additiveMigrationPreservesExistingPositionsAndNeverInventsQueryVersionsOrBudgets() {
         String url=System.getenv("TEST_DB_URL"),user=System.getenv("TEST_DB_USERNAME"),password=System.getenv("TEST_DB_PASSWORD");
@@ -31,7 +31,7 @@ class MapMigrationPostgresIT {
         db.update("insert into map_recommendation_query(id,actor_id,work_order_id,idempotency_key,fingerprint,model_id,direction,strategy,status,expires_at) values(?,?,?,'synthetic-old',?,?,'VEHICLE_TO_SHOP',32,'READY',now()+interval '1 minute')",queryId,actor,caseId,"0".repeat(64),model);
         var after=Flyway.configure().dataSource(scoped,user,password).schemas(schema).defaultSchema(schema)
             .locations("classpath:db/migration","classpath:db/dev").placeholders(placeholders).load();
-        assertThat(after.migrate().migrationsExecuted).isEqualTo(2);after.validate();
+        assertThat(after.migrate().migrationsExecuted).isEqualTo(3);after.validate();
         assertThat(db.queryForObject("select work_order_version from map_recommendation_query where id=?",Long.class,queryId)).isEqualTo(-1);
         assertThat(db.queryForObject("select source from shop_map_location where shop_id=?",String.class,shop)).isEqualTo("ADMIN_CONFIRMED_GCJ02");
         assertThat(db.queryForObject("select longitude from shop_map_location where shop_id=?",java.math.BigDecimal.class,shop)).isEqualByComparingTo("113.1");
@@ -44,5 +44,15 @@ class MapMigrationPostgresIT {
         assertThat(db.queryForObject("select longitude is null and latitude is null from shop_map_location where shop_id=? and version=2",Boolean.class,shop)).isTrue();
         assertThat(after.migrate().migrationsExecuted).isZero();after.validate();
         assertThat(db.queryForObject("select count(*) from map_call_budget_run",Long.class)).isZero();
+        db.update("insert into map_call_budget_run(id) values('opaque-subject-migration-test')");
+        db.update("insert into map_call_budget_slot(run_id,subject,operation,request_hash) values('opaque-subject-migration-test','GEO_NS_A','GEOCODE',?)","a".repeat(64));
+        db.update("insert into map_call_budget_slot(run_id,subject,operation,request_hash) values('opaque-subject-migration-test','REVERSE_NS_A','REVERSE',?)","b".repeat(64));
+        db.update("insert into map_call_budget_slot(run_id,subject,operation,request_hash) values('opaque-subject-migration-test','ROUTE_NS_A','DRIVING',?)","c".repeat(64));
+        assertThatThrownBy(()->db.update("insert into map_call_budget_slot(run_id,subject,operation) values('opaque-subject-migration-test','GEO_NS_WRONG','DRIVING')")).isInstanceOf(org.springframework.dao.DataAccessException.class);
+        assertThatThrownBy(()->db.update("insert into map_call_budget_slot(run_id,subject,operation) values('opaque-subject-migration-test','unscoped','GEOCODE')")).isInstanceOf(org.springframework.dao.DataAccessException.class);
+        assertThatThrownBy(()->db.update("insert into map_call_budget_slot(run_id,subject,operation,request_hash) values('opaque-subject-migration-test','GEO_NS_DUP','GEOCODE',?)","a".repeat(64))).isInstanceOf(org.springframework.dao.DataAccessException.class);
+        db.update("update map_call_budget_slot set attempted_at=current_timestamp where run_id='opaque-subject-migration-test' and subject='GEO_NS_A'");
+        assertThatThrownBy(()->db.update("update map_call_budget_slot set attempted_at=null where run_id='opaque-subject-migration-test' and subject='GEO_NS_A'")).isInstanceOf(org.springframework.dao.DataAccessException.class);
+        assertThat(db.queryForObject("select enabled from map_call_budget_run where id='opaque-subject-migration-test'",Boolean.class)).isFalse();
     }
 }
