@@ -1774,3 +1774,11 @@ GitHub集成已尝试创建以main为目标的Draft PR，返回准确错误：`4
 最终验证：管理端npm run lint/typecheck/test/build全部通过，189测试0失败/跳过。后端mvnw verify -Ppostgres-it（DevelopmentMapBudgetPostgresIT、MapRecommendationPostgresIT、MapMigrationPostgresIT），94单元+23隔离集成全部0失败/错误/跳过，完整迁移及validate、JAR通过。首次测试编译的断言方法参数及前端shops同名lint错误已修正重跑，没有删除或放宽测试。最终后端包含回调注入和跨站防护后再完整重跑通过。后端/H5以外的全量业务集成及Compose未重跑；H5未改。真实JS联网、域名白名单、Key权限及真实选点效果未验证。本轮代理真实高德/百度请求0；运行切换和台账核对另记。
 
 官方接口及安全方案、操作/API和限制见AMAP_JS_MAP.md。私密Key、安全码、Web服务Key、JWT和客户地址未入源码、文档、测试夹具或Git。仅本地功能分支，未推送、合并或生产部署。
+
+运行收尾：功能提交6303a020f1504d6417fb1f87e1cdb18d2b544aa8已装入指定5210前端及18105后端；同源/api资源代理与前端实际API目标均核对为18105，后端配置API返回相同buildCommit，JAR哈希与manifest一致。被忽略的本机JS私密配置显式启用，配置API仅返回enabled/configured标志；浏览器已显示可点击的“加载高德地图”，未点击、未下载SDK、未加载真实底图。截图current-5210-js-map-ready.png是实际页面的加载前状态，不是联网通过证据。
+
+安装前逐项核对业务、开发种子和独立预算迁移；两份预算SQL的Git检出仅存在CRLF/LF换行差异，逐行内容一致，未修改迁移。新后端在原业务schema manual_case_20261022_204936校验28条记录、独立预算schema amap_dev_budget_5210_20261023校验3条记录，均已是最新、无需迁移（业务V26、预算V2保持）。首次安装的localhost启动探测未完成，未更新前端即安全停止新进程；核对127.0.0.1直连健康正常后，从原manifest检查点恢复并完成安装，未更换数据库或生成第二份预算。旧JAR、工作区和manifest-before-amap-js.json全部保留。
+
+安装前后案件、网点、服务关系、147区域及144条区域新增审计摘要完全一致；GEOCODE仍已用1/剩9、REVERSE已用0/剩5、DRIVING已用0/剩20，预留均0，历史尝试0。本轮新增真实高德/百度调用0。浏览器重载后四项停车输入与重载前一致，没有创建/确认位置、调用路线、修改事故区县或提交派单。当前案件事故区县缺失，真实合格合作网点资料仍需维护；启用底图不会自行补齐业务资料。
+
+本机安装脚本、脱敏版本核对、原/新manifest及启动日志位于仓库外mock-manual-dispatch-runtime；完整性摘要位于guangdong-region-import-20261023（integrity-js-map-before/after.json），实际截图和检查日志位于amap-js-evidence-20261023。截图只保留地图加载区域，无手机号、车牌、密钥或客户地址。后续需由用户点击加载并核验真实底图、域名/权限与选点；本轮不把189前端测试、94单元+23集成或启动成功当成真实高德验收。未推送、未创建PR、未合并main、未部署生产。
