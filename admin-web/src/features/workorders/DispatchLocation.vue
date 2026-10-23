@@ -19,7 +19,8 @@ function accidentPending(value:boolean){accidentBusy.value=value;emit('pending',
 function accidentChanged(){choose(undefined);mapRevision.value++;emit('pending',true);emit('changed')}
 function choose(value:{shopId:number;queryId:string}|undefined){emit('select',value?.shopId);emit('recommendation',value?.queryId)}
 async function confirm(value:{districtId:number;address:string}){
- try{await api.dispatchLocation(props.caseId,props.order.version,value.districtId,value.address);emit('pending',false);emit('changed')}
+ pending(true)
+ try{await api.dispatchLocation(props.caseId,props.order.version,value.districtId,value.address);pending(false);emit('changed')}
  catch(e){emit('pending',true);error.value=e instanceof Error?e.message:'停车位置保存失败'}
 }
 async function loadConfiguration(){emit('pending',true);error.value='';if(!currentUser.value?.roles.includes('CUSTOMER_SERVICE')){config.value={provider:'MANUAL',mock:false};return}try{config.value=(await httpClient.get('/maps/locations/configuration')).data.data}catch(e){error.value=e instanceof Error?e.message:'地图配置读取失败'}}

@@ -11,6 +11,8 @@ function mount(client,props={}){
   let code=ts.transpileModule(compileScript(descriptor,{id:'parking-test'}).content,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText
   code=code.replace(/import\s*\{([^}]+)\}\s*from\s*['"]vue['"];?/g,(_,names)=>`const {${names.replace(/\s+as\s+/g,':')}}=Vue;`)
   code=code.replace(/import\s*\{\s*mapStatus\s*\}\s*from[^\n]+/g,'const mapStatus=()=>"";')
+  code=code.replace(/import\s*\{\s*mapPreviewClientKey\s*\}\s*from[^\n]+/g,'const mapPreviewClientKey=Symbol();')
+  code=code.replace(/import\s+(DispatchMapCanvas|DispatchCandidateList)\s+from[^\n]+/g,'const $1={};')
   code=code.replace(/import\s*\{\s*httpClient\s*\}\s*from[^\n]+/g,'const httpClient=client;').replace('export default','return')
   const component=new Function('Vue','client',code)(Vue,client);component.render=()=>null
   const renderer=Vue.createRenderer({createComment:()=>({}),insert(){},remove(){},parentNode:()=>null,nextSibling:()=>null})
@@ -69,4 +71,42 @@ test('category exhaustion does not borrow another category and estimate never ca
  s.confirmed=result;await s.query();assert.equal(s.estimate.candidates,3);assert.equal(s.estimate.fits,false);await s.performQuery();assert.equal(posts.length,0)
  routesRemaining=3;await s.query();assert.equal(s.estimate.fits,true);assert.equal(posts.length,0)
  s.detail='另一合成地址';await settle();assert.equal(s.estimate,undefined);assert.equal(s.confirmed,undefined);panel.unmount()
+})
+
+
+test('a mock preview cannot fall back to the real transport and live mode rejects grid picks',async()=>{
+ assert.throws(()=>mount(client(async()=>{throw Error('must not call')}),{previewOnly:true}),/隔离传输/)
+ let posts=0;const panel=mount(client(async()=>{posts++;return {data:{data:[]}}}));await settle()
+ panel.state.detail='手工保留的合成地址';await settle();await panel.state.previewPick({x:40,y:60})
+ assert.equal(posts,0);assert.equal(panel.state.detail,'手工保留的合成地址');panel.unmount()
+})
+
+test('selection is explicit, expiry is enforced and changing the input invalidates selection',async()=>{
+ const choices=[];const panel=mount(client(async()=>({data:{data:[]}})),{caseId:'synthetic-case',onChoose:value=>choices.push(value)});await settle();const s=panel.state
+ const row={shopId:7,name:'合成网点',status:'READY',metres:1000}
+ s.recommendation={queryId:'synthetic-query',expiresAt:new Date(Date.now()+60000).toISOString(),shops:{records:[row]}}
+ s.selectShop(999);assert.equal(choices.length,0)
+ s.selectShop(7);assert.equal(choices.at(-1).shopId,7);const count=choices.length;s.recommendation.expiresAt=new Date(Date.now()-1000).toISOString();s.selectShop(7);assert.equal(choices.length,count+1);assert.equal(choices.at(-1),undefined);assert.match(s.error,/已过期/)
+ s.detail='另一个合成停放位置';await settle();assert.equal(s.recommendation,undefined);assert.equal(s.confirmed,undefined);panel.unmount()
+})
+
+test('a late confirmation or route response cannot restore a changed location or selection',async()=>{
+ let release;const fake=client(()=>new Promise(resolve=>{release=resolve}));const panel=mount(fake,{caseId:'synthetic-case'});await settle();const s=panel.state
+ s.district='3';s.detail='合成原地址';await settle();const confirming=s.confirm(result);s.detail='合成修改地址';await settle();release({data:{data:null}});await confirming;assert.equal(s.confirmed,undefined)
+ s.confirmed=result;s.estimate={candidates:1,fits:true,maximumRouteCalls:1};const querying=s.performQuery();s.detail='合成再次修改地址';await settle()
+ release({data:{data:{queryId:'stale-query',expiresAt:new Date(Date.now()+60000).toISOString(),shops:{records:[{shopId:7,status:'READY',metres:1000}]}}}});await querying;assert.equal(s.recommendation,undefined);assert.equal(s.confirmed,undefined);panel.unmount()
+})
+
+
+test('changing candidate scope clears the shop but does not falsely dirty an unchanged confirmed parking location',async()=>{
+ const pending=[],choices=[];const panel=mount(client(async()=>({data:{data:[]}})),{caseId:'synthetic',onPending:v=>pending.push(v),onChoose:v=>choices.push(v)});await settle();const s=panel.state
+ s.confirmed=result;s.shopCity='2';await settle();assert.equal(s.confirmed.token,result.token);assert.equal(pending.at(-1),false);assert.equal(choices.at(-1),undefined)
+ s.detail='合成位置确实改变';await settle();assert.equal(s.confirmed,undefined);assert.equal(pending.at(-1),true);panel.unmount()
+})
+
+
+test('a completed recommendation may preselect the nearest known ready row without submitting dispatch',async()=>{
+ const choices=[],posts=[];const fake=client(async(url)=>{posts.push(url);return {data:{data:{queryId:'synthetic-default',expiresAt:new Date(Date.now()+60000).toISOString(),shops:{records:[{shopId:4,name:'合成最近网点',status:'READY',metres:1500}]}}}}})
+ const panel=mount(fake,{caseId:'synthetic',onChoose:v=>choices.push(v)});await settle();const s=panel.state;s.confirmed=result;s.estimate={candidates:1,fits:true,maximumRouteCalls:1};await s.performQuery()
+ assert.equal(choices.at(-1).shopId,4);assert.equal(choices.at(-1).queryId,'synthetic-default');assert.deepEqual(posts,['/maps/cases/synthetic/recommendations']);panel.unmount()
 })

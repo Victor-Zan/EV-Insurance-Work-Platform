@@ -532,3 +532,12 @@ XLSX/UTF-8 CSV为10MiB/2000行，双编号必须一致否则人工选择案件�
 ### 2026-10-23 Local 5210 developer-operated Amap allowance
 
 Confirmed allowance: 10 address geocodes, 5 reverse checks, 20 driving routes, only in the designated development instance; no automatic retry/refill or agent-initiated real calls. The UI must show category counts, distinguish local allowance from supplier quota, and stop a route query before calling if all qualified candidates cannot fit its remaining route allowance. Missing Guangdong region/shop data remains a separate prerequisite; no synthetic partners or region/service links are created by this allowance.
+
+
+## 2026-10-23：派单定位与候选界面简化（用户确认）
+
+派单区按“车辆当前停放位置地图/地址确认 → 智能分拨候选 → 人工确认派单”组织；事故服务区县独立显示，停车选点不改事故事实。候选仅来自既有合作网点，仍依现有服务资格筛选，再按车辆→网点、既有高德主策略道路距离排序，单选一家，最终使用原派单按钮和后端复核。技术预算与诊断收进默认折叠的服务信息；缺项/失败在主操作区明确显示。修改位置清除旧确认、距离和选择。
+
+本轮仅交互增强与离线/合成验证，不加载高德JS底图、不发出真实解析/逆编码/路线请求，不更改供应商或持久预算。真实地图选点待后续核实JS API配置、服务端安全代理和调用授权后实现；现有Web服务Key不送入浏览器。当前正式页面仍可通过原地址解析与明确确认流程定位；无底图时标示示意状态，不以网格冒充真实地图。
+
+独立开发预览仅使用合成地址、网点和模拟排序数值，复用相同前端组件，不访问后端、不保存真实位置、不提交正式派单；不得把预览结果或模拟令牌关联到业务案件。不是新增派单业务或权限入口。第一轮验收只证明交互和状态保护，不能宣称真实底图、真实道路或合作网点业务验收完成。

@@ -513,3 +513,12 @@ PR #4 集成时将原 OCR D-044 重编号为 D-045，避免与 main 已有工作
 Confirmed in this conversation: only the local 5210/18105 development instance may use a new, independent allowance of 10 GEOCODE, 5 REVERSE and 20 DRIVING attempts. The operator explicitly clicks the existing controls; no automatic external verification is authorized for the agent. Past acceptance ledgers remain unchanged and closed. This is not a daily allowance: process restart and date changes never refill it. Timeout/failed requests count after durable reservation. Existing roles, Guangdong validation, candidate qualification and manual dispatch remain unchanged.
 
 Technical implementation: separate opt-in development ledger schema with its own Flyway history and migration location, no change to existing business migrations/schema. No calls granted by migrations or startup. The approved run is provisioned once by an idempotent local operator script; operation slots are bounded and attempts immutable. Pre-reserve all route slots for a query before any route call, release only unused slots in its normal finally block; after a process crash, reserved slots fail closed and require audit rather than automatic recycling. Only request digests/times are retained, not coordinates, full addresses or credentials. Supplier authentication/quota/rate failures close the run. UI displays per-operation remaining counts and projected route cost; server remains authoritative.
+
+
+## 2026-10-23：派单定位与候选界面简化（用户确认）
+
+派单区按“车辆当前停放位置地图/地址确认 → 智能分拨候选 → 人工确认派单”组织；事故服务区县独立显示，停车选点不改事故事实。候选仅来自既有合作网点，仍依现有服务资格筛选，再按车辆→网点、既有高德主策略道路距离排序，单选一家，最终使用原派单按钮和后端复核。技术预算与诊断收进默认折叠的服务信息；缺项/失败在主操作区明确显示。修改位置清除旧确认、距离和选择。
+
+本轮仅交互增强与离线/合成验证，不加载高德JS底图、不发出真实解析/逆编码/路线请求，不更改供应商或持久预算。真实地图选点待后续核实JS API配置、服务端安全代理和调用授权后实现；现有Web服务Key不送入浏览器。当前正式页面仍可通过原地址解析与明确确认流程定位；无底图时标示示意状态，不以网格冒充真实地图。
+
+独立开发预览仅使用合成地址、网点和模拟排序数值，复用相同前端组件，不访问后端、不保存真实位置、不提交正式派单；不得把预览结果或模拟令牌关联到业务案件。不是新增派单业务或权限入口。第一轮验收只证明交互和状态保护，不能宣称真实底图、真实道路或合作网点业务验收完成。
