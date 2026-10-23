@@ -1792,3 +1792,9 @@ GitHub集成已尝试创建以main为目标的Draft PR，返回准确错误：`4
 新增独立开发POI schema和Flyway目录db/map-place-budget/V1__separate_place_search_allowance.sql，不改既有业务或旧预算迁移。启动不发放额度；本轮本机配置以用户明确授权为依据，一次性准备10个持久槽位；使用、失败、超时均不归还，重启/日期变化不补次。无明文关键词或坐标入台账，Key始终在后端，POI错误不会静默使用Mock结果。
 
 按用户要求，本轮不运行自动测试、lint、浏览器联调或真实接口；只做生成运行文件所需的TypeScript编译、Vite构建及Maven package（-DskipTests）。初次前后端编译构建已成功，随后预算错误隔离小修将再次打包；不沿用上一任务测试数量宣称本轮通过。实际运行切换与授权准备另记。本轮新增高德/百度请求0，真实搜索效果/Key高级搜索权限/地址质量由用户自行测试，未验证。未推送或合并，不部署生产。
+
+运行收尾：功能代码f6ebaa095f315b2b2b2b903ce4366331d9250b59已安装到指定5210前端/18105后端，原amap-js-map工作区、旧JAR及manifest-before-place-search.json保留。原业务schema manual_case_20261022_204936（V26）和amap_dev_budget_5210_20261023（V2）启动校验后无需迁移；仅新建amap_place_budget_5210_20261023并执行其独立V1，未修改旧迁移。后端编译打包、前端TypeScript编译/Vite构建成功；用户要求不检验，因此未运行本轮测试、lint、浏览器搜索/选点/派单或真实接口，不引用上一任务通过数字。
+
+用户单独授权的POI_SEARCH在独立run localhost-5210-place-20261023-approved-10一次性准备10槽，配置时已用0、剩10；启动脚本重跑只核对已有授权，不补槽或重置尝试。原三分类槽位无写入操作；进程总量技术防线随新增10次从35调整为45，不为原分类扩容。新配置单独保存在仓库外amap-place-search-runtime/.env.place-budget，密钥继续从原私密配置读入；不会因前端可见搜索方式就自动发出请求。POI搜索高级服务权限和真实效果仍需用户自行验收，不能保证此前GEOCODE的30001通过新增接口自动消除。
+
+更新后仅恢复原未保存城市/区县/文字和查询范围，没有点击搜索、加载地图、确认位置或提交派单。实际新增搜索方式区域截图search-mode-current.png位于仓库外amap-place-search-runtime，无客户身份、Key或Token。安装脚本、构建日志和一次性配置回执亦在该目录；原manifest及安装启动日志在mock-manual-dispatch-runtime。本轮代理新增真实百度/高德请求0。仅本地分支codex/amap-place-search提交，未推送、创建PR或合并，不部署生产；此后由用户明确操作搜索和查看剩余次数。
