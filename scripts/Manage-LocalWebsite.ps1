@@ -74,7 +74,8 @@ if($Action -eq 'InstallAutoStart'){
     $existing=Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
     if($existing -and -not $existing.Actions.Arguments.Contains($scriptPath)){throw 'Task name belongs to another workspace.'}
     $user=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-    $taskAction=New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "'+$scriptPath+'" -Action Watch') -WorkingDirectory $repo
+    $hiddenLauncher=Join-Path $PSScriptRoot 'Watch-LocalWebsite.vbs'
+    $taskAction=New-ScheduledTaskAction -Execute (Join-Path $env:SystemRoot 'System32/wscript.exe') -Argument ('//B //Nologo "'+$hiddenLauncher+'" "'+$scriptPath+'"') -WorkingDirectory $repo
     $triggers=@((New-ScheduledTaskTrigger -AtLogOn -User $user),(New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 1)))
     $principal=New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
     $settings=New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -MultipleInstances IgnoreNew
@@ -154,7 +155,13 @@ try {
                         if($_ -match '^([A-Z][A-Z0-9_]*)=(.*)$'){[Environment]::SetEnvironmentVariable($matches[1],$matches[2].Trim().Trim('"').Trim("'"),'Process')}
                     }
                     $env:SERVER_ADDRESS='127.0.0.1'
-                    $process=Start-Process -FilePath $java -ArgumentList @('-jar',('"'+$jar+'"'),'--spring.flyway.target=24') -WorkingDirectory $repo -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $runtime 'backend.log') -RedirectStandardError (Join-Path $runtime 'backend-error.log')
+                    $flywayArguments=@('--spring.flyway.target=28')
+                    $legacyLocations=Join-Path $runtime 'flyway-legacy-v25'
+                    if(Test-Path -LiteralPath (Join-Path $runtime 'legacy-v25.enabled')){
+                        if(-not(Test-Path -LiteralPath (Join-Path $legacyLocations 'V25.1__amap_dispatch_safety.sql'))){throw 'Legacy V25 migration bundle missing; do not start against canonical migrations.'}
+                        $flywayArguments+=('--spring.flyway.locations=filesystem:'+$legacyLocations.Replace('\','/'))
+                    }
+                    $process=Start-Process -FilePath $java -ArgumentList (@('-jar',('"'+$jar+'"'))+$flywayArguments) -WorkingDirectory $repo -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $runtime 'backend.log') -RedirectStandardError (Join-Path $runtime 'backend-error.log')
                     $state.backend=Record $process
                     $backendGrace=(Get-Date).AddSeconds(120)
                     $backendFailures=0

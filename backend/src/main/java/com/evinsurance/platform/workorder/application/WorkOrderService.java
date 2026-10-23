@@ -98,8 +98,6 @@ public class WorkOrderService {
             requireDraftOwner(row,actor);
             validateFormal(row);
             mapper.lockSubmissionGuard();
-            String existing=mapper.existingFormalClaim(id,row.getInsuranceCompany(),row.getClaimNo());
-            if(existing!=null) throw ApiException.conflict("DUPLICATE_CASE","A formal work order already exists: "+existing);
             var duplicates=possibleDuplicates(row);
             String duplicateReason=requireDuplicateDecision(duplicates,request.confirmPossibleDuplicate(),request.duplicateReason());
             Long owner=matchOwner(row.getOwnerPhone());
@@ -189,9 +187,6 @@ public class WorkOrderService {
         String plate=trim(request.vehiclePlate());
         String other=trim(request.vehicleOtherIdentifier());
         requireVehicleIdentifier(vin,plate,other);
-        mapper.lockSubmissionGuard();
-        String existing=mapper.existingFormalClaim(id,insurance,claim);
-        if(existing!=null) throw ApiException.conflict("DUPLICATE_CASE","A formal work order already exists: "+existing);
         String before="insuranceCompany="+row.getInsuranceCompany()+",claimNo="+row.getClaimNo()+",vin="+maskIdentifier(row.getVehicleVin())+
             ",plate="+maskIdentifier(row.getVehiclePlate())+",other="+maskIdentifier(row.getVehicleOtherIdentifier());
         String after="insuranceCompany="+insurance+",claimNo="+claim+",vin="+maskIdentifier(vin)+",plate="+maskIdentifier(plate)+",other="+maskIdentifier(other);
@@ -266,6 +261,7 @@ public class WorkOrderService {
     @Transactional
     public WorkOrderViews.WorkOrder accept(UUID id,WorkOrderRequests.AssignmentAction request,String key) {
         var actor=requireShop();
+        requireVisible(id,actor,false);
         return command(actor,"ACCEPT",key,id,request.assignmentVersion(),() -> {
             var row=lock(id);
             var assignment=requireShopAssignment(row,request.assignmentVersion(),actor);

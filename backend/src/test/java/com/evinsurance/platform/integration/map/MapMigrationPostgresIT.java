@@ -31,7 +31,7 @@ class MapMigrationPostgresIT {
         db.update("insert into map_recommendation_query(id,actor_id,work_order_id,idempotency_key,fingerprint,model_id,direction,strategy,status,expires_at) values(?,?,?,'synthetic-old',?,?,'VEHICLE_TO_SHOP',32,'READY',now()+interval '1 minute')",queryId,actor,caseId,"0".repeat(64),model);
         var after=Flyway.configure().dataSource(scoped,user,password).schemas(schema).defaultSchema(schema)
             .locations("classpath:db/migration","classpath:db/dev").placeholders(placeholders).load();
-        assertThat(after.migrate().migrationsExecuted).isEqualTo(3);after.validate();
+        assertThat(after.migrate().migrationsExecuted).isEqualTo(4);after.validate();
         assertThat(db.queryForObject("select work_order_version from map_recommendation_query where id=?",Long.class,queryId)).isEqualTo(-1);
         assertThat(db.queryForObject("select source from shop_map_location where shop_id=?",String.class,shop)).isEqualTo("ADMIN_CONFIRMED_GCJ02");
         assertThat(db.queryForObject("select longitude from shop_map_location where shop_id=?",java.math.BigDecimal.class,shop)).isEqualByComparingTo("113.1");

@@ -24,7 +24,6 @@ public interface WorkOrderMapper {
     void lockSubmissionGuard();
     int possibleDuplicateDays();
     int updatePossibleDuplicateDays(@Param("days") int days,@Param("actorId") long actorId,@Param("now") Instant now);
-    String existingFormalClaim(@Param("excludeId") UUID excludeId,@Param("insuranceCompany") String insuranceCompany,@Param("claimNo") String claimNo);
     List<String> possibleDuplicates(@Param("id") UUID id,@Param("phone") String phone,@Param("policyNo") String policyNo,
         @Param("vin") String vin,@Param("plate") String plate,@Param("otherIdentifier") String otherIdentifier,
         @Param("accidentAt") Instant accidentAt,@Param("days") int days);

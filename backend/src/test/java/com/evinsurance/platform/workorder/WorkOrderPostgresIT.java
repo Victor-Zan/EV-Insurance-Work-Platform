@@ -338,7 +338,7 @@ class WorkOrderPostgresIT {
     }
 
     @Test
-    void draftsFormalValidationStrongDuplicatesAndCriticalChangesFollowTheRules() throws Exception {
+    void draftsFormalValidationRepeatedClaimsAndCriticalChangesFollowTheRules() throws Exception {
         JsonNode second=createUser("CUSTOMER_SERVICE",null);
         String secondToken=login(second.path("username").asText(),"ADMIN");
         Map<String,Object> valid=requiredDraft("CLAIM-"+UUID.randomUUID(),phone(),"VIN-"+UUID.randomUUID(),Instant.now());
@@ -367,14 +367,23 @@ class WorkOrderPostgresIT {
         duplicate.put("claimNo",String.valueOf(valid.get("claimNo")).toLowerCase());
         duplicate.put("vehicleVin","VIN-"+UUID.randomUUID());
         String duplicateId=createDraft(admin,duplicate).path("id").asText();
-        JsonNode conflict=submit(admin,duplicateId,false,null,"duplicate-"+duplicateId,409);
-        assertThat(conflict.path("code").asText()).isEqualTo("DUPLICATE_CASE");
-        assertThat(conflict.path("message").asText()).contains(businessNo);
+        JsonNode repeated=submit(admin,duplicateId,false,null,"duplicate-"+duplicateId,200).path("data");
+        assertThat(repeated.path("status").asText()).isEqualTo("PENDING_DISPATCH");
+        assertThat(repeated.path("businessNo").asText()).isNotEqualTo(businessNo);
+        assertThat(submit(admin,duplicateId,false,null,"duplicate-"+duplicateId,200).path("data").path("businessNo").asText())
+            .isEqualTo(repeated.path("businessNo").asText());
+
+        Map<String,Object> withoutInsurance=new HashMap<>(duplicate);
+        withoutInsurance.remove("insuranceCompany");
+        withoutInsurance.put("vehicleVin","VIN-"+UUID.randomUUID());
+        String withoutInsuranceId=createDraft(customerService,withoutInsurance).path("id").asText();
+        JsonNode unnamed=submit(customerService,withoutInsuranceId,false,null,"unnamed-"+withoutInsuranceId,200).path("data");
+        assertThat(unnamed.path("businessNo").asText()).isNotIn(businessNo,repeated.path("businessNo").asText());
 
         String replacementVin="REPLACEMENT-VIN-"+UUID.randomUUID();
         mvc.perform(put("/api/v1/work-orders/{id}/critical-fields",id).header("Authorization","Bearer "+customerService)
             .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
-                "insuranceCompany","太平洋保险","claimNo","UPDATED-"+UUID.randomUUID(),"vehicleVin",replacementVin,
+                "insuranceCompany","平安保险","claimNo",duplicate.get("claimNo"),"vehicleVin",replacementVin,
                 "vehiclePlate","沪A12345","vehicleOtherIdentifier","OTHER-1","reason","保险公司修正报案信息"))))
             .andExpect(status().isOk()).andExpect(jsonPath("$.data.vehicleVin").value(replacementVin));
         String audit=db.queryForObject("select summary from audit_log where object_id=? and action='WORK_ORDER_CRITICAL_UPDATE' order by id desc limit 1",String.class,id);
@@ -473,6 +482,9 @@ class WorkOrderPostgresIT {
             .andReturn().getResponse().getContentAsString();
         int newVersion=assignmentVersion(json.readTree(transferred).path("data"));
         assertThat(newVersion).isEqualTo(firstVersion+1);
+        mvc.perform(post("/api/v1/work-orders/{id}/accept",id).header("Authorization","Bearer "+shop)
+            .header("Idempotency-Key",acceptKey).contentType(MediaType.APPLICATION_JSON)
+            .content(json.writeValueAsString(Map.of("assignmentVersion",firstVersion)))).andExpect(status().isForbidden());
         mvc.perform(post("/api/v1/work-orders/{id}/arrive",id).header("Authorization","Bearer "+shop)
             .header("Idempotency-Key","old-arrive-"+id).contentType(MediaType.APPLICATION_JSON)
             .content(json.writeValueAsString(Map.of("assignmentVersion",firstVersion)))).andExpect(status().isConflict())

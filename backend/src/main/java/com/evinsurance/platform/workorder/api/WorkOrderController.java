@@ -73,7 +73,7 @@ public class WorkOrderController {
 
     @PostMapping("/{id}/submit")
     @PreAuthorize("hasAnyRole('ADMIN','CUSTOMER_SERVICE')")
-    @Operation(summary="Validate and submit a formal work order; all intake fields and a scene photo are required")
+    @Operation(summary="校验并提交正式工单；测试阶段允许重复保险报案号，其他必填、照片及疑似重复确认规则保留")
     public ApiResponse<WorkOrderViews.WorkOrder> submit(@PathVariable UUID id,@Valid @RequestBody WorkOrderRequests.Submit request,
         @RequestHeader("Idempotency-Key") String idempotencyKey) {
         return ApiResponse.success(service.submit(id,request,idempotencyKey));

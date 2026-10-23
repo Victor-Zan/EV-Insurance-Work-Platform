@@ -1,3 +1,36 @@
+## 2026-10-23 最近拉取与本机成果整合完成
+
+用户确认前次检查的六项建议并要求同步本地。以 main d59eba0 为基础，逐项恢复 GitHub Desktop stash 中的有效本机成果，保留远端事故区县/停车位置分离、地图推荐、人工派单和移动端更新。恢复重复报案号测试规则、保险公司下拉框、无密钥地图配置及本地城市兼容接口、隐藏守护启动；保留接单幂等重放前当前网点可见性校验。原 stash 未删除，原有模拟网点配置及先前其他任务的文档记录保留。没有执行 git stash pop 或覆盖整份派单组件。
+
+数据库：实际确认旧 public V25 为 allow_repeated_formal_claims，checksum=-1573259309。主线 V1—V27 未修改，新增 V28；本机专用迁移目录保留原 V25，以 V25.1 追加主线地图 V25，再执行 V26—V28。升级后实际历史中旧 V25 脚本名、校验值和成功状态不变，四条追加迁移成功，无 repair、历史修改或业务库重建。兼容方案及后续升级要求见 [LOCAL_V25_COMPATIBILITY.md](LOCAL_V25_COMPATIBILITY.md)。
+
+| 检查 | 实际命令/环境 | 最终结果 |
+| --- | --- | --- |
+| 后端完整门禁 | JDK21；`tmp/pull-integration/run-final.ps1` 在 backend 执行 `.\mvnw.cmd -o -B -ntp -Dvalidation.build.directory=../tmp/pull-integration/backend-final-build -Dspring.test.context.cache.maxSize=1 verify -Ppostgres-it`；专用 ev_insurance_test 随机 schema、独立 MinIO 测试桶、地图/OCR Mock | PASS；78 单元＋136 PG/MinIO 集成，0 失败/错误/跳过，JAR 构建成功；backend-final.log |
+| 主线与本机迁移 | MapMigrationPostgresIT、LocalLegacyMigrationPostgresIT，均包含在上述完整门禁 | PASS；主线 V24→V28、旧 V25→V25.1→V28；旧历史、重复报案号案件、事故地址保留，停车地址不伪造，预算为空，重复 migrate/validate 通过 |
+| 管理端 | `npm --prefix admin-web run lint/typecheck/test/build`（分别执行四个命令） | PASS；143 测试，0 失败/取消/跳过；admin-*.log |
+| H5 | `npm --prefix h5-web run lint/typecheck/test/build`（分别执行四个命令） | PASS；42 测试，0 失败/取消/跳过；h5-*.log |
+| 基础设施与脚本 | Compose config --quiet；启动器、迁移目录生成器和安装脚本 PowerShell Parser；实际 JAR 迁移目录提取及地图 SQL 字节比对 | PASS；已有 PG/MinIO 保留，无容器或数据卷重建 |
+| 本机实际升级 | 先备份 public 与旧 JAR，核验 PID/命令行/创建时间后仅替换本项目后端、恢复守护 | PASS；09:33 public 执行 25.1、26、27、28；后端、管理端、登录、守护及 H5 代理健康 |
+| 数据与权限 | 升级前后只读数量对比；`node tmp/pull-integration/verify-runtime.mjs` | PASS；20 案件、52 文件、4 账号、10 派单记录数量一致；客服/网点登录、跨网点详情403、网点地图配置403；本地人工候选无距离且包含 DEV-SHOP |
+| 外部接口与隐私 | 本地配置/预算/已有列表只读检查、OCR 请求计数比较、变更文件按本机凭据逐值扫描 | PASS；AMAP/百度供应商选择保留，地图 callsEnabled=false、callsRemaining=0，预算 run/slot 均0；无新增真实地图/OCR调用，未改私密.env；凭据/备份未进入 Git |
+| Git | git diff --check、git ls-files -u、旧迁移 diff、旧 V25 与 stash 原文比对 | PASS；无冲突索引/残留标记，原 stash 保留；源码留在本机工作区，未提交或推送 |
+
+失败与修正如实保留：首轮完整回归发现 IdentityPostgresIT 仍精确列到 V26、新增本机升级夹具缺少正式工单必填手机号/车辆标识；补齐断言与合成夹具，未放宽业务校验。首轮又因 Spring 测试上下文累计占满 PostgreSQL 连接导致后续连接失败；中断独立复查 JVM后，最终完整门禁设置 cache.maxSize=1，逐个释放测试上下文，上表结果对应新目录的一次完整成功运行。首轮 backend-verify.log、被中断的 backend-focused.log 不计为通过。部署后只读验收脚本最初误读 remaining 字段，按实际协议改为 callsRemaining 后通过；业务实现未因此修改。
+
+安装包 SHA256：0CB7E0295144C49CF339EA1D6619A6B8B7442C5D26F9E5B724FF2F5AFB8F1810；安装前数据库备份 `tmp/pull-integration/db-public-at-install.dump`（SHA256 8847EACACC3FBCBA9ACFDE25DC73EBF61AB775F58DDC06FCF9801A3954CD8D36），旧包 `tmp/local-website/backend.before-pull-integration-20261023-093311.jar`。本机兼容资源在 `tmp/local-website/flyway-legacy-v25/`，显式标记 legacy-v25.enabled 保留；后续更新包必须同步配套迁移目录，不能直接切回主线 locations。
+
+保留既有 Vue 测试渲染警告与后端字体警告，未屏蔽。浏览器仅核对登录页正常加载；未重新进行全流程视觉/实体手机验收、Windows重启登录触发或完整可见窗口采样；当前计划任务 Action 已核实为 wscript→隐藏 PowerShell。5191 独立预览仍未启动，不影响现有5173管理端与5175 H5。整合及本机同步完成，在此停止，不进入下一阶段。
+
+## 2026-10-23 派单使用开发者模拟网点（本机配置）
+
+- 用户在本轮进行中将“开发账号跨网点查看/接单”改为“派单处增加开发者模拟网点，直接派给它”。已撤回本轮跨网点范围、接单例外、DTO标识、H5提示及测试开关；保留原网点隔离及此前已启用的重复报案号测试规则。没有自动改派、接单、撤销或回退用户已有工单。
+- 复用现有DEV-SHOP（ID1）和原dev_repair_shop绑定，通过既有管理员接口将显示名更新为“开发者模拟网点（仅测试）”，保留联系人/地址/账号和既有区域2、3，仅追加深圳市CN-440300（ID5）；未创建第二个账号/网点，未填写真实坐标或进行地图/OCR外呼。网点更新和服务范围变更走原审计链路。
+- 自动审批首次拒绝了覆盖全部已启用城市的配置脚本，认为超出深圳测试范围；该命令未执行。随后改为精确追加深圳，配置成功，不扩展其他城市。安全元数据在Git忽略目录tmp/development-simulation-shop/configuration-result.json。
+- 实际验证：现有深圳工单的可派列表包含该模拟网点；开发账号仍绑定ID1，网点端只显示6件本店案件，其他网点详情403，跨网点开关已移除。通过localhost:5175实际H5代理验证，未向现有工单发起派单或接单；localhost是既有白名单允许的入口，没有修改CORS。结果live-verification.json。配置前原网点资料保留于同目录shop-before.json，不输出联系信息或私密配置。
+- 运行：撤回跨网点方案时恢复本轮前已验证的FDFC25FD72BE206972DCF283FD17CB938E70C74EA657B2041B07E159A6ED2EAE包（此前77单元＋50集成通过），移除本轮本机测试开关；其余私密配置不变。备份为tmp/local-website/backend.before-simulation-shop-20261023-090249.jar，后台51452/守护36036，原管理端4264保留。源码期间合入其他任务，最新源码包包含不同迁移，本轮未将其安装到既有实例，也未改动其迁移目标/迁移脚本。
+- 补充检查：撤回过程工作区曾执行tmp/development-simulation-shop/run-verify.ps1，对独立测试库/Mock供应商执行Maven verify，15项工单集成及单元测试通过、BUILD SUCCESS；该包未安装，不代表当前实例已升级到工作区最新迁移。H5恢复既有源码后生产构建通过，最终无需业务代码或前端界面改动；git diff --check通过。此阶段完成后停止，后续由用户自行选择模拟网点派单测试。
+
 ## 2026-10-22 现有上传入口拖拽交互增强（独立功能分支）
 
 - 从最新远程main `da081bdd3ddfc796a8b12182aeb25578d94a4f4c` 创建独立工作区/分支 `codex/file-drop-import`；原高德工作区仍干净，既有运行网站、数据库和真实调用台账未触动。该main已包含PR #6，下面早期“尚未合并”的记录仅代表各自历史时点。
@@ -1684,3 +1717,52 @@ GitHub集成已尝试创建以main为目标的Draft PR，返回准确错误：`4
 验证：H5 lint、类型检查、42 项测试及构建通过；管理端 lint、类型检查、测试及构建通过。浏览器检查覆盖登录页宽屏、360px／390px、通知分区、底栏与客服派单排版；合成响应预览与真实页面的零预算禁用状态分开验证。后端地图单元 21 项、迁移集成 1 项通过；推荐集成在修正本机 TEST_MINIO 环境映射后 15 项通过，另一项仅因迁移版本期望仍为 26 而失败，更新为 27 后单独重跑通过，未把分次结果写为一次全量通过。本机运行库已备份并迁移到 V27，后端、两前端及 API 代理均健康。
 
 真实高德仅完成 1 次受限公开地点解析，返回非 Mock 候选；对应预算已消耗并关闭。南山区真实字典、测试网点和演示案件尚未创建，本轮南山演示外呼为 0，不能视为真实派单端到端验收完成。OCR 仍为 Mock。密钥、私密配置、备份、运行数据和本地 AGENTS.md 不进入 Git；拉取源码不自动启用真实接口或同步数据库。
+
+
+<!-- 以下为本轮恢复的拉取前本机记录；当前整合状态以前文/后续整合验收为准。 -->
+## 2026-10-23 测试阶段取消保险报案号强重复拦截
+
+- 用户明确为测试先删除报案号不能重复的规则；先更新REQUIREMENTS/WORKFLOW，再移除正式提交及关键字段修改的强重复查询，删除对应未再使用的Mapper接口/SQL。新增V25仅移除`uk_work_order_formal_claim`，不改已执行迁移；报案号必填、系统工单编号唯一、疑似重复及继续原因、权限、幂等与审计保留。未改本轮前端，未自动提交/删除用户案件。
+- 回归先复现：新验收要求重复报案号成功，旧代码实际409，日志`tmp/repeated-claims/backend-before-fix.log`。改后40项集成第一次有2项失败，原因均为数据库已迁移V25、旧测试仍精确断言V24；全库查得3处当前版本断言，分别更新为V25并纳入重跑，没有删减业务断言或跳过测试。失败日志`backend-migration-version-assertions.log`。
+- 最终验证：JDK21，`tmp/repeated-claims/run-verify.ps1`使用专用测试库/随机schema、独立MinIO测试bucket及Mock供应商，执行`backend`下`.\mvnw.cmd -o -B -ntp '-Dvalidation.build.directory=../tmp/repeated-claims/backend-build' '-Dit.test=WorkOrderPostgresIT,MapRecommendationPostgresIT,OcrIntakePostgresIT,ShopQuoteOcrPostgresIT,AccountActivationPostgresIT' verify -Ppostgres-it`：BUILD SUCCESS，77项单元＋50项集成，0失败/错误/跳过。验证同保险公司/报案号大小写重复、保险公司留空、关键字段改成重复报案号、编号各自唯一及同幂等键重试；原疑似重复原因、并发编号、跨网点权限、地图/OCR及登录回归通过。Flyway迁移/validate通过；启动脚本语法检查、`git diff --check`通过。前端源码本轮未改，不重复运行前端门禁；未跑全部后端集成套件。
+- 本机生效：原后台/守护路径和创建时间核验后静默替换已验证JAR，启动器target从24同步25；未改私密.env，不新增真实地图/OCR调用。旧包`tmp/local-website/backend.before-repeated-claims-20261023-083947.jar`；新SHA256 `FDFC25FD72BE206972DCF283FD17CB938E70C74EA657B2041B07E159A6ED2EAE`。public从V24仅执行V25成功，报案号唯一索引查询为0；前后各状态工单数量一致。启动完成后Backend/Admin/AdminApi/LoginApi/WatchRunning/AutoRecoveryEnabled均True，5191预览未启动。当前后台45616、守护31580、原前端4264。
+- 本阶段完成并停止。现有草稿和材料保留，由用户自行继续测试提交；同车辆等疑似重复仍须填写继续原因。未来恢复强重复规则须另行确认，若已产生重复数据须先核对，不能直接重新建立唯一索引。
+
+## 2026-10-23 本机高德与百度OCR接入完成
+
+- 用户指定两份本机凭据文档并要求接上业务，沿用会话提出的首轮高德20次请求、OCR2次识别上限，仅公开地标与合成单据；先更新REQUIREMENTS。用户随后明确真实网点资料暂时没有、以后补，本轮接口启用与兼容修复完成后停止，不猜填业务数据。
+- 使用捆绑Python只读提取凭据，配置Git忽略的`.env`；不复制原文档、不打印Key。三项凭据在后端加载，真实模式/Worker及上限实际生效。读取凭据的临时JSON已删除；原环境和旧JAR保留于忽略目录，改动文件与本轮日志按实际凭据逐值检查无泄漏。
+- 修复高德模式下旧派单兼容：新增无密钥`GET /maps/configuration`（现有客服/管理员），城市分页继续只查本地；旧DispatchLocation在真实模式只保存人工核对的接车地址、分页显示本地可派网点，不调旧Mock定位/距离，不绘制模拟地图或自动宣称最近。既有真实停车位置/道路推荐入口保留。WorkOrderService在真实模式的通用可派网点查询不访问供应商，距离为空；原地址确认、派单/改派、角色及数据范围门禁保持。
+
+| 检查 | 本轮实际结果 |
+| --- | --- |
+| 管理端 | `npm --prefix admin-web run lint`、`run typecheck`、`run build`全部退出0；`admin-web`下`node --test --test-concurrency=1 tests/*.test.mjs`129项通过，0失败/取消/跳过。新增真实模式无旧定位外呼、人工选择、重开恢复、配置失败仍阻止派单测试；地图专项13项通过。日志`tmp/live-services/admin-{lint,typecheck,test,build}.log` |
+| 后端 | JDK21，`tmp/live-services/run-backend-verify.ps1`以Mock供应商、现有专用测试库/随机schema和独立MinIO测试bucket执行`backend`下`.\mvnw.cmd -o -B -ntp '-Dvalidation.build.directory=../tmp/live-services/backend-build' '-Dit.test=MapRecommendationPostgresIT,WorkOrderPostgresIT,OcrIntakePostgresIT,ShopQuoteOcrPostgresIT' verify -Ppostgres-it`最终BUILD SUCCESS：77单元＋40集成，0失败/错误/跳过（地图12、工单12、建单OCR7、网点OCR9）；完整迁移/validate到V24。日志`backend-verify.log` |
+| 权限/外呼隔离 | 新增PG回归验证客服/管理员只读模式和城市200，网点/车主403，匿名401，真实模式已确认地址的可派网点无距离；MockProvider verify证明不调用旧geocode/distance或真实resolve/driving。原地图推荐、重复派单幂等、网点失权及OCR来源测试均在40项内 |
+| 失败记录 | 首次沙箱Java测试在Mockito attach管道权限处卡住，退出后用主机执行同命令；新增测试先发现管理员缺精确matcher，补齐`/maps/configuration`后继续；随后空距离因现有JSON省略null导致断言不符，改用“字段不存在”匹配既有协议，保留无距离和无外呼断言。两次失败日志分别`backend-verify-before-security-fix.log`、`backend-verify-null-assertion.log`；未删除/跳过测试或放宽业务校验 |
+| 高德真实 | 公开深圳市民中心与深圳图书馆：3次地理编码＋1次`/v5/direction/driving`（strategy32）均HTTP200、status1、infocode10000，路线非空；只存计数与状态，不存地址/坐标/供应商响应。结果`map-live-result.json`、`map-route-live-result.json`。已用4次，运行配置剩余16次，不是供应商账户额度 |
+| 百度真实业务 | 使用已有本地客服账号经5173带真实Origin访问原OCR接口，上传`SYNTHETIC-live-ocr-20261023.png`，任务`c196a576-8677-4274-8dee-9edac3f6e199`一次SUCCEEDED，7行原文、保险公司/车型/金额候选。进程鉴权1、OCR1，剩余1次；不自动重试，不创建工单，不上传用户聊天照片。元数据`business-live-result.json` |
+| 本机切换 | 原进程路径/创建时间核验后，用watch.lock隔离窗口，备份旧包和环境、替换已验证JAR、静默恢复守护；安装器首次将PowerShell7自动解析的DateTime转字符串产生时区误差而主动停止，确认未停服务后只修临时安装脚本并重试成功，未放松身份校验。SHA256/旧包见LOCAL_RUNTIME。后端4040/守护41464，前端4264不动；public25迁移校验、V24、No migration necessary，主后端/前端/代理/登录/守护全部健康；5191预览未运行 |
+| 浏览器与文件 | 当前真实客服页面显示`BAIDU_HANDWRITING_V1 / SUCCEEDED / 尝试1`、原文与人工核对表单，未确认或创建案件；截图`tmp/live-services/ocr-live-success.jpg`，页面保留。Compose config --quiet通过；`git diff --check`通过；临时密钥JSON已删，未改变原凭据文档。开始前的保险公司表单及静默守护脚本未提交改动保留 |
+
+范围限制：用户已确认网点资料以后补。当前业务库的区域目录不符合真实推荐的标准广东省/市/区县结构，12个启用网点均无车型适配和真实GCJ-02坐标；真实API连通不等于真实网点推荐已验收。H5源码未改，其门禁未重跑；未执行全部后端集成、生产/跨浏览器/设备/系统重启验证。没有新迁移、账号重置、真实案件/资金变更、套餐购买、Git提交或推送。本阶段完成并停止。
+
+## 2026-10-22 新建案件保险公司下拉选择
+
+- 用户要求在创建工单表单“车型”右侧增加保险公司框，点击下拉，当前仅“中国平安保险”。先记录REQUIREMENTS，生产代码仅修改`IntakeFields.vue`：沿用Element Plus表单新增ElSelect/ElOption，绑定既有insuranceCompany并通过原merge事件保存，不预选、不新增必填或后端规则。其他尚未提交的上传、登录及启动器改动保留。
+- `npm --prefix admin-web run lint`、`run typecheck`、`run build`均退出0；`admin-web`下`node --test --test-concurrency=1 tests/*.test.mjs`127项通过，0失败/取消/跳过（77.84秒）。日志`tmp/intake-insurance/{lint,typecheck,build,test}.log`；构建保留已有回调耗时提示。此处为低风险局部表单，无新增镜像实现的测试。
+- 浏览器使用真实WorkOrdersView组件/合成接口验证：初始“请选择保险公司”，展开唯一选项“中国平安保险”；与车型同一行且在右侧（top均308.49px），选择后保存草稿请求携带相同insuranceCompany值。390×844时单列排在车型下方，scrollWidth=390。截图`tmp/intake-insurance/{dropdown,saved,mobile}.jpg`。无真实账号或业务数据写入；临时验收页已移除，浏览器尺寸恢复。`git diff --check`通过。
+- 同时完成用户前一条ZIP问题的当前样本只读诊断：最初元数据1,811,653字节、修改时间11:33:13；随后同一路径文件变为199,394字节、修改时间13:13:29，内容在排查间发生变化。当前样本含1个UTF-8 TXT（366字节、221字符、17行）及2张JPG，无加密/超大照片，实际调用readChatFiles通过。尚未复现先前失败，已向用户询问是否替换样本及具体页面错误；未修改ZIP解析规则，也未复制真实原文或照片到仓库/日志。
+
+本阶段保险公司选择已完成并停止；后端、数据库和H5未改，相应门禁未重跑。未提交、推送或部署。ZIP原失败原因仍待原版本或页面错误信息，不能把当前样本通过写成原问题已修复。
+
+
+## 2026-10-22 修复本机周期性终端弹窗
+
+范围与验收：定位本机每分钟启动终端的来源，仅修复网站保活的启动方式；跨两个触发周期不新增可见终端，原网站服务和自动恢复保持可用。
+
+定位：计划任务 EVInsurance-LocalWebsite 以当前用户交互登录方式每分钟直接启动 powershell.exe；既有独立 Watch 进程已持有锁，计划任务重复启动后退出。直接创建控制台再使用 WindowStyle Hidden 存在瞬间显示窗口的风险。
+
+修改：新增 scripts/Watch-LocalWebsite.vbs，通过 WScript.Shell.Run(command, 0, True) 从创建时隐藏 PowerShell 并等待监控退出；现有计划任务只替换 Action，登录触发、每分钟恢复、IgnoreNew 和其他设置保留；Manage-LocalWebsite.ps1 的 InstallAutoStart 同步使用该启动器。仅重启通过 PID、命令行及创建时间核实的 Watch 进程，既有后端、管理端、Docker 和数据保持运行。修改前的任务 XML 和脚本备份在 C:\Users\zd070\Documents\Codex\2026-10-22\wo-x\work\terminal-popup-backup-20261022-213224。
+
+验证：PowerShell Parser 语法检查通过；git diff --check 通过；实际任务链为 wscript.exe → powershell.exe，监控持续运行。21:34:39 起连续观察 130 秒，覆盖 21:35 与 21:36 两次定时触发，通过 EnumWindows、IsWindowVisible 和终端窗口类名每 50ms 采样，新可见终端窗口为 0。Windows PowerShell 执行 Manage-LocalWebsite.ps1 -Action Status：Backend、Admin、AdminApi、LoginApi、WatchRunning、AutoRecoveryEnabled 均为 True。PreviewApi 在修复前后均为 False，本轮不处理独立预览服务。未重启电脑验证登录触发；未改业务代码，因此未运行前后端全量测试或构建。本轮修复完成，停止于此。

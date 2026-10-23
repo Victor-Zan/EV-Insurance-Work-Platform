@@ -174,6 +174,18 @@ class MapRecommendationPostgresIT {
         assertThat(db.queryForObject("select count(*) from work_order_assignment where work_order_id=?",Integer.class,caseId)).isZero();
     }
 
+    @Test void realModeLocalDispatchConfigurationAndEligibleShopsNeverInvokeLegacyGeocoding() throws Exception {
+        clearInvocations(provider);
+        for(String token:List.of(cs,admin)){
+            mvc.perform(get("/api/v1/maps/configuration").header("Authorization","Bearer "+token)).andExpect(status().isOk()).andExpect(jsonPath("$.data.provider").value("AMAP_WEB_V1")).andExpect(jsonPath("$.data.mock").value(false));
+            mvc.perform(get("/api/v1/maps/cities").header("Authorization","Bearer "+token)).andExpect(status().isOk());
+        }
+        mvc.perform(get("/api/v1/work-orders/"+caseId+"/eligible-shops").header("Authorization","Bearer "+cs)).andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(3)).andExpect(jsonPath("$.data.records[0].distanceMetres").doesNotExist());
+        for(String token:List.of(shop,owner))for(String path:List.of("/api/v1/maps/configuration","/api/v1/maps/cities"))mvc.perform(get(path).header("Authorization","Bearer "+token)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/v1/maps/configuration")).andExpect(status().isUnauthorized());
+        verify(provider,never()).geocode(anyString());verify(provider,never()).distance(any(),any());verify(provider,never()).resolve(any());verify(provider,never()).driving(any(),any(),anyInt());
+    }
+
     @Test void roadsNotStraightLineStablePaginationAndExplicitOriginalDispatch() throws Exception {
         mvc.perform(get("/api/v1/maps/cases/"+caseId+"/recommendation-context").header("Authorization","Bearer "+cs)).andExpect(status().isOk()).andExpect(jsonPath("$.data.accidentRegion").value("广州市 / 天河区"));
         var token=position();String key=UUID.randomUUID().toString();var result=query(token,key,null,200).path("data");var rows=result.path("shops").path("records");
@@ -232,7 +244,7 @@ class MapRecommendationPostgresIT {
         assertThatThrownBy(()->db.update("insert into shop_map_location(shop_id,version,district_id,address_snapshot,longitude,latitude,coordinate_system,source,created_by) values(?,3,?,'合成',113,23,'GPS','ADMIN_CONFIRMED_GCJ02',?)",shopId,district,actor)).isInstanceOf(org.springframework.dao.DataAccessException.class);
         query(position(),UUID.randomUUID().toString(),null,200);
         String audit=String.join("\n",db.queryForList("select summary from audit_log where action like 'MAP_%'",String.class));assertThat(audit).doesNotContain("合成停车位置","合成测试街道","113.15",PASSWORD,"access_token","key=");
-        flyway.validate();assertThat(flyway.info().current().getVersion().toString()).isEqualTo("27");
+        flyway.validate();assertThat(flyway.info().current().getVersion().toString()).isEqualTo("28");
     }
     @Test void ambiguousModelForeignPositionAndUnknownSourceCannotBecomeRealRecommendation() throws Exception {
         when(provider.locate(any())).thenReturn(new MapProvider.AddressCandidate("合成外省",new MapProvider.Point(28,112),"湖南省","长沙市","合成区","430100","REVERSE","REQUIRES_CONFIRMATION",false));

@@ -58,12 +58,6 @@
   <update id="updatePossibleDuplicateDays">
     UPDATE work_order_config SET possible_duplicate_days=#{days},updated_by=#{actorId},updated_at=#{now} WHERE id=1
   </update>
-  <select id="existingFormalClaim" resultType="string">
-    SELECT business_no FROM work_order
-    WHERE status&lt;&gt;'DRAFT' AND (lower(insurance_company)=lower(#{insuranceCompany}) OR insurance_company IS NULL OR #{insuranceCompany,jdbcType=VARCHAR} IS NULL) AND lower(claim_no)=lower(#{claimNo})
-      <if test="excludeId != null">AND id&lt;&gt;#{excludeId}</if>
-    ORDER BY created_at,id LIMIT 1
-  </select>
   <sql id="vehicleMatch">
     ((#{vin,jdbcType=VARCHAR} IS NOT NULL AND w.vehicle_vin=#{vin,jdbcType=VARCHAR})
       OR (#{plate,jdbcType=VARCHAR} IS NOT NULL AND w.vehicle_plate=#{plate,jdbcType=VARCHAR})
