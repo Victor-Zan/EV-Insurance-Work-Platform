@@ -2003,3 +2003,7 @@ API用providerManaged=true和remaining=null表达本地不设累计上限、供�
 
 - 本次真实高德/百度新增请求0，没有为验证打开网页、加载SDK、查询路线或提交业务。功能开关及Key仍由各自安全环境提供，Git不复制数据库、区域资料、门店、密钥、额度或运行环境。当前默认Mock/CONTROLLED及功能关闭状态保留，显式开启规则和迁移风险见 [WEB_SYNC_DELIVERY.md](WEB_SYNC_DELIVERY.md)。
 - 本轮只准备并推送新功能分支与面向main的Draft PR，用户负责审查及手动合并；不部署、不自动合并，不宣称真实公开门店分类、完整道路排序或临时门店派单已通过此次业务验收。
+
+### 本次推送与PR权限结果
+
+整合提交 `4b6ff4267bf8aa17b4debd6474bac6fb8c0a987d` 已正常推送到原仓库新分支 `codex/dispatch-map-web-sync`，未强推、未推main。GitHub插件创建Draft PR一次返回403：`Resource not accessible by integration`，因此未创建PR；没有换用其他渠道绕过权限或重复尝试。请授权人员手动创建，base=`main`、compare=`codex/dispatch-map-web-sync`，选择Create draft pull request：<https://github.com/Victor-Zan/EV-Insurance-Work-Platform/compare/main...codex/dispatch-map-web-sync?expand=1>。完整交付及验证边界见WEB_SYNC_DELIVERY.md，保持人工审查、未合并状态。

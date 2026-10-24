@@ -52,3 +52,9 @@ main 的 `db/migration`（当前到 V28）及 `db/local-legacy` 文件保持字�
 ## 本次验证
 
 结果在 docs/PROGRESS.md 的“当前网页同步分支”记录；历史记录的通过数字不代表本次重新通过。未进行真实高德、百度、浏览器业务提交或现有业务库升级。合并前由审查人确认新增权限范围、供应商配置、迁移启用及真实业务验收需求。
+
+## GitHub交付状态
+
+整合提交 `4b6ff4267bf8aa17b4debd6474bac6fb8c0a987d` 已推送到 [新功能分支](https://github.com/Victor-Zan/EV-Insurance-Work-Platform/tree/codex/dispatch-map-web-sync)。GitHub插件创建Draft PR返回403 `Resource not accessible by integration`，未创建、未合并；没有绕过权限。
+
+请打开 [手动创建PR](https://github.com/Victor-Zan/EV-Insurance-Work-Platform/compare/main...codex/dispatch-map-web-sync?expand=1)，确认base为main、compare为codex/dispatch-map-web-sync并选择创建Draft。复制本说明的范围、迁移和验证边界作为描述；审查通过后由用户手动合并。
