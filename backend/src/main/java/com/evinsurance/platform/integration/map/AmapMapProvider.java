@@ -108,7 +108,7 @@ public final class AmapMapProvider implements MapProvider {
     private synchronized void reserve(String path,Map<String,String> params){
         long now=System.nanoTime();if(now-windowStarted>=TimeUnit.SECONDS.toNanos(1)){windowStarted=now;windowRequests=0;}
         if(windowRequests>=rate)throw MapFailure.of("RATE_LIMIT");
-        if(requests.get()>=budget)throw MapFailure.of("LOCAL_BUDGET");
+        if((ledger==null||!ledger.providerManaged())&&requests.get()>=budget)throw MapFailure.of("LOCAL_BUDGET");
         if(ledger!=null)ledger.reserve(path,params);
         windowRequests++;requests.incrementAndGet();
     }

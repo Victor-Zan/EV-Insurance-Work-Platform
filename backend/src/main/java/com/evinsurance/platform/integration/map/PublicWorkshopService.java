@@ -22,9 +22,9 @@ public class PublicWorkshopService {
     public record Row(UUID id,String source,String name,String address,String classification,String reason,MapProvider.Point point,Long metres,Long seconds,Instant calculatedAt,String status){}
     private record Snapshot(UUID id,UUID caseId,long actor,long version,UUID locationToken,Instant expires,int page,boolean hasMore,int excluded,List<Row> rows){}
     public record Result(UUID queryId,String provider,String scope,Instant expiresAt,int page,boolean hasMore,int excluded,List<Row> rows){}
-    public record Settings(boolean enabled,int radiusMetres,int maximumPublicCandidates,Integer searchRemaining,Integer routesRemaining){}
+    public record Settings(boolean enabled,int radiusMetres,int maximumPublicCandidates,Integer searchRemaining,Integer routesRemaining,boolean providerManaged){}
     private CurrentUser access(){var actor=CurrentUser.require();if(!actor.roles().contains(Role.CUSTOMER_SERVICE))throw ApiException.denied();return actor;}
-    public Settings settings(){access();var a=budget.availability();return new Settings(registry.enabled(),10000,20,remaining(a,"POI_SEARCH"),remaining(a,"DRIVING"));}
+    public Settings settings(){access();var a=budget.availability();return new Settings(registry.enabled(),10000,20,remaining(a,"POI_SEARCH"),remaining(a,"DRIVING"),a.providerManaged());}
     private static Integer remaining(MapCallBudget.Availability a,String op){return a.operations().stream().filter(r->op.equals(r.operation())).map(MapCallBudget.OperationAllowance::remaining).findFirst().orElse(null);}
     private WorkOrderViews.WorkOrder order(UUID id){access();registry.requireEnabled();var order=orders.get(id);if(!Set.of("PENDING_DISPATCH","PENDING_ACCEPTANCE","PENDING_ARRIVAL","ARRIVAL_EXCEPTION").contains(order.status()))throw ApiException.conflict("PUBLIC_WORKSHOP_READ_ONLY","当前案件不在派单或改派阶段");return order;}
     @org.springframework.scheduling.annotation.Scheduled(fixedDelay=60000)
@@ -65,7 +65,7 @@ public class PublicWorkshopService {
         var ids=new HashSet<>(selected);if(base.rows().stream().filter(r->ids.contains(r.id())).count()!=ids.size())throw ApiException.invalid("选择包含其他会话的门店");
         enter();UUID operation=null;
         try{var begun=registry.begin(base.caseId(),"ROUTES",key,hash(queryId+":"+selected.stream().sorted().toList()));if(!begun.created())return replay(begun.operation());operation=begun.operation().id();
-            var available=budget.availability();Integer remaining=remaining(available,"DRIVING");if(!available.callsEnabled()||remaining==null||remaining<selected.size())throw ApiException.conflict("PUBLIC_WORKSHOP_ROUTE_BUDGET","所选门店超过剩余路线额度；请人工调整比较集合，未截断或外呼");
+            var available=budget.availability();Integer remaining=remaining(available,"DRIVING");if(!available.providerManaged()&&(!available.callsEnabled()||remaining==null||remaining<selected.size()))throw ApiException.conflict("PUBLIC_WORKSHOP_ROUTE_BUDGET","所选门店超过剩余路线额度；请人工调整比较集合，未截断或外呼");
             var origin=locations.session(base.locationToken(),true).candidate().point();var rows=new ArrayList<Row>();long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(60),last=0;String blocked=null;
             try(var allowance=budget.reserveDriving(selected.size())){for(var row:base.rows()){
                 if(!ids.contains(row.id())){rows.add(row);continue;}Long metres=null,seconds=null;Instant calculated=null;String status="READY";
