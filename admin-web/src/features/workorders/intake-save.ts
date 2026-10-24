@@ -4,6 +4,16 @@ interface SaveApi {
  detail(id:string):Promise<WorkOrder>;update(id:string,form:DraftForm):Promise<WorkOrder>
  submit(id:string,confirmed:boolean,reason:string|null,key:string):Promise<WorkOrder>
 }
+export async function createManualDraft(options:{api:{create(form:DraftForm,key:string):Promise<WorkOrder>;update(id:string,form:DraftForm):Promise<WorkOrder>};
+ attempt:{form?:DraftForm};form:DraftForm;key:string;saved(order:WorkOrder):void}){
+ // A lost response must be retried with the original body and key, even if the user
+ // corrected the form afterwards. Recover the ID before applying those corrections.
+ options.attempt.form??={...options.form}
+ const order=await options.api.create(options.attempt.form,options.key)
+ options.saved(order)
+ if(order.status!=='DRAFT'||JSON.stringify(options.attempt.form)===JSON.stringify(options.form))return order
+ const updated=await options.api.update(order.id,options.form);options.saved(updated);return updated
+}
 export async function saveIntake(options:{api:SaveApi;pending?:WorkOrder;form:DraftForm;formal:boolean;submitKey:string;
  create(form:DraftForm):Promise<WorkOrder>;upload(id:string):Promise<void>;saved(order:WorkOrder):void;
  stage(value:'DRAFT'|'PHOTOS'|'SUBMIT'):void;confirmDuplicate():Promise<string>}){
@@ -12,7 +22,9 @@ export async function saveIntake(options:{api:SaveApi;pending?:WorkOrder;form:Dr
  let order=options.pending?await api.detail(options.pending.id):undefined
  if(order&&order.status!=='DRAFT'){options.saved(order);return order}
  order=order?await api.update(order.id,options.form):await options.create(options.form)
- options.saved(order);options.stage('PHOTOS');await options.upload(order.id)
+ options.saved(order)
+ if(order.status!=='DRAFT')return order
+ options.stage('PHOTOS');await options.upload(order.id)
  if(!options.formal)return order
  options.stage('SUBMIT')
  order=await submitReviewedDraft(api,order.id,options.submitKey,options.confirmDuplicate)

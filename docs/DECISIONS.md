@@ -513,3 +513,61 @@ PR #4 集成时将原 OCR D-044 重编号为 D-045，避免与 main 已有工作
 用户明确恢复本轮原未使用预算，沿用四个确认入口及EVR-20261022-000001。最终业务库保留V25，不复制原权威run/slot；后端可由可信环境变量AMAP_BUDGET_SCHEMA（严格小写标识符校验）限定两张预算表的schema，默认仍为当前schema。占用、剩余数及停止均读写同一原台账，持久占用先于HTTP。仅更新该run启停和未尝试槽位的请求白名单摘要，不清空/重置尝试，不涉及旧业务库迁移。进程上限只是额外防线，不是新的8次授权。解析歧义/失败停下，不盲选/补发，测试结束关闭。
 
 广东地域规则不变：允许完整专有名称“香港中文大学（深圳）”而不把名称当作香港行政地址；原文原样交给Provider，其他外省标记及供应商返回省市区/adcode校验继续拒绝。短期dev测试位置沿用地理编码地域核验，无需逐店逆编码；学校仍为虚构合作方。
+
+## 2026-10-23 Local 5210 controlled Amap development allowance
+
+Confirmed in this conversation: only the local 5210/18105 development instance may use a new, independent allowance of 10 GEOCODE, 5 REVERSE and 20 DRIVING attempts. The operator explicitly clicks the existing controls; no automatic external verification is authorized for the agent. Past acceptance ledgers remain unchanged and closed. This is not a daily allowance: process restart and date changes never refill it. Timeout/failed requests count after durable reservation. Existing roles, Guangdong validation, candidate qualification and manual dispatch remain unchanged.
+
+Technical implementation: separate opt-in development ledger schema with its own Flyway history and migration location, no change to existing business migrations/schema. No calls granted by migrations or startup. The approved run is provisioned once by an idempotent local operator script; operation slots are bounded and attempts immutable. Pre-reserve all route slots for a query before any route call, release only unused slots in its normal finally block; after a process crash, reserved slots fail closed and require audit rather than automatic recycling. Only request digests/times are retained, not coordinates, full addresses or credentials. Supplier authentication/quota/rate failures close the run. UI displays per-operation remaining counts and projected route cost; server remains authoritative.
+
+
+## 2026-10-23：派单定位与候选界面简化（用户确认）
+
+派单区按“车辆当前停放位置地图/地址确认 → 智能分拨候选 → 人工确认派单”组织；事故服务区县独立显示，停车选点不改事故事实。候选仅来自既有合作网点，仍依现有服务资格筛选，再按车辆→网点、既有高德主策略道路距离排序，单选一家，最终使用原派单按钮和后端复核。技术预算与诊断收进默认折叠的服务信息；缺项/失败在主操作区明确显示。修改位置清除旧确认、距离和选择。
+
+本轮仅交互增强与离线/合成验证，不加载高德JS底图、不发出真实解析/逆编码/路线请求，不更改供应商或持久预算。真实地图选点待后续核实JS API配置、服务端安全代理和调用授权后实现；现有Web服务Key不送入浏览器。当前正式页面仍可通过原地址解析与明确确认流程定位；无底图时标示示意状态，不以网格冒充真实地图。
+
+独立开发预览仅使用合成地址、网点和模拟排序数值，复用相同前端组件，不访问后端、不保存真实位置、不提交正式派单；不得把预览结果或模拟令牌关联到业务案件。不是新增派单业务或权限入口。第一轮验收只证明交互和状态保护，不能宣称真实底图、真实道路或合作网点业务验收完成。
+
+
+## 2026-10-23：真实高德JS地图接线
+
+延续已确认的真实底图/选点目标，使用单独Web端JS API Key；jscode仅服务端代理注入，不交给浏览器。默认不加载SDK，页面初始化和鼠标悬停不外呼，明确点击加载地图后才加载官方在线资源，不转存SDK。底图资源请求与既有GEOCODE/REVERSE/DRIVING分类预算分开说明，不冒充高德账户余额。
+
+地图点击/拖动仅暂选GCJ-02坐标，不自动逆编码。客服明确核验选点后，沿既有REVERSE预算核验广东及所选城市/区县，生成原位置候选并人工确认；不改变事故区县。地址搜索继续复用原GEOCODE服务，路线继续原策略/资格/预算和人工派单。JS层不启用POI、浏览器设备定位或客户端路线插件，不把地图POI变成合作网点。
+
+JS资源代理仅固定官方地图样式/矢量路径，使用短期HttpOnly同站Cookie绑定已登录客服及账号版本，逐请求复核账号状态、限流及限量，不提供通用URL或Web服务代理；其他角色不能借此获得地图/业务权限。原Web服务Key留在后端。新配置不自动授予或恢复历史调用额度，本轮自动验证仅用模拟服务，不进行真实供应商调用。
+
+## 2026-10-23：地点名称搜索（用户授权实现）
+
+用户明确要求新增学校、校门等地点名称搜索，保留完整地址解析与地图选点；在指定5210开发环境单独授权10次POI_SEARCH，不占用GEOCODE/REVERSE/DRIVING，不自动重试、不因日期或进程重启补次。本轮由用户自行测试，开发者不发起真实搜索或浏览器联调。
+
+显式选择“地点名称”或“完整地址”，不猜测模式、不在失败后自动改调用其他接口。地点搜索经后端固定高德官方v5/place/text，限定所选广东区县并复核返回省市区及行政码；每次点击只请求一页10条，翻页须明确点击且另计一次，不自动循环。候选须人工选择与确认，不能默认采用第一条、不能将校园中心标成已核实校门、不能把POI建成合作网点。只有用户确认的停车候选进入原保存/派单服务，事故区县、服务资格、车型、路线策略及原派单边界不变。
+
+单独开发预算使用独立schema及Flyway位置db/map-place-budget、独立历史表；不升级业务或旧额度迁移，不改旧SQL，不在启动/迁移时发放调用。部署脚本仅按本次明确授权一次性准备10个持久槽位，已有使用不可重置。地点搜索使用既有后端Web服务Key、超时、有界响应、脱敏错误；不接JS端搜索插件，不向浏览器提供Web服务Key，不获取联系人、照片等额外POI字段。真实接口权限与效果由用户测试，编译构建不等于实际可用验收。
+
+## 2026-10-23：统一地址输入（替代上一条搜索方式交互）
+
+用户确认取消“搜索方式”下拉框，统一显示“输入地址”和“搜索位置”。实际页面不再要求判断输入是门牌地址还是地点名称，均使用已接入的后端POI_SEARCH服务；保留城市/区县选择与明确候选确认。每次点击及翻页仍计1次既有地点搜索额度，不同时调用GEOCODE、不自动回退或重试，不增加/重置任何额度。原完整地址解析后端接口保留兼容，但不在当前标准搜索入口并行或隐式调用。Mock合成预览仍只走隔离adapter，避免给真实API增加调用。实际搜索输入沿用接口4—80字符限制，无结果保留输入并提示补充地址或地图选点。
+
+## 2026-10-23：公开两轮电动自行车维修候选与本案临时门店（用户确认）
+
+目标仅两轮电动自行车，不自动认定摩托车或汽车维修门店具备此能力。智能候选不以平台合作关系为筛选条件：以客服确认的车辆当前停放位置，搜索周边10公里、单次最多20家公开维修地点；明确只覆盖本次受限集合，不承诺全省最近/全部收录，不自动扩大范围。先按名称与类型排除明确汽车专修、纯销售及无关结果，边界类型显示待核实；地图分类不等于实际维修能力，最终由客服核实。沿原高德策略32、车辆→门店驾车道路距离排序，未知留空，不按直线或耗时排序。
+
+用户允许公开门店搜索与停车位置搜索共享原POI_SEARCH剩余槽位（总授权10次不变，不补次），路线用原DRIVING剩余额度；搜索/翻页每次最多1次，不自动重试。路程计算前明确展示涉及数量和剩余额度，整个选定集合不足则拒绝，不偷偷截取；可人工勾选需要比较的候选。本轮不做真实联调，由用户测试。
+
+客服可手动补充地图未列出的门店，必须核实为两轮电动自行车维修并明确确认门店地址；不把名称/地图分类当作能力事实。允许客服为有权限的本案建立临时门店，限定本案和当时核实的事故服务区县，不扩展客服通用网点或账号管理权限。正式派单沿原服务的状态、地址、区域、重复、并发、幂等和审计；不能将临时门店用于其他案件。未知合作状态不作已合作标记。接单账号仍由管理员按原邀请机制配置，本轮不自动建号、发通知或派单。
+
+当前本机运行基线业务Flyway V26，远程main已有V27/V28；不把未合入的远程迁移悄悄升级到本机。新增本功能专属Flyway位置db/public-workshop及独立历史，只追加临时门店关联、外呼幂等元数据和案件范围数据库保护；不修改已执行迁移、不清库、不repair。旧工作区、运行JAR、预算和数据库全部保留。供应商候选/坐标/路线结果只在受控内存短期使用，不建立永久POI库；临时门店正式登记只存客服核实输入的业务资料，保留来源类别及审计，不存供应商原响应或完整路线。
+
+## 2026-10-24：公开维修门店搜索后自动计算本页道路距离
+
+用户确认取消单独勾选比较及“确认计算道路距离”操作：客服确认并保存停车位置，明确点击查询后，系统对该页筛选保留的公开候选自动调用既有路线服务，最多20家，沿用车辆→门店、策略32及稳定排序。此决策替代本功能此前的手动批次确认交互，不改变停车位置人工确认、门店人工核实或最终派单。每家最多1次请求，仍使用原剩余额度；整页额度不足则明确提示且不开始路线批次，不截断为部分最近排序。单项失败/无路线距离留空、显示原因，只有全部成功才显示完整排序完成。打开/刷新页面不计算，失败不重试、不自动扩圈或追加授权。明确翻页同样只处理该页并提示搜索及路线用量；手动补充的门店仍可核实登记，不因添加或查看而自动触发额外路线调用。本轮用户要求不用验证，不发起真实接口或功能测试。
+
+## 2026-10-24：5210地图使用高德供应商配额策略
+
+用户明确要求取消网站人为设置的搜索、地址、逆编码和路线累计次数限制；替代此前本环境10/10/5/20及进程45次上限。新增后端显式AMAP_CALL_POLICY=PROVIDER，仅对本次5210实例配置；默认仍CONTROLLED，其他实例与历史受控验收不变。PROVIDER不预留、补发或修改旧预算槽，不以任意巨大数字冒充无限配额；API剩余为null并注明高德实际余额未知，以供应商返回为准。旧持久台账原样保留。保留现有角色/范围、固定官方接口、每次20家、限流、超时、幂等、无自动重试及人工派单；高德权限/额度/限流错误照常提示并停止当批请求，不自动开通付费或购买资源。用户自行测试，本轮不真实调用。
+
+## 2026-10-24：事故区域改为省市区县联动选择
+
+用户确认事故区域不通过邮政编码或手动编码定位，改为类似车辆位置的省份→城市→区县下拉选择。复用现有受ADMIN/CUSTOMER_SERVICE保护的已启用完整三级行政区划分页接口，在前端按原省市区名称路径形成联动选项，不新增地区或扩大角色权限。选择上级清除下级与人工确认；不根据停车位置自动选事故区县。原原因、人工核实、版本、保存服务和审计门禁保留。旧编码搜索界面移除，接口保留兼容其他入口。

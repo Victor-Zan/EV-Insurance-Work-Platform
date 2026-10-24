@@ -28,6 +28,7 @@ public class SecurityConfiguration {
     @Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(12); }
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http,ObjectMapper json,JwtService jwt,UserMapper users,
+        org.springframework.beans.factory.ObjectProvider<com.evinsurance.platform.integration.map.JsMapService> jsMaps,
         @Value("${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://localhost:5175}") String origins) throws Exception {
         var cors=new CorsConfiguration(); cors.setAllowedOrigins(List.of(origins.split(",")));
         cors.setAllowedMethods(List.of("GET","POST","PUT","PATCH","DELETE","OPTIONS"));
@@ -40,6 +41,7 @@ public class SecurityConfiguration {
                 .authenticationEntryPoint((request,response,error) -> writeError(response,json,401,"UNAUTHORIZED","Authentication is required"))
                 .accessDeniedHandler((request,response,error) -> writeError(response,json,403,"FORBIDDEN","Access is denied")))
             .addFilterBefore(new JwtAuthenticationFilter(jwt,users,json),UsernamePasswordAuthenticationFilter.class)
+            .addFilterBefore(new com.evinsurance.platform.integration.map.JsMapAuthenticationFilter(jsMaps.getIfAvailable(),json),UsernamePasswordAuthenticationFilter.class)
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/v1/health","/actuator/health","/v3/api-docs/**","/swagger-ui.html","/swagger-ui/**").permitAll()
                 .requestMatchers(HttpMethod.POST,"/api/v1/auth/login","/api/v1/auth/sign-in","/api/v1/auth/handoff","/api/v1/auth/activation/inspect","/api/v1/auth/activation/complete").permitAll()

@@ -14,6 +14,9 @@ public class MapRecommendationController {
     public MapRecommendationController(MapRecommendationService service){this.service=service;}
     public record Query(@NotNull UUID locationToken,Long shopCityId){}
     @GetMapping("/cases/{id}/recommendation-context") public ApiResponse<MapRecommendationService.Context> context(@PathVariable UUID id){return ApiResponse.success(service.context(id));}
+    @GetMapping("/cases/{id}/recommendation-estimate")
+    @io.swagger.v3.oas.annotations.Operation(summary="只读核对全部合格候选及最大路线调用量，不调用高德")
+    public ApiResponse<MapRecommendationService.Estimate> estimate(@PathVariable UUID id,@RequestParam(required=false) Long shopCityId){return ApiResponse.success(service.estimate(id,shopCityId));}
     @PostMapping("/cases/{id}/recommendations") public ApiResponse<MapRecommendationService.Result> query(@PathVariable UUID id,@Valid @RequestBody Query request,@RequestHeader("Idempotency-Key") String key){return ApiResponse.success(service.query(id,request.locationToken(),request.shopCityId(),key));}
     @GetMapping("/recommendations/{id}") public ApiResponse<MapRecommendationService.Result> result(@PathVariable UUID id,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size){return ApiResponse.success(service.result(id,page,size));}
     @GetMapping("/cases/{id}/recommendation-exclusions") public ApiResponse<PageResponse<MapData.Shop>> excluded(@PathVariable UUID id,@RequestParam(required=false) Long shopCityId,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size){return ApiResponse.success(service.excluded(id,shopCityId,page,size));}
