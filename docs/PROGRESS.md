@@ -1862,3 +1862,9 @@ GitHub集成已尝试创建以main为目标的Draft PR，返回准确错误：`4
 API用providerManaged=true和remaining=null表达本地不设累计上限、供应商实际余额未知；原受控模式API与限额行为保留。前端移除本模式的本机余额/扣次提示与禁用条件，地址/地点/门店搜索和自动道路计算统一识别该模式；原受控环境仍显示旧余额并执行校验。旧有限台账只代表历史受控请求，新模式通过高德控制台及现有操作审计观察，不声称实时查询到套餐余额。没有数据库或Flyway变化，私密Key不入源码或前端。
 
 为替换18105生成新目录provider-managed-build下的运行JAR，Maven package -DskipTests成功（测试未执行），未覆盖旧运行JAR。按用户此前要求不做功能检验，未运行lint/类型检查/前端构建/浏览器验收或真实供应商调用；仅进行运行文件打包及必要安装启动，具体切换结果另记。本次代理真实高德/百度请求0，不能据打包成功宣称真实搜索/路线通过。
+
+运行收尾：2026-10-24 14:13已将8fc4064b1a676475a2413e7627985492d97a3668安装到原18105后端，5210继续由同一工作区Vite提供前端。仅停止经PID、启动时间、可执行文件、端口及旧JAR摘要核对的目标后端，不终止其他进程。启动校验原业务28条及本功能独立历史2条均无需迁移；PROVIDER不初始化或更改旧预算schema。旧JAR和manifest-before-provider-policy-20261024.json保留，原业务schema仍manual_case_20261022_204936，未清库、repair或创建业务资料。
+
+私密目录ebike-public-workshops-runtime/.env.amap-provider-policy仅配置AMAP_CALL_POLICY=PROVIDER，沿用原后端Key文件，不复制到源码或前端；原.env.map-runtime与有限台账保留历史含义。manifest明确记录mapCallPolicy=PROVIDER、旧approvedOperationLimitsApply=false，realBudget=null；这不是高德实际余额回执。后续同一本机恢复可用仓库外Resume-Provider-Managed.ps1，仍不会重置旧台账或自动请求供应商。原受控安装脚本留存，不以旧脚本覆盖新策略。
+
+实际完成仅为代码、生成JAR、配置切换与启动；用户要求自行验证，未执行搜索、路线、逆编码、临时网点登记/派单或浏览器验收，未执行自动测试、lint或前端构建。本轮代理新增真实高德/百度调用0，未获取高德账户余额、未充值或开通付费。网页刷新后需用户重新核对短期停车会话，再主动查询；不伪造会话恢复或自动补搜。本任务仅本地提交，无推送、PR合并或生产部署。
