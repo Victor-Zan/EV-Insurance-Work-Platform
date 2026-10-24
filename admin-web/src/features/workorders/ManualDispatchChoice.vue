@@ -3,7 +3,7 @@ import {computed,onMounted,ref,watch} from 'vue'
 import {httpClient} from '@/shared/http/client'
 import {workOrderApi,type WorkOrder,type ShopOption} from './work-orders'
 const props=defineProps<{order:WorkOrder;expanded?:boolean;selectedShopId?:number}>()
-const emit=defineEmits<{changed:[order:WorkOrder];pending:[value:boolean];select:[id:number|undefined]}>(),api=workOrderApi(httpClient)
+const emit=defineEmits<{changed:[order:WorkOrder];editing:[];pending:[value:boolean];select:[id:number|undefined]}>(),api=workOrderApi(httpClient)
 const address=ref(props.order.parkingAddress??''),district=ref(String(props.order.parkingRegionId??''))
 const saved=ref(props.order.dispatchAddressConfirmed===true&&Boolean(address.value.trim())),confirmed=ref(saved.value),busy=ref(false),error=ref('')
 const rows=ref<{id:number;name:string}[]>([]),regionPage=ref(0),regionTotal=ref(0),regionBusy=ref(false),regionError=ref('')
@@ -15,8 +15,8 @@ const assignedName=computed(()=>props.order.currentAssignment?(shops.value.find(
 const missing=computed(()=>!props.order.accidentRegionId?'请先在上方“事故区县”核实并补全事故服务区县。':!saved.value?'请填写并确认车辆当前停放区域和详细地址，再保存停车位置。':shopError.value?'网点列表读取失败，请重试；不能用旧列表派单。':shopBusy.value?'正在读取事故区县内的可派网点…':!shops.value.length?'该事故区县暂无启用且服务关系匹配的网点，请联系管理员核实测试网点资料；不要为匹配网点修改事故事实。':!chosen.value?(assignedName.value?'当前派单网点：'+assignedName.value+'；如需改派，请重新人工选择合格网点。':'请选择下方一个有资格的网点，再点击原“'+actionName.value+'”按钮。'):'已选网点：'+chosen.value.name+'；请点击下方原“'+actionName.value+'”按钮。')
 function pending(){emit('pending',!saved.value||busy.value||shopBusy.value||Boolean(shopError.value))}
 function clearSelection(){emit('select',undefined)}
-function changed(){saved.value=false;confirmed.value=false;error.value='';clearSelection();pending()}
-function confirmationChanged(){if(!confirmed.value){saved.value=false;clearSelection();pending()}}
+function changed(){emit('editing');saved.value=false;confirmed.value=false;error.value='';clearSelection();pending()}
+function confirmationChanged(){emit('editing');if(!confirmed.value){saved.value=false;clearSelection();pending()}}
 async function regions(append=false){
  if(regionBusy.value)return
  regionBusy.value=true;regionError.value=''
@@ -36,7 +36,7 @@ async function moreShops(append=false){
 async function save(){
  if(busy.value)return
  if(!props.order.accidentRegionId||!district.value||!address.value.trim()||!confirmed.value){error.value='请先补全事故区县，并填写、核对车辆停放区域和详细地址';return}
- busy.value=true;error.value='';clearSelection();pending()
+ emit('editing');busy.value=true;error.value='';clearSelection();pending()
  try{const updated=await api.dispatchLocation(props.order.id,props.order.version,Number(district.value),address.value.trim());saved.value=true;emit('changed',updated);await moreShops()}
  catch(e){saved.value=false;error.value=e instanceof Error?e.message:'停车位置保存失败，输入已保留，请重试'}finally{busy.value=false;pending()}
 }
