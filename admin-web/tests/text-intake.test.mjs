@@ -9,7 +9,7 @@ import * as Intake from '../src/features/workorders/intake.ts'
 import {BlobWriter,TextReader,ZipWriter} from '@zip.js/zip.js'
 import {mergeIntakeDraft} from '../src/features/workorders/intake-values.ts'
 
-function intake(){
+function intake(override){
  const {descriptor}=parse(readFileSync(new URL('../src/features/workorders/TextFormIntake.vue',import.meta.url),'utf8'))
  let code=ts.transpileModule(compileScript(descriptor,{id:'text-test'}).content,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText
  code=code.replace(/import\s*\{([^}]+)\}\s*from\s*['"]vue['"];?/g,(_,names)=>'const {'+names.replace(/\s+as\s+/g,':')+'}=__vue;')
@@ -18,6 +18,7 @@ function intake(){
  const form=Vue.reactive(Forms.blankOcrDraft()),requests=[];let blocked=false
  const client={async post(url,body){
   requests.push({url,body:structuredClone(body)})
+  if(override)return override(url,body)
   if(url.endsWith('/draft'))return {data:{data:{id:'synthetic-draft',status:'DRAFT'}}}
   if(body.text.includes('标的车牌'))return {data:{data:{fields:{vehiclePlate:'粤BD27391',surveyorName:'合成'},evidence:{surveyorName:[{value:'合成',requiresConfirmation:true},{value:'另名'}]}}}}
   const result=body.text.includes('\n')?{fields:{claimNo:'TEXT-SYNTHETIC'},evidence:{ownerName:[{value:'候选甲'},{value:'候选乙'}]}}:{fields:{ownerName:body.text.split('：')[1]}}
@@ -95,4 +96,58 @@ test('locked controls do not import text or photos',async()=>{
  await context.importText({target:{files:[new File(['text'],'a.txt')]}})
  context.importPhotos({target:{files:[new File(['image'],'a.jpg')]}})
  assert.equal(props.photos.length,0);assert.equal(context.text.value,'');assert.equal(requests.length,0)
+})
+
+test('a completely unused intake panel never requires text, recognition or confirmation for manual creation',async()=>{
+ const {context,form,requests,blocked}=intake()
+ form.claimNo='SYNTH-MANUAL';form.ownerPhone='13800000001'
+ assert.equal(await context.createReviewedDraft(form),undefined)
+ assert.equal(blocked(),false);assert.equal(requests.length,0)
+ context.text.value='准备使用的文字';context.changed();assert.equal(blocked(),true)
+ context.text.value='   ';context.changed()
+ assert.equal(blocked(),false);assert.equal(await context.createReviewedDraft(form),undefined)
+ assert.equal(form.claimNo,'SYNTH-MANUAL');assert.equal(requests.length,0)
+})
+
+test('explicit cancellation preserves form and photos, while real unreviewed conflicts still block',async()=>{
+ const {context,form,props,requests,blocked}=intake()
+ form.ownerName='已有手填';props.photos.push(new File(['image'],'synthetic.png'))
+ context.text.value='不同资料\n待确认';context.changed();await context.extract()
+ assert.equal(blocked(),true);await assert.rejects(context.createReviewedDraft(form),/核对/)
+ context.cancelText();assert.equal(blocked(),false);assert.equal(context.source.value,'')
+ assert.equal(form.ownerName,'已有手填');assert.equal(props.photos.length,1)
+ assert.equal(await context.createReviewedDraft(form),undefined)
+ assert.equal(requests.some(r=>r.url.endsWith('/draft')),false)
+})
+
+test('cancelling an in-flight extraction ignores late results and leaves manual fields unmodified',async()=>{
+ let release
+ const {context,form,blocked}=intake(()=>new Promise(resolve=>{release=resolve}))
+ context.text.value='延迟提取';context.changed();const pending=context.extract()
+ assert.equal(blocked(),true);context.cancelText();form.claimNo='手填保留'
+ release({data:{data:{fields:{claimNo:'迟到候选'},evidence:{}}}});await pending
+ assert.equal(form.claimNo,'手填保留');assert.equal(blocked(),false)
+ assert.equal(context.source.value,'');assert.deepEqual(context.candidate.value,{})
+})
+
+test('cancelling a file read never re-imports its late text or photos',async()=>{
+ let release
+ const {context,form,props,requests,blocked}=intake()
+ const file={name:'synthetic.txt',size:20,arrayBuffer:()=>new Promise(resolve=>{release=resolve})}
+ const pending=context.importText({target:{files:[file],hasAttribute:()=>false,value:''}})
+ context.cancelText();form.claimNo='新的手填'
+ release(new TextEncoder().encode('案件号：旧文字').buffer);await pending
+ assert.equal(context.text.value,'');assert.equal(form.claimNo,'新的手填');assert.equal(blocked(),false)
+ assert.equal(props.photos.length,0);assert.equal(requests.length,0)
+})
+
+test('cancel during a candidate choice cannot apply that late choice or clear a newer request busy state',async()=>{
+ let release
+ const {context,form,blocked}=intake(()=>new Promise(resolve=>{release=resolve}))
+ context.text.value='候选原文';context.changed()
+ const pending=context.selectAmbiguity('ownerName','旧候选')
+ context.cancelText();form.ownerName='新的手填';context.busy.value=true
+ release({data:{data:{fields:{ownerName:'旧候选'}}}});await pending
+ assert.equal(form.ownerName,'新的手填');assert.equal(context.busy.value,true)
+ context.busy.value=false;context.changed();assert.equal(blocked(),false)
 })

@@ -12,6 +12,14 @@ import org.junit.jupiter.api.*;
 import tools.jackson.databind.ObjectMapper;
 
 class AmapMapProviderTest {
+    private ch.qos.logback.classic.Logger diagnosticLogger;
+    private ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> diagnosticLogs;
+    @BeforeEach void captureDiagnostics(){
+        diagnosticLogger=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(AmapMapProvider.class);
+        diagnosticLogs=new ch.qos.logback.core.read.ListAppender<>();diagnosticLogs.start();diagnosticLogger.addAppender(diagnosticLogs);
+    }
+    @AfterEach void releaseDiagnostics(){diagnosticLogger.detachAppender(diagnosticLogs);diagnosticLogs.stop();org.slf4j.MDC.clear();}
+
     private HttpServer server;
     private ExecutorService executor;
     private final AtomicInteger calls=new AtomicInteger();
@@ -106,5 +114,65 @@ class AmapMapProviderTest {
         var p=provider();for(var scenario:Map.of("10014","RATE_LIMIT","10029","RATE_LIMIT","40000","QUOTA","40002","PERMISSION","20801","NO_ROUTE","20800","REGION_MISMATCH","20000","INVALID_REQUEST","20003","UPSTREAM").entrySet()){
             body.set("{\"status\":\"0\",\"infocode\":\""+scenario.getKey()+"\"}");assertThatThrownBy(()->p.resolve(address)).extracting("code").isEqualTo("MAP_"+scenario.getValue());
         }assertThat(calls.get()).isEqualTo(8);
+    }
+
+    @Test void failureDiagnosticsContainOnlyControlledMetadataAndNeverSensitiveInput(){
+        org.slf4j.MDC.put("traceId","synthetic-map-trace");
+        body.set("{\"status\":\"0\",\"infocode\":\"10001\",\"info\":\""+secret+" 原始响应及私密地址\"}");
+        assertThatThrownBy(()->provider().resolve(address)).extracting("code").isEqualTo("MAP_CREDENTIALS");
+        assertThat(diagnosticLogs.list).hasSize(1);
+        var event=diagnosticLogs.list.getFirst();
+        assertThat(event.getThrowableProxy()).isNull();
+        assertThat(event.getFormattedMessage()).contains("operation=GEOCODE","code=MAP_CREDENTIALS","httpStatus=200","infocode=10001","traceId=synthetic-map-trace")
+            .containsPattern("elapsedMs=[0-9]+")
+            .doesNotContain(secret,address.detail(),"原始响应","私密地址","http://","key=","113.1");
+        assertThat(calls.get()).isEqualTo(1);
+    }
+    @Test void parsingAndLocalRejectionAreDiagnosedOnceWithoutLoggingRawContent(){
+        org.slf4j.MDC.put("traceId","untrusted\nprivate");
+        body.set("{\"status\":\"1\",\"infocode\":\"10000\",\"geocodes\":[]}");
+        assertThatThrownBy(()->provider().resolve(address)).extracting("code").isEqualTo("MAP_NO_RESULT");
+        body.set("{\"status\":\"0\",\"infocode\":\""+secret+"\",\"info\":\"private response\"}");
+        assertThatThrownBy(()->provider().resolve(address)).extracting("code").isEqualTo("MAP_UPSTREAM");
+        assertThatThrownBy(()->provider(0,100,2000).resolve(address)).extracting("code").isEqualTo("MAP_LOCAL_BUDGET");
+        assertThat(diagnosticLogs.list).hasSize(3);
+        assertThat(diagnosticLogs.list.get(0).getFormattedMessage()).contains("code=MAP_NO_RESULT","infocode=10000");
+        assertThat(diagnosticLogs.list.get(1).getFormattedMessage()).contains("infocode=-");
+        assertThat(diagnosticLogs.list.get(2).getFormattedMessage()).contains("httpStatus=0","code=MAP_LOCAL_BUDGET");
+        assertThat(diagnosticLogs.list).allSatisfy(e->assertThat(e.getFormattedMessage()).contains("traceId=-").doesNotContain(secret,"private",address.detail()));
+        assertThat(calls.get()).isEqualTo(2);
+    }
+    @Test void timeoutAndNoRouteDiagnosticsPreserveOperationAndDoNotRetry(){
+        slow=true;
+        assertThatThrownBy(()->provider(100,100,50).resolve(address)).extracting("code").isEqualTo("MAP_TIMEOUT");
+        slow=false;body.set("{\"status\":\"1\",\"infocode\":\"10000\",\"route\":{\"origin\":\"113.1,23.1\",\"destination\":\"113.2,23.2\",\"paths\":[]}}");
+        assertThatThrownBy(()->provider().driving(vehicle,shop,32)).extracting("code").isEqualTo("MAP_NO_ROUTE");
+        assertThat(diagnosticLogs.list).hasSize(2);
+        assertThat(diagnosticLogs.list.get(0).getFormattedMessage()).contains("operation=GEOCODE","code=MAP_TIMEOUT");
+        assertThat(diagnosticLogs.list.get(1).getFormattedMessage()).contains("operation=DRIVING","code=MAP_NO_ROUTE");
+        assertThat(calls.get()).isEqualTo(2);
+    }
+
+    @Test void networkDiagnosticsNeverIncludeTransportExceptionMessage(){
+        var client=new OkHttpClient.Builder().retryOnConnectionFailure(false).addInterceptor(chain->{throw new java.io.IOException(secret+" private-address");}).build();
+        var p=new AmapMapProvider(secret,new ObjectMapper(),1,1,"http://127.0.0.1:"+server.getAddress().getPort(),client);
+        assertThatThrownBy(()->p.resolve(address)).extracting("code").isEqualTo("MAP_NETWORK");
+        assertThat(diagnosticLogs.list).hasSize(1);
+        assertThat(diagnosticLogs.list.getFirst().getFormattedMessage()).contains("code=MAP_NETWORK","operation=GEOCODE").doesNotContain(secret,"private-address");
+        assertThat(diagnosticLogs.list.getFirst().getThrowableProxy()).isNull();
+        assertThat(p.requestCount()).isEqualTo(1);assertThat(calls.get()).isZero();
+    }
+
+    @Test void diagnosticsPreserveLedgerRejectionAndStopRulesBeforeNetwork(){
+        var ledger=org.mockito.Mockito.mock(MapCallBudget.class);
+        org.mockito.Mockito.doThrow(MapFailure.of("LOCAL_BUDGET")).when(ledger).reserve(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyMap());
+        assertThatThrownBy(()->provider().withLedger(ledger).resolve(address)).extracting("code").isEqualTo("MAP_LOCAL_BUDGET");
+        org.mockito.Mockito.verify(ledger,org.mockito.Mockito.never()).stopFor(org.mockito.ArgumentMatchers.anyString());
+        assertThat(calls.get()).isZero();
+        assertThat(diagnosticLogs.list).hasSize(1);
+        org.mockito.Mockito.reset(ledger);
+        org.mockito.Mockito.doThrow(new IllegalStateException("synthetic-ledger-failure")).when(ledger).reserve(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyMap());
+        assertThatThrownBy(()->provider().withLedger(ledger).resolve(address)).isInstanceOf(IllegalStateException.class).hasMessage("synthetic-ledger-failure");
+        assertThat(calls.get()).isZero();assertThat(diagnosticLogs.list).hasSize(1);
     }
 }

@@ -22,6 +22,8 @@ public final class MapFailure extends ApiException {
         case "STRUCTURED_ADDRESS_REQUIRED" -> "真实定位需要广东城市、区县和详细地址";
         case "INVALID_REQUEST" -> "高德拒绝定位参数，请核对详细地址或坐标";
         case "UNSUPPORTED_OPERATION" -> "当前供应商不支持此操作";
+        case "UPSTREAM" -> "高德服务返回异常，本次未取得可信结果；未自动重试";
+        case "BAD_RESPONSE" -> "高德返回的数据格式异常，本次未取得可信结果；未自动重试";
         default -> "高德返回异常，本次未取得可信结果";
     };}
 }

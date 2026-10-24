@@ -45,10 +45,33 @@ public class WorkOrderService {
 
     private final com.evinsurance.platform.document.infrastructure.FileMapper files;
     private final com.evinsurance.platform.integration.map.MapProvider maps;
+    private com.evinsurance.platform.organization.application.CaseWorkshopRegistry caseWorkshops;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    public void setCaseWorkshops(com.evinsurance.platform.organization.application.CaseWorkshopRegistry registry){caseWorkshops=registry;}
     public WorkOrderService(WorkOrderMapper mapper,AuditService audit,ObjectMapper json,com.evinsurance.platform.document.infrastructure.FileMapper files,com.evinsurance.platform.integration.map.MapProvider maps) {
         this.mapper=mapper;this.files=files;this.maps=maps;
         this.audit=audit;
         this.json=json;
+    }
+
+    @Transactional
+    public WorkOrderViews.WorkOrder createDraft(WorkOrderRequests.Draft request,String key) {
+        var actor=requireStaff();
+        // Existing internal text/OCR services retain their own source-specific idempotency.
+        if(key==null)return createDraft(request);
+        validateKey(key);
+        mapper.lockDraftCreationCommand("manual-draft:"+actor.id()+":"+key);
+        String hash=com.evinsurance.platform.document.application.FileService.hash(json.writeValueAsString(request).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        var existing=mapper.command(actor.id(),"CREATE_DRAFT",key);
+        if(existing!=null) {
+            if(!hash.equals(mapper.draftCommandHash(actor.id(),key)))throw ApiException.conflict("IDEMPOTENCY_CONFLICT","本次建单请求已变化，请先核对原草稿，不要重复创建");
+            return get(existing.getWorkOrderId());
+        }
+        var result=createDraft(request);
+        if(mapper.reserveCommand(actor.id(),"CREATE_DRAFT",key,result.id(),null,Instant.now())!=1)throw ApiException.conflict("IDEMPOTENCY_CONFLICT","建单请求冲突，请先核对原草稿");
+        mapper.draftCommandHashSave(actor.id(),key,hash);
+        if(mapper.completeCommand(actor.id(),"CREATE_DRAFT",key,json.writeValueAsString(result))!=1)throw ApiException.conflict("IDEMPOTENCY_CONFLICT","建单结果尚未确认，请重试原请求");
+        return result;
     }
 
     @Transactional
@@ -86,6 +109,7 @@ public class WorkOrderService {
         var actor=requireStaff();
         var row=lock(id);
         requireDraftOwner(row,actor);
+        mapper.deleteDraftCreationCommands(id);
         if(mapper.deleteDraft(id,row.getVersion())!=1) throw state("Draft changed concurrently");
         audit.record(actor,Action.WORK_ORDER_DRAFT_DELETE,"WORK_ORDER",id,"Draft physically deleted by its creator or administrator");
     }
@@ -160,12 +184,18 @@ public class WorkOrderService {
 
     @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public PageResponse<WorkOrderRows.ShopOption> eligibleShops(UUID id,int page,int size) {
+        return eligibleShops(id,page,size,true);
+    }
+
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public PageResponse<WorkOrderRows.ShopOption> eligibleShops(UUID id,int page,int size,boolean includeMockDistances) {
         var actor=requireStaff();
         var row=requireVisible(id,actor,false);
         int offset=PageResponse.offset(page,size);
         if(row.getAccidentRegionId()==null)return new PageResponse<>(page,size,0,List.of());
+        if(caseWorkshops!=null&&caseWorkshops.enabled())return caseWorkshops.eligible(id,row.getAccidentRegionId(),page,size);
         long count=mapper.eligibleShopCount(row.getAccidentRegionId());
-        if(!"MOCK_V1".equals(maps.providerId())||!row.isDispatchAddressConfirmed()||(trim(row.getParkingAddress())==null&&trim(row.getAccidentAddress())==null))return new PageResponse<>(page,size,count,mapper.eligibleShops(row.getAccidentRegionId(),offset,size));
+        if(!includeMockDistances||!"MOCK_V1".equals(maps.providerId())||!row.isDispatchAddressConfirmed()||(trim(row.getParkingAddress())==null&&trim(row.getAccidentAddress())==null))return new PageResponse<>(page,size,count,mapper.eligibleShops(row.getAccidentRegionId(),offset,size));
         // Mock geocoding is local. Read candidates in bounded batches, rank before pagination.
         var ranked=new java.util.ArrayList<WorkOrderRows.ShopOption>();var origin=maps.geocode(row.getParkingAddress()!=null?row.getParkingAddress():row.getAccidentAddress()).point();
         for(int start=0;start<count;start+=100){var batch=mapper.eligibleShops(row.getAccidentRegionId(),start,100);for(var shop:batch){if(trim(shop.getAddress())!=null)shop.setDistanceMetres(maps.distance(origin,maps.geocode(shop.getAddress()).point()).metres());ranked.add(shop);}}
@@ -427,6 +457,7 @@ public class WorkOrderService {
         boolean confirmDuplicate,String duplicateReason,String transferDescription) {
         var row=lock(id);
         requireStatus(row,WorkOrderStatus.PENDING_DISPATCH);
+        if(caseWorkshops!=null)caseWorkshops.assertScope(shopId,id,row.getAccidentRegionId());
         if(!row.isDispatchAddressConfirmed()||(trim(row.getParkingAddress())==null&&trim(row.getAccidentAddress())==null))throw ApiException.conflict("DISPATCH_ADDRESS_REQUIRED","请先核对服务区域和实际接车地址");
         if(row.getAccidentRegionId()==null||mapper.shopEligible(shopId,row.getAccidentRegionId())!=1) {
             throw ApiException.conflict("SHOP_NOT_ELIGIBLE","Shop is disabled or outside the service region");
@@ -537,6 +568,7 @@ public class WorkOrderService {
         if(!request.confirmed()||trim(request.reason())==null)throw ApiException.invalid("请人工核实事故区县并填写原因；不得为匹配网点修改事故事实");
         if(!Objects.equals(row.getVersion(),request.expectedVersion()))throw state("案件版本已变化，请刷新后重新核对事故区县");
         if(mapper.enabledDistrict(request.regionId())!=1)throw ApiException.invalid("请选择启用的事故区县，不得使用城市代替区县");
+        if(row.getShopId()!=null&&caseWorkshops!=null)caseWorkshops.assertScope(row.getShopId(),id,request.regionId());
         if(row.getShopId()!=null&&mapper.shopEligible(row.getShopId(),request.regionId())!=1)throw ApiException.conflict("SHOP_NOT_ELIGIBLE","该变更会使当前派单网点失去服务资格，请先按既有流程处理派单");
         if(mapper.accidentDistrict(id,row.getVersion(),request.regionId(),actor.id())!=1)throw state("案件已被其他操作更新，请刷新");
         audit.record(actor,Action.WORK_ORDER_DRAFT_UPDATE,"WORK_ORDER",id,"Accident district manually reviewed; old="+row.getAccidentRegionId()+"; new="+request.regionId()+"; version="+row.getVersion()+"->"+(row.getVersion()+1)+"; reason="+request.reason().trim());

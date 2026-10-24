@@ -9,7 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.*;
 import org.springframework.transaction.support.TransactionTemplate;
 
-/** Shared, fail-closed request ledger. No key, plaintext address or coordinate is persisted. */
+/** Default fail-closed ledger, or an explicit supplier-quota policy. No credentials are persisted. */
 @Service
 public class MapCallBudget {
     private final JdbcTemplate db;
@@ -17,7 +17,14 @@ public class MapCallBudget {
     private final String run;
     private final String runs,slots;
     private final String ledgerSchema,extraAttempts;
+    private final DevelopmentMapBudget development;
+    private final PlaceSearchBudget places;
+    private final boolean publicWorkshopsEnabled;
+    private final boolean providerManaged;
     public MapCallBudget(JdbcTemplate db,PlatformTransactionManager manager,Environment env){
+        String policy=env.getProperty("AMAP_CALL_POLICY","CONTROLLED");
+        if(!Set.of("CONTROLLED","PROVIDER").contains(policy))throw new IllegalArgumentException("Invalid Amap call policy");
+        providerManaged="PROVIDER".equals(policy);
         this.db=db;this.run=env.getProperty("AMAP_BUDGET_RUN_ID","");
         // An isolated business schema can use the original ledger without copying
         // or resetting any allowances. Only a trusted server setting selects it.
@@ -31,9 +38,26 @@ public class MapCallBudget {
         extraAttempts=extraSchema.isEmpty()?null:"\""+extraSchema+"\".map_call_budget_extra_attempt";
         transaction=new TransactionTemplate(manager);
         transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        development=!providerManaged&&env.getProperty("AMAP_DEV_BUDGET_ENABLED",Boolean.class,false)?new DevelopmentMapBudget(db,manager,env):null;
+        places=!providerManaged&&env.getProperty("AMAP_PLACE_BUDGET_ENABLED",Boolean.class,false)?new PlaceSearchBudget(db,manager,env):null;
+        publicWorkshopsEnabled=env.getProperty("PUBLIC_WORKSHOP_ENABLED",Boolean.class,false);
     }
-    public record Availability(boolean callsEnabled,int remaining,String reason){}
+    public record OperationAllowance(String operation,int total,int used,int reserved,int remaining){}
+    public record Availability(boolean callsEnabled,Integer remaining,String reason,List<OperationAllowance> operations,boolean providerManaged){
+        public Availability(boolean callsEnabled,int remaining,String reason,List<OperationAllowance> operations){this(callsEnabled,remaining,reason,operations,false);}
+        public Availability(boolean callsEnabled,int remaining,String reason){this(callsEnabled,remaining,reason,List.of());}
+    }
+    public boolean providerManaged(){return providerManaged;}
     public Availability availability(){
+        if(providerManaged)return new Availability(true,null,"本机不设累计次数上限；高德实际余额未知，以供应商返回为准",List.of(),true);
+        var existing=existingAvailability();if(places==null)return existing;
+        var search=places.availability();var operations=new ArrayList<OperationAllowance>();
+        for(var row:existing.operations())operations.add(existing.callsEnabled()?row:new OperationAllowance(row.operation(),row.total(),row.used(),row.reserved(),0));
+        operations.add(search);int remaining=(existing.callsEnabled()?existing.remaining():0)+search.remaining();
+        return new Availability(remaining>0,remaining,remaining>0?"按各类别独立持久额度调用；地点搜索不占地址/逆编码/路线额度":"地图调用预算未配置、已关闭或已用完",List.copyOf(operations));
+    }
+    private Availability existingAvailability(){
+        if(development!=null)return development.availability();
         if(run.isBlank())return new Availability(false,0,"未配置真实调用预算");
         var rows=db.queryForList("SELECT enabled FROM "+runs+" WHERE id=?",Boolean.class,run);
         if(rows.isEmpty()||!rows.getFirst())return new Availability(false,0,"本轮真实调用预算已关闭");
@@ -42,6 +66,9 @@ public class MapCallBudget {
         return new Availability(remaining>0,remaining,remaining>0?"按已授权的类别及地点限额调用":"本轮真实调用预算已用完");
     }
     public void reserve(String path,Map<String,String> parameters){
+        if(providerManaged){operation(path);if("/v5/place/around".equals(path)&&!publicWorkshopsEnabled)throw MapFailure.of("UNSUPPORTED_OPERATION");return;}
+        if(Set.of("/v5/place/text","/v5/place/around").contains(path)){if(places==null||"/v5/place/around".equals(path)&&!publicWorkshopsEnabled)throw MapFailure.of("LOCAL_BUDGET");places.reserve(path,parameters);return;}
+        if(development!=null){development.reserve(path,parameters);return;}
         if(run.isBlank())throw MapFailure.of("LOCAL_BUDGET");
         String digest=fingerprint(path,parameters);
         transaction.executeWithoutResult(status->{
@@ -56,13 +83,24 @@ public class MapCallBudget {
         return "FROM "+extraAttempts+" e JOIN "+slots+" s ON s.run_id=e.run_id AND s.subject=e.subject AND s.operation=e.operation AND s.request_hash=e.request_hash WHERE e.ledger_schema=? AND e.run_id=? AND s.attempted_at IS NOT NULL";
     }
     public void stopFor(String code){
+        if(providerManaged)return;
+        if(development!=null){if(Set.of("MAP_CREDENTIALS","MAP_PERMISSION","MAP_QUOTA","MAP_RATE_LIMIT").contains(code))development.stop();return;}
         if(!run.isBlank()&&Set.of("MAP_CREDENTIALS","MAP_PERMISSION","MAP_QUOTA","MAP_RATE_LIMIT").contains(code))
             transaction.executeWithoutResult(status->db.update("UPDATE "+runs+" SET enabled=false WHERE id=?",run));
+    }
+    public void stopPlaceFor(String code){if(!providerManaged&&places!=null&&Set.of("MAP_CREDENTIALS","MAP_PERMISSION","MAP_QUOTA","MAP_RATE_LIMIT").contains(code))places.stop();}
+    public interface DrivingAllowance extends AutoCloseable { @Override void close(); }
+    public DrivingAllowance reserveDriving(int count){
+        if(providerManaged){if(count<0||count>50)throw MapFailure.of("INVALID_REQUEST");return ()->{};}
+        if(development==null)return ()->{};
+        AutoCloseable reservation=development.reserveDriving(count);
+        return ()->{try{reservation.close();}catch(RuntimeException error){throw error;}catch(Exception error){throw new IllegalStateException("Route allowance release failed");}};
     }
     public static String operation(String path){return switch(path){
         case "/v3/geocode/geo" -> "GEOCODE";
         case "/v3/geocode/regeo" -> "REVERSE";
         case "/v5/direction/driving" -> "DRIVING";
+        case "/v5/place/text","/v5/place/around" -> "POI_SEARCH";
         default -> throw MapFailure.of("UNSUPPORTED_OPERATION");
     };}
     public static String fingerprint(String path,Map<String,String> parameters){

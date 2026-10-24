@@ -53,9 +53,10 @@ public class WorkOrderController {
 
     @PostMapping("/drafts")
     @PreAuthorize("hasAnyRole('ADMIN','CUSTOMER_SERVICE')")
-    @Operation(summary="Create a server-side draft without allocating a formal business number")
-    public ApiResponse<WorkOrderViews.WorkOrder> createDraft(@Valid @RequestBody WorkOrderRequests.Draft request) {
-        return ApiResponse.success(service.createDraft(request));
+    @Operation(summary="Create a manual draft without text/OCR; optional Idempotency-Key safely replays the same request and rejects changed payloads")
+    public ApiResponse<WorkOrderViews.WorkOrder> createDraft(@Valid @RequestBody WorkOrderRequests.Draft request,
+        @RequestHeader(value="Idempotency-Key",required=false) String key) {
+        return ApiResponse.success(service.createDraft(request,key));
     }
 
     @PutMapping("/{id}/draft")
@@ -98,9 +99,11 @@ public class WorkOrderController {
 
     @GetMapping("/{id}/eligible-shops")
     @PreAuthorize("hasAnyRole('ADMIN','CUSTOMER_SERVICE')")
+    @Operation(summary="按事故区县与网点启用状态读取可派网点；includeMockDistances=false不调用地图，距离为空")
     public ApiResponse<PageResponse<WorkOrderRows.ShopOption>> eligibleShops(@PathVariable UUID id,
-        @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size) {
-        return ApiResponse.success(service.eligibleShops(id,page,size));
+        @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size,
+        @RequestParam(defaultValue="true") boolean includeMockDistances) {
+        return ApiResponse.success(service.eligibleShops(id,page,size,includeMockDistances));
     }
 
     @PutMapping("/{id}/dispatch-location")

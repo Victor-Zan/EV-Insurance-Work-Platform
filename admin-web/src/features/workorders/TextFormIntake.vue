@@ -8,20 +8,24 @@ import {mergeIntakeDraft} from './intake-values'
 const props=defineProps<{form:DraftForm;locked:boolean;photos:File[]}>(),emit=defineEmits<{merge:[value:DraftForm];blocked:[value:boolean];photos:[files:File[]]}>()
 const ambiguities=ref<{field:keyof DraftForm;values:string[]}[]>([])
 const text=ref(''),source=ref(''),busy=ref(false),confirmed=ref(false),message=ref(''),conflicts=ref<OcrFieldConflict[]>([]),candidate=ref<Record<string,unknown>>({}),key=ref(crypto.randomUUID())
-const importStatus=ref(''),photoError=ref('')
+const importStatus=ref(''),photoError=ref(''),cancelNotice=ref('')
+let editVersion=0
+function syncBlocked(){emit('blocked',busy.value||(Boolean(text.value.trim())&&(!confirmed.value||source.value!==text.value||Boolean(conflicts.value.length)||Boolean(ambiguities.value.length))))}
 async function importText(event:Event){
   const input=event.target as HTMLInputElement,files=Array.from(input.files??[])
   if(!files.length||props.locked||busy.value)return
+  let version=editVersion
   busy.value=true;emit('blocked',true);message.value=''
   try{
     const imported=await readChatFiles(files)
+    if(version!==editVersion)return
     validateSceneFiles([...props.photos,...imported.photos])
-    text.value=imported.text;changed()
+    text.value=imported.text;changed();version=editVersion
     if(imported.photos.length)emit('photos',imported.photos)
     importStatus.value=`已导入${input.hasAttribute('webkitdirectory')?'聊天记录文件夹':files[0]!.name}，含${imported.photos.length}张图片`
-    await extract()
-  }catch(error){message.value=error instanceof TypeError?'TXT编码无法读取，请转为UTF-8后导入':error instanceof Error?error.message:'导入失败'}
-  finally{input.value='';busy.value=false;emit('blocked',Boolean(text.value.trim())&&(!confirmed.value||source.value!==text.value||Boolean(conflicts.value.length)||Boolean(ambiguities.value.length)))}
+    busy.value=false;await extract()
+  }catch(error){if(version===editVersion)message.value=error instanceof TypeError?'TXT编码无法读取，请转为UTF-8后导入':error instanceof Error?error.message:'导入失败'}
+  finally{input.value='';if(version===editVersion){busy.value=false;syncBlocked()}}
 }
 function importPhotos(event:Event){
   const input=event.target as HTMLInputElement,files=Array.from(input.files??[])
@@ -30,14 +34,26 @@ function importPhotos(event:Event){
   catch(error){photoError.value=error instanceof Error?error.message:'图片导入失败'}
   finally{input.value=''}
 }
-function changed(){confirmed.value=false;source.value='';conflicts.value=[];ambiguities.value=[];key.value=crypto.randomUUID();emit('blocked',Boolean(text.value.trim()))}
-async function extract(){busy.value=true;message.value='';confirmed.value=false;emit('blocked',true);try{candidate.value=(await httpClient.post<{data:Record<string,unknown>}>('/work-orders/text/extract',{text:text.value})).data.data;source.value=text.value;const result=mergeIntakeDraft(props.form,(candidate.value.fields??{}) as Record<string,unknown>);emit('merge',result.merged);conflicts.value=result.conflicts;const evidence=(candidate.value.evidence??{}) as Record<string,{value?:string;requiresConfirmation?:boolean}[]>;ambiguities.value=Object.entries(evidence).filter(([field,rows])=>field in draftLabels&&field!=='accidentRegionId'&&field!=='surveyorName'&&(new Set(rows.map(row=>row.value).filter(Boolean)).size>1||rows.some(row=>row.requiresConfirmation))).map(([field,rows])=>({field:field as keyof DraftForm,values:[...new Set(rows.map(row=>row.value).filter((value):value is string=>typeof value==='string'))]}))}catch(error){message.value=error instanceof Error?error.message:'提取失败'}finally{busy.value=false}}
+function changed(){editVersion++;cancelNotice.value='';confirmed.value=false;source.value='';candidate.value={};conflicts.value=[];ambiguities.value=[];key.value=crypto.randomUUID();if(!text.value.trim()){importStatus.value='';message.value=''}syncBlocked()}
+function cancelText(){if(props.locked)return;text.value='';busy.value=false;changed();cancelNotice.value='已取消本次文字导入，保留当前手填信息和照片；未删除任何已保存来源记录。'}
+async function extract(){if(props.locked||busy.value||!text.value.trim())return;const version=editVersion,original=text.value;busy.value=true;message.value='';confirmed.value=false;syncBlocked();try{const extracted=(await httpClient.post<{data:Record<string,unknown>}>('/work-orders/text/extract',{text:original})).data.data;if(version!==editVersion)return;candidate.value=extracted;source.value=original;const result=mergeIntakeDraft(props.form,(candidate.value.fields??{}) as Record<string,unknown>);emit('merge',result.merged);conflicts.value=result.conflicts;const evidence=(candidate.value.evidence??{}) as Record<string,{value?:string;requiresConfirmation?:boolean}[]>;ambiguities.value=Object.entries(evidence).filter(([field,rows])=>field in draftLabels&&field!=='accidentRegionId'&&field!=='surveyorName'&&(new Set(rows.map(row=>row.value).filter(Boolean)).size>1||rows.some(row=>row.requiresConfirmation))).map(([field,rows])=>({field:field as keyof DraftForm,values:[...new Set(rows.map(row=>row.value).filter((value):value is string=>typeof value==='string'))]}))}catch(error){if(version===editVersion)message.value=error instanceof Error?error.message:'提取失败'}finally{if(version===editVersion){busy.value=false;syncBlocked()}}}
 function resolve(item:OcrFieldConflict,useSource:boolean){if(useSource)emit('merge',{...props.form,...(item.field==='vehiclePlate'?{vehicleVin:''}:item.field==='vehicleVin'?{vehiclePlate:''}:{}),[item.field]:item.incoming});conflicts.value=conflicts.value.filter(c=>c.field!==item.field)}
-async function selectAmbiguity(field:keyof DraftForm,value?:string){if(value!==undefined){busy.value=true;try{const name=field==='accidentAt'?'事故时间':field==='claimReportedAt'?'报案时间':draftLabels[field];const result=(await httpClient.post<{data:{fields:Record<string,string>}}>('/work-orders/text/extract',{text:name+'：'+value})).data.data;const adopted=prefillOcrDraft(result.fields)[field];if(!adopted)throw Error('该候选无法直接采用，请人工填写后选“保留当前输入”');emit('merge',{...props.form,...(field==='vehiclePlate'?{vehicleVin:''}:field==='vehicleVin'?{vehiclePlate:''}:{}),[field]:adopted})}catch(e){message.value=e instanceof Error?e.message:'核对失败';return}finally{busy.value=false}}ambiguities.value=ambiguities.value.filter(item=>item.field!==field)}
+async function selectAmbiguity(field:keyof DraftForm,value?:string){
+  const version=editVersion
+  if(value!==undefined){busy.value=true;syncBlocked();try{
+    const name=field==='accidentAt'?'事故时间':field==='claimReportedAt'?'报案时间':draftLabels[field]
+    const result=(await httpClient.post<{data:{fields:Record<string,string>}}>('/work-orders/text/extract',{text:name+'：'+value})).data.data
+    if(version!==editVersion)return
+    const adopted=prefillOcrDraft(result.fields)[field]
+    if(!adopted)throw Error('该候选无法直接采用，请人工填写后选“保留当前输入”')
+    emit('merge',{...props.form,...(field==='vehiclePlate'?{vehicleVin:''}:field==='vehicleVin'?{vehiclePlate:''}:{}),[field]:adopted})
+  }catch(e){if(version===editVersion)message.value=e instanceof Error?e.message:'核对失败';return}finally{if(version===editVersion){busy.value=false;syncBlocked()}}}
+  if(version===editVersion){ambiguities.value=ambiguities.value.filter(item=>item.field!==field);syncBlocked()}
+}
 async function createReviewedDraft(form:DraftForm):Promise<WorkOrder|undefined>{if(busy.value)throw Error('文字读取或提取中，请稍后');if(!text.value.trim())return undefined;if(!confirmed.value||source.value!==text.value||conflicts.value.length||ambiguities.value.length)throw Error('请提取文字并核对冲突与采用信息');return (await httpClient.post<{data:WorkOrder}>('/work-orders/text/draft',{text:source.value,confirmed:true,draft:ocrDraftPayload(form)},{headers:{'Idempotency-Key':key.value}})).data.data}
 defineExpose({createReviewedDraft})
 </script>
-<template><aside class="text-intake"><h2>导入案件资料</h2><p>文字提取信息，照片仅作物损材料。</p>
+<template><aside class="text-intake"><h2>导入案件资料</h2><p>可选辅助：不使用文字导入也可直接手工建单；照片仅作物损材料。</p><button v-if="text.trim()||busy||source" type="button" :disabled="locked" @click="cancelText">取消文字导入，保留手填和照片</button><p v-if="cancelNotice" role="status">{{ cancelNotice }}</p>
   <section class="import-group chat-group" aria-label="聊天记录整包导入">
     <h3>聊天记录整包导入</h3><p>选择导出的文件夹，或将整个文件夹打包为 ZIP。</p>
     <div class="upload-row">

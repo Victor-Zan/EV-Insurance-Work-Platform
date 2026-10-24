@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {saveIntake,submitReviewedDraft,openSavedCase} from '../src/features/workorders/intake-save.ts'
+import {saveIntake,submitReviewedDraft,openSavedCase,createManualDraft} from '../src/features/workorders/intake-save.ts'
 import {identityPatch,plateCheck,surveyorPatch,surveyorText,mergeIntakeDraft} from '../src/features/workorders/intake-values.ts'
 import {blankOcrDraft} from '../src/features/materials/ocr-form.ts'
 
@@ -59,4 +59,28 @@ test('a stale detail chunk triggers a GET navigation to the saved case and canno
  const calls=[]
  await openSavedCase({async push(path){calls.push(path);throw Error('Failed to fetch dynamically imported module')},resolve(path){return {href:path}}},draft.id,href=>calls.push({reload:href}))
  assert.deepEqual(calls,['/work-orders/synthetic-intake',{reload:'/work-orders/synthetic-intake'}])
+})
+
+test('manual draft creation retries the original body and key before saving later corrections',async()=>{
+ const attempt={},calls=[],saved=[],form={...blankOcrDraft(),claimNo:'original'};let lost=true
+ const api={async create(value,key){calls.push({op:'create',value:{...value},key});if(lost){lost=false;throw Error('响应丢失')}return draft},async update(id,value){calls.push({op:'update',id,value});return {...draft,version:1}}}
+ const options={api,attempt,form,key:'stable-draft-key',saved:order=>saved.push(order)}
+ await assert.rejects(createManualDraft(options),/响应丢失/)
+ options.form={...form,claimNo:'人工更正'};await createManualDraft(options)
+ assert.equal(calls[0].value.claimNo,'original');assert.deepEqual(calls[0],calls[1])
+ assert.equal(calls[2].op,'update');assert.equal(calls[2].id,draft.id);assert.equal(calls[2].value.claimNo,'人工更正')
+ assert.equal(saved[0].id,draft.id)
+})
+
+test('known ID is retained if correcting a recovered manual draft fails',async()=>{
+ const saved=[],attempt={form:blankOcrDraft()}
+ const api={async create(){return draft},async update(){throw Error('更新失败')}}
+ await assert.rejects(createManualDraft({api,attempt,form:{...blankOcrDraft(),claimNo:'更正'},key:'key',saved:order=>saved.push(order)}),/更新失败/)
+ assert.deepEqual(saved,[draft])
+})
+
+test('a recovered already-submitted create result never uploads or submits again',async()=>{
+ const f=fixture();f.options.create=async()=>formal
+ assert.deepEqual(await saveIntake(f.options),formal)
+ assert.equal(f.calls.includes('upload'),false);assert.equal(f.calls.some(c=>c.op==='submit'),false)
 })

@@ -193,12 +193,67 @@ class WorkOrderPostgresIT {
     }
 
     private JsonNode api(String token,String method,String path,Object body,String key,int code) throws Exception {
-        var request=switch(method){case "POST"->post(path);case "PUT"->put(path);default->get(path);};
+        var request=switch(method){case "POST"->post(path);case "PUT"->put(path);case "DELETE"->delete(path);default->get(path);};
         request.header("Authorization","Bearer "+token);if(key!=null)request.header("Idempotency-Key",key);
         if(body!=null)request.contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body));
         return json.readTree(mvc.perform(request).andExpect(status().is(code)).andReturn().getResponse().getContentAsString()).path("data");
     }
     private String uniquePhone(){return "139"+String.format("%08d",Math.abs(UUID.randomUUID().getMostSignificantBits()%100000000));}
+
+    @Test void manualCreateReplayDoesNotNeedTextOrOcrAndKeepsFormalValidationAndAudit() throws Exception {
+        String key="manual-"+UUID.randomUUID(),claim="MANUAL-"+UUID.randomUUID();
+        var input=Map.of("claimNo",claim,"ownerPhone",uniquePhone(),"vehiclePlate","粤B8Z71M","surveyorName","合成查勘","surveyorPhone","13900000001");
+        var draft=api(customerService,"POST","/api/v1/work-orders/drafts",input,key,200);
+        String id=draft.path("id").asText();
+        assertThat(api(customerService,"POST","/api/v1/work-orders/drafts",input,key,200).path("id").asText()).isEqualTo(id);
+        assertThat(draft.path("status").asText()).isEqualTo("DRAFT");assertThat(draft.path("dataSource").asText()).isEqualTo("MANUAL");
+        var missing=submit(customerService,id,false,null,"manual-submit-"+key,409);
+        assertThat(missing.path("code").asText()).isEqualTo("INTAKE_INCOMPLETE");assertThat(missing.path("message").asText()).contains("现场物损照片");
+        scenePhoto(customerService,id);
+        var formal=submit(customerService,id,false,null,"manual-submit-"+key,200).path("data");
+        assertThat(formal.path("status").asText()).isEqualTo("PENDING_DISPATCH");
+        assertThat(api(customerService,"POST","/api/v1/work-orders/drafts",input,key,200).path("status").asText()).isEqualTo("PENDING_DISPATCH");
+        assertThat(submit(customerService,id,false,null,"manual-submit-"+key,200).path("data").path("id").asText()).isEqualTo(id);
+        assertThat(db.queryForObject("SELECT count(*) FROM work_order WHERE claim_no=?",Integer.class,claim)).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT count(*) FROM text_draft_source WHERE work_order_id=?",Integer.class,UUID.fromString(id))).isZero();
+        assertThat(db.queryForObject("SELECT count(*) FROM audit_log WHERE object_id=? AND action='WORK_ORDER_DRAFT_CREATE'",Integer.class,id)).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT count(*) FROM audit_log WHERE object_id=? AND action='WORK_ORDER_SUBMIT'",Integer.class,id)).isEqualTo(1);
+    }
+
+    @Test void manualCreateKeyRejectsChangedBodiesAndForbiddenRolesButOtherActorsStayIsolated() throws Exception {
+        String key="manual-"+UUID.randomUUID();var input=Map.of("claimNo","MANUAL-"+UUID.randomUUID());
+        var draft=api(customerService,"POST","/api/v1/work-orders/drafts",input,key,200);
+        var changed=mvc.perform(post("/api/v1/work-orders/drafts").header("Authorization","Bearer "+customerService).header("Idempotency-Key",key).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("claimNo","changed"))))
+            .andExpect(status().isConflict()).andReturn().getResponse().getContentAsString();
+        assertThat(json.readTree(changed).path("code").asText()).isEqualTo("IDEMPOTENCY_CONFLICT");
+        assertThat(api(admin,"POST","/api/v1/work-orders/drafts",input,key,200).path("id").asText()).isNotEqualTo(draft.path("id").asText());
+        api(shop,"POST","/api/v1/work-orders/drafts",input,key,403);api(owner,"POST","/api/v1/work-orders/drafts",input,key,403);
+        api(customerService,"POST","/api/v1/work-orders/drafts",input," ",400);
+    }
+
+    @Test void keyedManualDraftStillSupportsAuthorizedExplicitDeletion() throws Exception {
+        String key="manual-delete-"+UUID.randomUUID();
+        String id=api(customerService,"POST","/api/v1/work-orders/drafts",Map.of("claimNo","MANUAL-"+UUID.randomUUID()),key,200).path("id").asText();
+        api(shop,"DELETE","/api/v1/work-orders/"+id+"/draft",null,null,403);
+        assertThat(db.queryForObject("SELECT count(*) FROM work_order_command WHERE work_order_id=? AND operation='CREATE_DRAFT'",Integer.class,UUID.fromString(id))).isEqualTo(1);
+        api(customerService,"DELETE","/api/v1/work-orders/"+id+"/draft",null,null,200);
+        assertThat(db.queryForObject("SELECT count(*) FROM work_order WHERE id=?",Integer.class,UUID.fromString(id))).isZero();
+        assertThat(db.queryForObject("SELECT count(*) FROM work_order_command WHERE work_order_id=?",Integer.class,UUID.fromString(id))).isZero();
+        assertThat(db.queryForObject("SELECT count(*) FROM audit_log WHERE object_id=? AND action='WORK_ORDER_DRAFT_DELETE'",Integer.class,id)).isEqualTo(1);
+    }
+
+    @Test void concurrentManualCreateWithOneKeyProducesOneDraftAndOneCreationAudit() throws Exception {
+        String key="manual-"+UUID.randomUUID(),claim="MANUAL-"+UUID.randomUUID();
+        var input=Map.of("claimNo",claim);
+        try(var executor=Executors.newFixedThreadPool(4)) {
+            var tasks=new ArrayList<Callable<String>>();
+            for(int i=0;i<4;i++)tasks.add(()->api(customerService,"POST","/api/v1/work-orders/drafts",input,key,200).path("id").asText());
+            var ids=new HashSet<String>();for(var future:executor.invokeAll(tasks))ids.add(future.get());
+            assertThat(ids).hasSize(1);
+            assertThat(db.queryForObject("SELECT count(*) FROM work_order WHERE claim_no=?",Integer.class,claim)).isEqualTo(1);
+            assertThat(db.queryForObject("SELECT count(*) FROM audit_log WHERE object_id=? AND action='WORK_ORDER_DRAFT_CREATE'",Integer.class,ids.iterator().next())).isEqualTo(1);
+        }
+    }
 
     @Test void minimalIntakeNeedsRequiredFieldsAndScenePhotoButVehicleDescriptionsAreOptional() throws Exception {
         var valid=new HashMap<String,Object>();valid.put("claimNo","INTAKE-"+UUID.randomUUID());valid.put("ownerPhone",uniquePhone());valid.put("vehiclePlate","粤B8Z71M");valid.put("surveyorName","合成查勘");valid.put("surveyorPhone","13926018473");
@@ -233,6 +288,35 @@ class WorkOrderPostgresIT {
         assertThat(api(customerService,"GET","/api/v1/work-orders/"+id+"/eligible-shops?size=1",null,null,200).path("total").asLong()).isZero();
         api(customerService,"POST","/api/v1/work-orders/"+id+"/dispatch",Map.of("shopId",shopId),"still-no-accident-"+id,409);
     }
+    @Test void mockManualDispatchNeedsOnlyReviewedParkingAndEligibleShopWithReplayAndScopeChecks() throws Exception {
+        var input=requiredDraft("MOCK-MANUAL-"+UUID.randomUUID(),uniquePhone(),"VIN-"+UUID.randomUUID(),Instant.now().minus(90,ChronoUnit.DAYS));
+        input.put("accidentAddress","合成事故原地址，不是停车位置");
+        String id=createDraft(customerService,input).path("id").asText();
+        var formal=api(customerService,"POST","/api/v1/work-orders/"+id+"/submit",Map.of(),"submit-manual-"+id,200);
+        String path="/api/v1/work-orders/"+id;
+        api(customerService,"POST",path+"/dispatch",Map.of("shopId",shopId),"no-reviewed-parking-"+id,409);
+        var location=Map.of("expectedVersion",formal.path("version").asLong(),"regionId",regionId,"address","合成车辆当前停放入口","confirmed",true);
+        api(shop,"PUT",path+"/dispatch-location",location,null,403);api(owner,"PUT",path+"/dispatch-location",location,null,403);
+        api(customerService,"PUT",path+"/dispatch-location",location,null,200);
+        long disabled=createEligibleShop();db.update("UPDATE repair_shop SET enabled=false WHERE id=?",disabled);
+        long outside=api(admin,"POST","/api/v1/admin/shops",Map.of("name","合成未配置服务区网点","code","OUT-"+UUID.randomUUID().toString().substring(0,8),"enabled",true),null,200).path("id").asLong();
+        var candidates=api(customerService,"GET",path+"/eligible-shops?includeMockDistances=false&size=100",null,null,200).path("records");
+        assertThat(candidates).anyMatch(row->row.path("id").asLong()==shopId);
+        for(var candidate:candidates){assertThat(candidate.hasNonNull("distanceMetres")).isFalse();assertThat(candidate.path("id").asLong()).isNotIn(disabled,outside);}
+        api(shop,"GET",path+"/eligible-shops?includeMockDistances=false",null,null,403);api(owner,"GET",path+"/eligible-shops?includeMockDistances=false",null,null,403);
+        api(customerService,"POST",path+"/dispatch",Map.of(),"no-shop-"+id,400);
+        for(long target:List.of(disabled,outside))api(customerService,"POST",path+"/dispatch",Map.of("shopId",target),"invalid-shop-"+target+id,409);
+        api(shop,"POST",path+"/dispatch",Map.of("shopId",shopId),"shop-forbidden-"+id,403);api(owner,"POST",path+"/dispatch",Map.of("shopId",shopId),"owner-forbidden-"+id,403);
+        String key="manual-dispatch-"+id;var result=api(customerService,"POST",path+"/dispatch",Map.of("shopId",shopId),key,200);
+        assertThat(result.path("status").asText()).isEqualTo("PENDING_ACCEPTANCE");assertThat(result.path("currentAssignment").path("shopId").asLong()).isEqualTo(shopId);
+        assertThat(api(customerService,"POST",path+"/dispatch",Map.of("shopId",shopId),key,200)).isEqualTo(result);
+        assertThat(db.queryForObject("SELECT count(*) FROM work_order_assignment WHERE work_order_id=?::uuid",Long.class,id)).isEqualTo(1L);
+        assertThat(db.queryForObject("SELECT count(*) FROM audit_log WHERE object_id=? AND action='WORK_ORDER_DISPATCH'",Long.class,id)).isEqualTo(1L);
+        assertThat(db.queryForObject("SELECT accident_address FROM work_order WHERE id=?::uuid",String.class,id)).isEqualTo("合成事故原地址，不是停车位置");
+        assertThat(db.queryForObject("SELECT accident_region_id FROM work_order WHERE id=?::uuid",Long.class,id)).isEqualTo(regionId);
+        assertThat(db.queryForObject("SELECT count(*) FROM map_call_budget_slot WHERE attempted_at IS NOT NULL",Long.class)).isZero();
+    }
+
     @Test void explicitAccidentDistrictKeepsMockRankingManualDispatchAndQuotationFlow() throws Exception {
         var valid=new HashMap<String,Object>();valid.put("claimNo","EXPLICIT-REGION-"+UUID.randomUUID());valid.put("ownerPhone",uniquePhone());valid.put("vehiclePlate","粤B8Z71M");valid.put("surveyorName","合成查勘");valid.put("surveyorPhone","00000000001");valid.put("accidentRegionId",regionId);
         String id=createDraft(customerService,valid).path("id").asText();

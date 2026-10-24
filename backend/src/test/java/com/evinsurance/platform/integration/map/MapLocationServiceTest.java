@@ -38,4 +38,11 @@ class MapLocationServiceTest {
         for(String detail:List.of("香港沙田马料水大学道1号","香港中文大学（深圳）旁香港特别行政区","福建省香港中文大学（深圳）"))
             assertThatThrownBy(()->GuangdongAddress.validate(new MapProvider.Address("深圳市","440300","龙岗区","440307",detail))).hasMessageContaining("省外");
     }
+
+    @Test void pointSelectionRequiresRoleHierarchyAndMatchingGuangdongAdministrationBeforeConfirmation(){
+        role(Role.OWNER);assertThatThrownBy(()->service.selectedPoint(3,new MapProvider.Point(23,113))).extracting("code").isEqualTo("FORBIDDEN");verifyNoInteractions(provider);
+        role(Role.CUSTOMER_SERVICE);var province=region(1,null,1,"440000","广东省");var city=region(2,1L,2,"440100","广州市");var district=region(3,2L,3,"440106","天河区");when(regions.selectById(3L)).thenReturn(district);when(regions.selectById(2L)).thenReturn(city);when(regions.selectOne(any())).thenReturn(province);when(provider.providerId()).thenReturn("AMAP_WEB_V1");var point=new MapProvider.Point(23,113);
+        when(provider.locate(point)).thenReturn(new MapProvider.AddressCandidate("合成地图选点",point,"广东省","广州市","天河区","440106","REVERSE","REQUIRES_CONFIRMATION",false));var choice=service.selectedPoint(3,point).getFirst();assertThat(choice.candidate().status()).isEqualTo("REQUIRES_CONFIRMATION");assertThat(service.session(choice.token(),false).confirmed()).isFalse();verify(provider,times(1)).locate(point);
+        when(provider.locate(point)).thenReturn(new MapProvider.AddressCandidate("同名外省",point,"湖南省","广州市","天河区","430106","REVERSE","REQUIRES_CONFIRMATION",false));var foreign=service.selectedPoint(3,point).getFirst();assertThat(foreign.candidate().status()).isEqualTo("REGION_MISMATCH");assertThatThrownBy(()->service.confirm(foreign.token())).isInstanceOf(com.evinsurance.platform.foundation.api.ApiException.class);
+    }
 }
