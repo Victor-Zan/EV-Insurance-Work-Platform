@@ -26,16 +26,18 @@ function setupRecognition(){
  const context=component.setup({caseId:'case-1',category:'LOSS_ASSESSMENT'},{expose(){},emit(){}})
  return {context,requests,stored:()=>stored}
 }
-test('failed recognition requires original review and preserves failure while retrying lost review/confirm responses',async()=>{
- const {context,requests,stored}=setupRecognition();await context.load();await context.recognize('file-1')
- await assert.rejects(context.confirm('18.00',{}),/核对原件/)
- context.originalReviewed.value=true
+test('explicit adoption confirms failed recognition without a checkbox and preserves lost review/confirm retries',async()=>{
+ const {context,requests,stored}=setupRecognition();await context.load()
+ await assert.rejects(context.confirm('18.00',{}),/请先识别原件/)
+ await context.recognize('file-1');assert.equal(requests.some(r=>r.url.endsWith('/confirm')),false)
+ const preview=context.preview.value;context.preview.value=''
+ await assert.rejects(context.confirm('18.00',{}),/加载并查看原件/);context.preview.value=preview
  await assert.rejects(context.confirm('18.00',{}),/lost review response/)
  await assert.rejects(context.confirm('18.00',{}),/lost confirm response/)
  assert.deepEqual(await context.confirm('18.00',{}),{jobId:'job-1',revision:1})
  const reviews=requests.filter(r=>r.url.endsWith('/review'))
  assert.equal(reviews.length,2);assert.equal(reviews[0].key,reviews[1].key);assert.deepEqual(reviews[0].body,reviews[1].body)
- assert.equal(stored().state,'FAILED');assert.equal(stored().reviewVersion,1)
+ assert.equal(stored().state,'FAILED');assert.equal(stored().reviewVersion,1);assert.equal(stored().candidate.originalReviewed,true)
  assert.equal(requests.filter(r=>r.url==='/ocr').length,1)
  assert.deepEqual(await context.confirm('19.00',{}),{jobId:'job-1',revision:2})
  assert.equal(stored().candidate.adopted,'19.00');URL.revokeObjectURL(context.preview.value)

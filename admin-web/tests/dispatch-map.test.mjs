@@ -29,13 +29,12 @@ export function component(name,props,api,calls=[],events=[]){
 
 test('manual parking confirmation and explicit shop choice do not require mock geocoding or a recommendation',async t=>{
  const f=setupManual();t.after(()=>f.scope.stop());await f.mount()
- f.context.address.value='模拟市测试入口';f.context.district.value='3';f.context.confirmed.value=true
+ f.context.address.value='模拟市测试入口';f.context.district.value='3'
  await f.context.save();await Vue.nextTick()
  assert.equal(f.context.saved.value,true);assert.equal(f.props.selectedShopId,undefined)
  f.context.select(2);assert.equal(f.props.selectedShopId,2)
  assert.ok(f.calls.some(c=>c[0]==='save'));assert.equal(f.calls.some(c=>c[0]==='geocode'),false)
  assert.deepEqual(f.events.at(-1),['pending',false])
- f.context.confirmed.value=false;f.context.confirmationChanged();assert.equal(f.props.selectedShopId,undefined);assert.equal(f.context.saved.value,false);assert.deepEqual(f.events.at(-1),['pending',true])
  f.context.changed();assert.equal(f.props.selectedShopId,undefined);assert.equal(f.context.saved.value,false);assert.deepEqual(f.events.at(-1),['pending',true])
 })
 
@@ -48,7 +47,7 @@ test('failed optional mock geocoding never saves, changes selection or blocks le
 
 test('reopening a confirmed parking location restores confirmation independently of city pages and does not auto-select a shop',async t=>{
  const f=setupManual({order:{id:'synthetic',version:4,accidentRegionId:3,parkingRegionId:999,parkingAddress:'已保存入口',dispatchAddressConfirmed:true}});t.after(()=>f.scope.stop());await f.mount()
- assert.equal(f.context.confirmed.value,true);assert.equal(f.context.saved.value,true);assert.equal(f.context.district.value,'999')
+ assert.equal(f.context.saved.value,true);assert.equal(f.context.district.value,'999')
  assert.equal(f.props.selectedShopId,undefined);assert.equal(f.calls.some(c=>c[0]==='save'),false)
  f.context.select(1);assert.equal(f.props.selectedShopId,1);assert.deepEqual(f.events.at(-1),['pending',false])
 })
@@ -59,7 +58,7 @@ test('map projection stays finite for coincident points and city context is not 
  assert.equal(MapHelpers.recommendedShop(shops),1);assert.equal(MapHelpers.recommendedShop([]),undefined)
 })
 
-test('missing district or unconfirmed address blocks saving and selection with explicit guidance',async t=>{
+test('missing district or incomplete address blocks saving and selection with explicit guidance',async t=>{
  const f=setupManual();t.after(()=>f.scope.stop());f.props.order.accidentRegionId=null;await f.mount()
  assert.match(f.context.missing.value,/事故服务区县/);assert.equal(f.calls.some(c=>c[0]==='shops'),false)
  await f.context.save();assert.match(f.context.error.value,/补全事故区县/);assert.equal(f.calls.some(c=>c[0]==='save'),false)
@@ -79,9 +78,9 @@ test('candidate failures release loading and can retry without losing saved addr
 
 test('failed parking save preserves manual inputs and retry cannot duplicate a pending save',async t=>{
  const f=setupManual();t.after(()=>f.scope.stop());await f.mount()
- f.context.district.value='3';f.context.address.value='手工填写的测试地址';f.context.confirmed.value=true
+ f.context.district.value='3';f.context.address.value='手工填写的测试地址'
  f.api.dispatchLocation=async()=>{throw Error('版本冲突，请刷新后重试')};await f.context.save()
- assert.equal(f.context.busy.value,false);assert.equal(f.context.saved.value,false);assert.equal(f.context.address.value,'手工填写的测试地址');assert.equal(f.context.confirmed.value,true)
+ assert.equal(f.context.busy.value,false);assert.equal(f.context.saved.value,false);assert.equal(f.context.address.value,'手工填写的测试地址')
  let release,count=0
  f.api.dispatchLocation=async()=>{count++;return new Promise(resolve=>{release=resolve})}
  const first=f.context.save();await f.context.save();assert.equal(count,1)

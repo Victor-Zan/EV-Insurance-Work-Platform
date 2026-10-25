@@ -4,7 +4,7 @@ import { defineConfig, loadEnv } from 'vite'
 
 export default defineConfig(({mode}) => {
   const env=loadEnv(mode, '..', 'VITE_API_BASE_URL')
-  const backendOrigin=new URL(env.VITE_API_BASE_URL??'http://localhost:8080/api/v1').origin
+  const backendOrigin=new URL(env.VITE_API_BASE_URL??'/api/v1','http://localhost:8080').origin
   return {
   plugins: [vue()],
   envDir: '..',

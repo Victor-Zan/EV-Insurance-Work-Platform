@@ -21,10 +21,10 @@ test('filters preserve explicit scope and identifiers rather than picking one ca
  assert.match(scopeLabel({ scope: 'SHOP', shopId: 2, shopName: '测试网点' }), /测试网点/)
  assert.throws(() => filterPayload({ regionId: '-1' }, 1))
 })
-test('import needs an actual preview and explicit confirmation; an invalid batch can be recorded as FAILED', () => {
+test('import confirms on submit with an actual preview and no pending request; an invalid batch can be recorded as FAILED', () => {
  const preview = { id: 'test-preview', errorRows: 1 }
- assert.equal(mayConfirm(null, true, false), false); assert.equal(mayConfirm(preview, false, false), false)
- assert.equal(mayConfirm(preview, true, true), false); assert.equal(mayConfirm(preview, true, false), true)
+ assert.equal(mayConfirm(null, false), false); assert.equal(mayConfirm(null, true), false)
+ assert.equal(mayConfirm(preview, true), false); assert.equal(mayConfirm(preview, false), true)
 })
 test('pricing routes permit customer service operations and keep admin settings and H5 roles excluded', async () => {
  const memory = new Map(), storage = { getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) }

@@ -1,5 +1,21 @@
 # 当前电脑的登录恢复与常驻启动
 
+## 2026-10-25 当前运行版本与区域资料
+
+同日第二步全面检查见 [DISPATCH_STAGE2_AUDIT_20261025.md](DISPATCH_STAGE2_AUDIT_20261025.md)：现有10家深圳导入店均保留，原人工候选可读；截图中的公开门店结果需要高德实时查询。本机PUBLIC_WORKSHOP_ENABLED仍默认false、CONTROLLED真实预算未配置，JS底图仍关闭，所以当前环境尚未具备截图的实时查询效果。代码／运行包最新不等于另一台电脑的运行配置和数据已全部复制；本检查没有切换开关或增加额度。
+
+本节覆盖下方旧运行包和PID记录。本机源码与GitHub main均为`3b177fd92934f5ef1680610d42c7d363a93e3cab`（已合并PR #8）；本机额外保留Vite相对API地址的启动修复。常驻后端已更新为`tmp/local-map-sync-20261025/backend-build/backend-0.0.1-SNAPSHOT.jar`，安装到原`tmp/local-website/backend.jar`，SHA256为`0FC931DCECE1EB17B716883520A756BFDA3375CB04AA446280E6613FC601E8C2`。旧包、数据库备份和安装记录保存在同一`tmp/local-map-sync-20261025/`目录；不能用下方旧包覆盖当前版本。
+
+旧V25兼容标记和原迁移目录继续保留：从新JAR重新生成并逐份核对30份脚本，与现用目录仅允许换行差异，内容一致。实际启动校验30条历史，public仍V28，无需新迁移；没有repair、历史改写、清库或创建新业务schema。`.env`仅补入不含密钥的APP_BUILD_COMMIT以供运行接口核对，没有填入JS Key或更改供应商/额度策略。
+
+广东区域现为144条正式节点（省1、市21、区县122）与原3条模拟节点，共147条。复用原广东省ID4、深圳市ID5，通过管理员API将CN-GD/CN-440300规范为440000/440300；其余新增142条，均有审计。原ID、案件、附件、网点及服务范围关联不变。资料沿用项目采用的[广东省民政厅官方代码表](https://smzt.gd.gov.cn/attachment/0/619/619623/4924190.pdf)，不宣称已覆盖2026年10月实时行政变更。东莞、中山没有县级节点，当前依赖区县的业务不支持这两市，不以镇街冒充区县。
+
+管理端仍为`http://127.0.0.1:5173`。客服的城市/区县接口已验证21市、广州11区、深圳9区；城市默认每页20，剩余城市使用页面“加载更多城市”。事故区域与停车位置独立选择，不自动代选或保存。保存未提交内容后重新进入派单页，以重读区域和配置；后端重启会使短期位置/推荐会话失效，须人工重新核对。
+
+地图JS配置接口现在可用，返回enabled=false/configured=false及“真实底图尚未启用”，不再是旧后端缺少接口。用户明确暂不填写Key、先同步版本和区域，因此JS底图及默认关闭的公开门店服务仍未启用，原调用预算未补发。后续真实底图须安全填写本机AMAP_JS_ENABLED/AMAP_JS_API_KEY/AMAP_JS_SECURITY_CODE并加载到后端；不能把接口可读当作真实高德验收。
+
+日常只读状态检查可在仓库根目录执行：`powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Manage-LocalWebsite.ps1 -Action Status`。本轮Backend/Admin/AdminApi/LoginApi/WatchRunning/AutoRecoveryEnabled均True，独立5191预览未启动。详见PROGRESS本轮记录。
+
 ## 2026-10-23 当前运行版本：拉取与本机成果整合
 
 本节覆盖下方旧运行包、target=24/25、PID和禁止直接升级的历史说明。用户已确认本次整合并同步本机：当前运行包来自 `tmp/pull-integration/backend-final-build/backend-0.0.1-SNAPSHOT.jar`，SHA256 `0CB7E0295144C49CF339EA1D6619A6B8B7442C5D26F9E5B724FF2F5AFB8F1810`。旧包为 `tmp/local-website/backend.before-pull-integration-20261023-093311.jar`，数据库安装前备份为 `tmp/pull-integration/db-public-at-install.dump`。后端46932、守护35244，原管理端4264保留；PID只代表本次启动，应以检查脚本为准。

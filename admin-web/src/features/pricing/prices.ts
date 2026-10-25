@@ -54,4 +54,4 @@ export function filterPayload(filters: Record<string, string>, page: number): Re
  }
  return result
 }
-export function mayConfirm(preview: Preview | null, checked: boolean, busy: boolean): boolean { return !!preview && checked && !busy }
+export function mayConfirm(preview: Preview | null, busy: boolean): boolean { return !!preview && !busy }

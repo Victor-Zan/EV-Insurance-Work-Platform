@@ -34,17 +34,31 @@ function intake(override){
 test('ambiguous text needs an explicit choice; retained original and adopted China time stay aligned',async()=>{
  const {context,form,requests}=intake();const original='车主姓名：候选甲\n车主姓名：候选乙'
  context.text.value=original;context.changed();await context.extract();assert.equal(form.ownerName,'');assert.deepEqual(context.ambiguities.value[0].values,['候选甲','候选乙'])
- context.confirmed.value=true;await assert.rejects(context.createReviewedDraft(form),/冲突/)
+ await assert.rejects(context.createReviewedDraft(form),/冲突/)
  await context.selectAmbiguity('ownerName','候选乙');assert.equal(form.ownerName,'候选乙');assert.equal(context.text.value,original)
  form.accidentAt='2026-10-14T09:30:00';await context.createReviewedDraft(form)
  const body=requests.find(r=>r.url.endsWith('/draft')).body;assert.equal(body.text,original);assert.equal(body.draft.ownerName,'候选乙');assert.equal(body.draft.accidentAt,'2026-10-14T01:30:00.000Z');assert.equal(requests.some(r=>r.url.includes('/ocr')),false)
+})
+test('extracted text can save without a checkbox, while unresolved conflicts and changed source still block',async()=>{
+ for(const adopt of [false,true]){
+  const {context,form,requests,blocked}=intake(async(url)=>({data:{data:url.endsWith('/draft')?{id:'synthetic-draft',status:'DRAFT'}:{fields:{claimNo:'NEW-SYNTHETIC'},evidence:{}}}}))
+  form.claimNo='OLD-SYNTHETIC';context.text.value='案件号：NEW-SYNTHETIC';context.changed();await context.extract()
+  assert.equal(blocked(),true);assert.equal(requests.some(r=>r.url.endsWith('/draft')),false)
+  await assert.rejects(context.createReviewedDraft(form),/冲突/)
+  context.resolve(context.conflicts.value[0],adopt);assert.equal(blocked(),false)
+  assert.equal(form.claimNo,adopt?'NEW-SYNTHETIC':'OLD-SYNTHETIC');await context.createReviewedDraft(form)
+  const saved=requests.find(r=>r.url.endsWith('/draft')).body
+  assert.equal(saved.confirmed,true);assert.equal(saved.draft.claimNo,form.claimNo)
+  context.text.value='案件号：另一段文字';context.changed();assert.equal(blocked(),true)
+  await assert.rejects(context.createReviewedDraft(form),/提取文字/)
+ }
 })
 test('TXT reading blocks creation immediately and releases the busy state after import',async()=>{
  const {context,form,blocked}=intake();let release
  const file={name:'synthetic.txt',size:40,arrayBuffer:()=>new Promise(resolve=>{release=resolve})}
  const reading=context.importText({target:{files:[file],hasAttribute:()=>false}});assert.equal(blocked(),true);assert.equal(context.busy.value,true)
  await assert.rejects(context.createReviewedDraft(form),/读取或提取中/)
- release(new TextEncoder().encode('车主姓名：候选甲').buffer);await reading;assert.equal(context.text.value,'车主姓名：候选甲');assert.equal(context.busy.value,false);assert.equal(blocked(),true)
+ release(new TextEncoder().encode('车主姓名：候选甲').buffer);await reading;assert.equal(context.text.value,'车主姓名：候选甲');assert.equal(context.busy.value,false);assert.equal(blocked(),false)
 })
 
 test('TXT and folder imports immediately extract the insured plate and surveyor name without a separate name confirmation',async()=>{
@@ -69,10 +83,10 @@ test('ZIP imports photos into the shared list and extracts text without OCR',asy
 })
 test('separate images append without changing reviewed text, and reject invalid or excessive batches atomically',async()=>{
  const {context,props,requests}=intake()
- context.text.value='已核对文字';context.source.value='已核对文字';context.confirmed.value=true
+ context.text.value='已核对文字';context.source.value='已核对文字'
  const input={files:[new File(['image'],'first.jpg')],value:'selected'}
  context.importPhotos({target:input});assert.equal(props.photos.length,1);assert.equal(input.value,'')
- assert.equal(context.confirmed.value,true);assert.equal(context.text.value,'已核对文字');assert.equal(requests.length,0)
+ assert.equal(context.source.value,'已核对文字');assert.equal(context.text.value,'已核对文字');assert.equal(requests.length,0)
  input.files=[new File(['image'],'second.png'),new File(['bad'],'bad.pdf')];context.importPhotos({target:input})
  assert.equal(props.photos.length,1);assert.match(context.photoError.value,/JPG\/PNG/)
  input.files=Array.from({length:20},()=>new File(['image'],'extra.jpg'));context.importPhotos({target:input})
@@ -80,16 +94,16 @@ test('separate images append without changing reviewed text, and reject invalid 
  input.files=[new File(['image'],'second.png')];context.importPhotos({target:input})
  assert.equal(props.photos.length,2);assert.equal(context.photoError.value,'')
 })
-test('failed package validation preserves the old text, confirmation and photos, and can be retried',async()=>{
+test('failed package validation preserves the old extracted text and photos, and can be retried',async()=>{
  const {context,props,requests,blocked}=intake()
- context.text.value='已核对文字';context.source.value='已核对文字';context.confirmed.value=true
+ context.text.value='已核对文字';context.source.value='已核对文字'
  props.photos=Array.from({length:20},()=>new File(['image'],'existing.jpg'))
  const input={files:[new File(['标的车牌：粤BD27391'],'a.txt'),new File(['image'],'new.jpg')],hasAttribute:()=>true}
  await context.importText({target:input})
- assert.match(context.message.value,/最多20张/);assert.equal(context.text.value,'已核对文字');assert.equal(context.confirmed.value,true)
+ assert.match(context.message.value,/最多20张/);assert.equal(context.text.value,'已核对文字');assert.equal(context.source.value,'已核对文字')
  assert.equal(props.photos.length,20);assert.equal(requests.length,0);assert.equal(blocked(),false)
  props.photos.pop();await context.importText({target:input})
- assert.equal(props.photos.length,20);assert.equal(context.message.value,'');assert.equal(requests.length,1);assert.equal(blocked(),true)
+ assert.equal(props.photos.length,20);assert.equal(context.message.value,'');assert.equal(requests.length,1);assert.equal(blocked(),false)
 })
 test('locked controls do not import text or photos',async()=>{
  const {context,props,requests}=intake();props.locked=true

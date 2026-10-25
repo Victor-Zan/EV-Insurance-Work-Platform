@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElAlert, ElButton, ElCheckbox, ElTable, ElTableColumn, ElPagination } from 'element-plus'
+import { ElAlert, ElButton, ElTable, ElTableColumn, ElPagination } from 'element-plus'
 import { httpClient } from '@/shared/http/client'
 import type { ApiResponse, Page } from '@/shared/http/create-client'
 import { mayConfirm, priceTypes } from './prices'
 import type { Preview, PreviewRow, Batch, PriceType } from './prices'
 const router = useRouter(), file = ref<File | null>(null), preview = ref<Preview | null>(null), rows = ref<PreviewRow[]>([])
-const busy = ref(false), error = ref(''), checked = ref(false), page = ref(1), selectedName = ref('')
-function select(event: Event) { file.value = (event.target as HTMLInputElement).files?.[0] ?? null; selectedName.value = file.value?.name ?? ''; preview.value = null; rows.value = []; checked.value = false }
+const busy = ref(false), error = ref(''), page = ref(1), selectedName = ref('')
+function select(event: Event) { file.value = (event.target as HTMLInputElement).files?.[0] ?? null; selectedName.value = file.value?.name ?? ''; preview.value = null; rows.value = [] }
 async function run(action: () => Promise<void>) { if (busy.value) return; busy.value = true; error.value = ''
  try { await action() } catch (cause) { error.value = cause instanceof Error ? cause.message : '操作失败' } finally { busy.value = false } }
 async function load() {
@@ -21,9 +21,9 @@ async function upload() { await run(async () => {
  if (file.value.size > 10 * 1024 * 1024) throw new Error('文件不得超过 10 MiB')
  const body = new FormData(); body.append('file', file.value)
  const response = await httpClient.post<ApiResponse<Preview>>('/pricing/imports/previews', body, { headers: { 'Content-Type': undefined }, timeout: 120000 })
- preview.value = response.data.data; checked.value = false; page.value = 1; await load()
+ preview.value = response.data.data; page.value = 1; await load()
 }) }
-async function confirm() { if (!mayConfirm(preview.value, checked.value, busy.value)) return
+async function confirm() { if (!mayConfirm(preview.value, busy.value)) return
  await run(async () => {
   if (!preview.value) return
   const response = await httpClient.post<ApiResponse<Batch>>('/pricing/imports/previews/' + preview.value.id + '/confirm', { confirmed: true }, { timeout: 120000 })
@@ -55,7 +55,7 @@ async function template() { await run(async () => {
     <ElTableColumn label="有效期"><template #default="scope">{{ scope.row.values.effectiveFrom }} 至 {{ scope.row.values.effectiveTo || '持续有效' }}</template></ElTableColumn>
     <ElTableColumn prop="action" label="计划操作" /><ElTableColumn label="错误"><template #default="scope"><p v-for="(item, index) in (scope.row as PreviewRow).errors" :key="index">{{ item.field }}：{{ item.reason }}（{{ item.originalValue }}）</p></template></ElTableColumn>
    </ElTable><ElPagination v-model:current-page="page" :page-size="20" :total="preview.totalRows" :disabled="busy" layout="total,prev,pager,next" @current-change="run(load)" />
-   <ElCheckbox v-model="checked" :disabled="busy">我已检查预览，确认提交此批次</ElCheckbox><ElButton type="primary" :disabled="!mayConfirm(preview, checked, busy)" @click="confirm">{{ preview.errorRows ? '记录失败批次（价格零写入）' : '确认整批导入' }}</ElButton>
+   <p>点击提交即确认已检查当前批次预览。</p><ElButton type="primary" :disabled="!mayConfirm(preview, busy)" @click="confirm">{{ preview.errorRows ? '记录失败批次（价格零写入）' : '确认整批导入' }}</ElButton>
   </template>
  </main>
 </template>
