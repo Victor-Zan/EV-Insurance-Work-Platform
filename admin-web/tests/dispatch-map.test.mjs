@@ -52,6 +52,24 @@ test('reopening a confirmed parking location restores confirmation independently
  f.context.select(1);assert.equal(f.props.selectedShopId,1);assert.deepEqual(f.events.at(-1),['pending',false])
 })
 
+test('saving parking from the map synchronizes an untouched imported-shop form without another location save',async t=>{
+ const f=setupManual();t.after(()=>f.scope.stop());await f.mount()
+ Object.assign(f.props.order,{parkingRegionId:3,parkingAddress:'地图已确认测试入口',dispatchAddressConfirmed:true,version:2});await Vue.nextTick()
+ assert.equal(f.context.address.value,'地图已确认测试入口');assert.equal(f.context.district.value,'3');assert.equal(f.context.saved.value,true)
+ assert.equal(f.calls.some(c=>c[0]==='save'),false);assert.equal(f.props.selectedShopId,undefined)
+ f.context.select(2);assert.equal(f.props.selectedShopId,2);assert.deepEqual(f.events.at(-1),['pending',false])
+})
+
+test('a map update cannot overwrite unsaved manual parking edits or enable dispatch using the old address',async t=>{
+ const f=setupManual();t.after(()=>f.scope.stop());await f.mount()
+ f.context.address.value='人工正在编辑的测试地址';f.context.district.value='3';f.context.changed()
+ Object.assign(f.props.order,{parkingRegionId:3,parkingAddress:'另一个已保存位置',dispatchAddressConfirmed:true,version:2});await Vue.nextTick()
+ assert.equal(f.context.address.value,'人工正在编辑的测试地址');assert.equal(f.context.saved.value,false);assert.match(f.context.error.value,/重新核对/)
+ f.context.select(2);assert.equal(f.props.selectedShopId,undefined);assert.equal(f.calls.some(c=>c[0]==='save'),false)
+ await f.context.save();await Vue.nextTick();assert.equal(f.context.saved.value,true);assert.equal(f.context.dirty.value,false)
+ f.context.select(2);assert.equal(f.props.selectedShopId,2)
+})
+
 test('map projection stays finite for coincident points and city context is not duplicated',()=>{
  for(const point of MapHelpers.mapMarkers(location,[shops[0]])){assert.ok(Number.isFinite(point.x)&&Number.isFinite(point.y));assert.ok(point.x>=0&&point.x<=600&&point.y>=0&&point.y<=320)}
  assert.equal(MapHelpers.locationAddress('深圳市','南山区合成地址'),'深圳市南山区合成地址');assert.equal(MapHelpers.locationAddress('深圳市','深圳市合成地址'),'深圳市合成地址')

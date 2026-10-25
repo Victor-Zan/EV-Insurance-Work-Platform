@@ -13,7 +13,7 @@ function setupRecognition(){
  code=code.replace(/import\s*\{([^}]+)\}\s*from\s*['"]vue['"];?/g,(_,names)=>'const {'+names.replace(/\s+as\s+/g,':')+'}=__vue;')
  code=code.replace(/import\s*\{\s*httpClient\s*\}\s*from\s*['"][^'"]+['"];?/g,'const httpClient=__client;').replace('export default','return')
  let stored={id:'job-1',fileId:'file-1',state:'FAILED',provider:'MOCK_V1',reviewVersion:0,confirmed:false,errorCode:'SYNTHETIC_FAILURE'},reviewLost=true,confirmLost=true
- const requests=[],commands=new Map(),snapshot=()=>({data:{data:structuredClone(stored)}})
+ const requests=[],events=[],commands=new Map(),snapshot=()=>({data:{data:structuredClone(stored)}})
  const client={
   async get(url){if(url.includes('/download'))return {data:new Blob(['synthetic'],{type:'application/pdf'})};if(url.startsWith('/materials/cases/'))return {data:{data:{records:[{id:'file-1',name:'synthetic.pdf',state:'ACTIVE',category:'LOSS_ASSESSMENT'}],total:1}}};if(url==='/ocr/configuration')return {data:{data:{provider:'MOCK_V1'}}};return snapshot()},
   async post(url,body,options){requests.push({url,body:structuredClone(body),key:options?.headers?.['Idempotency-Key']});if(url==='/ocr')return snapshot()
@@ -22,10 +22,24 @@ function setupRecognition(){
    throw Error('Unexpected request')
   },
  }
- const component=new Function('__vue','__client',code)({...Vue,onMounted(){},onUnmounted(){}},client)
- const context=component.setup({caseId:'case-1',category:'LOSS_ASSESSMENT'},{expose(){},emit(){}})
- return {context,requests,stored:()=>stored}
+ let unmount
+ const component=new Function('__vue','__client',code)({...Vue,onMounted(){},onUnmounted(fn){unmount=fn}},client)
+ const context=component.setup({caseId:'case-1',category:'LOSS_ASSESSMENT'},{expose(){},emit(...event){events.push(event)}})
+ return {context,requests,events,stored:()=>stored,unmount:()=>unmount()}
 }
+test('readiness follows the original, terminal OCR state and pending work, without starting recognition',async()=>{
+ const {context,requests,events,unmount}=setupRecognition()
+ assert.equal(context.ready.value,false);assert.deepEqual(events[0],['ready',false])
+ context.job.value={id:'job-1',state:'RUNNING'};context.preview.value='blob:synthetic';await Vue.nextTick()
+ assert.equal(context.ready.value,false)
+ context.job.value.state='SUCCEEDED';await Vue.nextTick();assert.equal(context.ready.value,true);assert.deepEqual(events.at(-1),['ready',true])
+ context.busy.value=true;await Vue.nextTick();assert.equal(context.ready.value,false)
+ await assert.rejects(context.confirm('18.00'),/处理中/)
+ context.busy.value=false;context.job.value.state='FAILED';await Vue.nextTick();assert.equal(context.ready.value,true)
+ context.preview.value='';await Vue.nextTick();assert.equal(context.ready.value,false);assert.deepEqual(events.at(-1),['ready',false])
+ context.preview.value='blob:synthetic';await Vue.nextTick();assert.deepEqual(events.at(-1),['ready',true]);unmount();assert.deepEqual(events.at(-1),['ready',false])
+ assert.equal(requests.length,0)
+})
 test('explicit adoption confirms failed recognition without a checkbox and preserves lost review/confirm retries',async()=>{
  const {context,requests,stored}=setupRecognition();await context.load()
  await assert.rejects(context.confirm('18.00',{}),/请先识别原件/)

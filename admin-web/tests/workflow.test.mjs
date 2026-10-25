@@ -17,6 +17,14 @@ test('old links only open the current task; associated records remain accessible
   assert.equal(safeCaseSection('', 'FUNDS','WAITING_INSURER_PAYMENT'),'funds')
   assert.equal(safeCaseSection('', 'FUNDS','WAITING_SHOP_SETTLEMENT'),'funds')
 })
+test('completed cases default to case details even through old task links, while explicit records remain accessible',()=>{
+  for(const section of ['', 'repair','dispatch','quotation','materials','unknown'])assert.equal(safeCaseSection(section,'COMPLETE','COMPLETED'),'overview')
+  for(const section of ['overview','history','funds','complaint'])assert.equal(safeCaseSection(section,'COMPLETE','COMPLETED'),section)
+  assert.equal(safeCaseSection('repair','REPAIR','COMPLETED'),'overview')
+  assert.equal(safeCaseSection('', 'RECEIPT','WAITING_OWNER_CONFIRMATION'),'repair')
+  assert.equal(safeCaseSection('', 'FUNDS','WAITING_SHOP_SETTLEMENT'),'funds')
+})
+
 test('real timeline renderer has nine noninteractive nodes, distinct actor states and material-independent green',()=>{
   const source=readFileSync(new URL('../src/features/workorders/WorkflowTimeline.vue',import.meta.url),'utf8')
   const {descriptor}=parse(source),{code}=compile(descriptor.template.content,{mode:'function',prefixIdentifiers:true})

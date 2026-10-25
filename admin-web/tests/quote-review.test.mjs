@@ -50,3 +50,19 @@ test('every workflow navigation retains current task, case materials and history
   for(const node of nodes)node.props.onClick();assert.deepEqual(visits.map(v=>v.query?.section??'current'),['current','overview','history'])
  }
 })
+
+test('completed navigation has only case details and records, highlights selection, and removes the task sidebar',()=>{
+ const source=readFileSync(new URL('../src/features/workorders/WorkOrderDetailView.vue',import.meta.url),'utf8'),template=parse(source).descriptor.template.content
+ const nav=template.match(/<nav class="related-links"[\s\S]*?<\/nav>/)[0],{code}=compile(nav,{mode:'function',prefixIdentifiers:true}),render=new Function('Vue',code)(Vue)
+ for(const activeSection of ['overview','history']){
+  const nodes=[],visits=[];function visit(v){if(!v||typeof v!=='object')return;if(v.props?.onClick)nodes.push(v);if(Array.isArray(v.children))v.children.forEach(visit)}
+  visit(render({activeSection,receiptMode:false,order:{status:'COMPLETED'},route:{path:'/completed-test'},router:{replace(value){visits.push(value)}}},[]))
+  assert.equal(nodes.length,2);for(const node of nodes)node.props.onClick()
+  assert.deepEqual(visits.map(v=>v.query.section),['overview','history'])
+  assert.equal(nodes.find(n=>n.props.type==='primary').key,activeSection)
+ }
+ const opening=template.match(/<aside v-if="[^"]+" class="control-panel glass"[^>]*>/)[0]
+ const renderAside=new Function('Vue',compile(opening+'</aside>',{mode:'function',prefixIdentifiers:true}).code)(Vue)
+ assert.notEqual(renderAside({order:{status:'COMPLETED'}},[]).type,'aside')
+ assert.equal(renderAside({order:{status:'REPAIRING'}},[]).type,'aside')
+})

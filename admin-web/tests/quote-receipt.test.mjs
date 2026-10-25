@@ -15,13 +15,13 @@ function fixture(dev=true,roles=['CUSTOMER_SERVICE']){
  code=code.replace(/import .*from ['"].*['"];?/g,'').replace('export default','return').replaceAll('import.meta.env.DEV','__dev')
  code='const RepairAuthorizationReview={},QuoteReviewWorkbench={},QuoteLines={},RecordList={},DocumentRecognition={},RecognitionSource={},ElDrawer={};const {reviewLines,reviewPayload,reviewCalculation}=__helpers;const {httpClient,currentUser,quotationApi,formalPayload}=__deps;const {setTimeout,clearTimeout}=__timers;'+code
  const flow={currentNode:'SHOP_QUOTE',canAct:false,actorRole:'REPAIR_SHOP',materials:[{category:'SHOP_QUOTE',present:true,shopUploaded:false},{category:'ARRIVAL_PHOTO',present:false,shopUploaded:false}],nodes:[{key:'SHOP_QUOTE',label:'网点报价'}]}
- const props=Vue.reactive({caseId:'synthetic-receipt-case',workflow:flow}),events=[],calls=[],timers=new Map(),hooks={};let nextFlow=flow,resolveGet,nextQuote={version:0,rawQuote:null,gate:{},status:'ARRIVED'}
+ const props=Vue.reactive({caseId:'synthetic-receipt-case',workflow:flow}),events=[],calls=[],timers=new Map(),hooks={};let nextFlow=flow,resolveGet,nextQuote={version:0,rawQuote:null,gate:{},status:'ARRIVED'},postReply=async()=>{throw Error('Unexpected write')}
  const document={hidden:false}
  const httpClient={async get(path){calls.push(['get',path]);return resolveGet?await resolveGet():{data:{data:nextFlow}}}}
- const deps={httpClient,currentUser:Vue.ref({roles}),quotationApi:()=>({get:async()=>nextQuote,post:async()=>{calls.push(['post']);throw Error('Unexpected write')}}),formalPayload(){throw Error('Unexpected formal quote')}}
+ const deps={httpClient,currentUser:Vue.ref({roles}),quotationApi:()=>({get:async()=>nextQuote,post:async(...args)=>{calls.push(['post',...args]);return postReply(...args)}}),formalPayload(){throw Error('Unexpected formal quote')}}
  const component=new Function('__vue','__deps','__dev','__timers','document','__helpers',code)({...Vue,onMounted(){},onActivated(){},onDeactivated(fn){hooks.deactivated=fn},onUnmounted(fn){hooks.unmounted=fn}},deps,dev,{setTimeout(fn,delay){const id=Symbol();timers.set(id,{fn,delay});return id},clearTimeout(id){timers.delete(id)}},document,reviewHelpers)
  const context=component.setup(props,{expose(){},emit(...event){events.push(event)}})
- return {context,props,events,calls,timers,hooks,document,setFlow(value){nextFlow=value},setQuote(value){nextQuote=value},deferGet(fn){resolveGet=fn}}
+ return {context,props,events,calls,timers,hooks,document,setFlow(value){nextFlow=value},setQuote(value){nextQuote=value},deferGet(fn){resolveGet=fn},respondPost(fn){postReply=fn}}
 }
 function elements(f){
  const {code}=compile(descriptor.template.content,{mode:'function',prefixIdentifiers:true,expressionPlugins:['typescript']}),render=new Function('Vue',ts.transpileModule(code,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText)(Vue)
@@ -41,6 +41,41 @@ test('waiting task shows shop provenance receipts, no upload controls; preview c
 })
 test('production and non-customer-service accounts cannot open development preview',()=>{
  for(const f of [fixture(false),fixture(true,['ADMIN'])]){f.context.openReviewPreview();assert.equal(f.context.reviewPreview.value,false)}
+})
+test('assessment cannot continue with only an amount; missing original feedback is next to the disabled action',async()=>{
+ const f=fixture();Object.assign(f.props.workflow,{currentNode:'INSURER_ASSESSMENT',status:'WAITING_INSURER_ASSESSMENT',canAct:true})
+ f.setQuote({version:2,status:'WAITING_INSURER_ASSESSMENT',formalQuote:{total:'560.60'},gate:{}});await f.context.load()
+ await new Promise(resolve=>setImmediate(resolve))
+ f.context.assessment.value='560.60';f.context.dirty.value=true
+ assert.match(f.context.assessmentIssue.value,/上传核损单/)
+ assert.equal(elements(f).find(n=>n.type==='button'&&n.props?.class==='primary').props.disabled,true)
+ assert.ok(elements(f).some(n=>n.type==='span'&&n.props?.role==='status'&&n.children.includes('上传核损单')))
+ await f.context.run(f.context.proceed)
+ assert.equal(f.context.drawer.value,true);assert.match(f.context.message.value,/上传核损单/);assert.equal(f.context.assessment.value,'560.60')
+ assert.equal(f.calls.some(call=>call[0]==='post'),false)
+ assert.ok(elements(f).find(n=>n.type==='footer').children.some(node=>node?.props?.class==='action-feedback'))
+ assert.ok(elements(f).some(n=>n.type==='p'&&n.props?.role==='alert'))
+})
+test('ready assessment preserves amount and retry key on failure, then submits exact evidence through the normal API',async()=>{
+ const f=fixture();Object.assign(f.props.workflow,{currentNode:'INSURER_ASSESSMENT',status:'WAITING_INSURER_ASSESSMENT',canAct:true})
+ f.setQuote({version:2,status:'WAITING_INSURER_ASSESSMENT',gate:{}});await f.context.load()
+ await new Promise(resolve=>setImmediate(resolve))
+ const confirmations=[];f.context.recognition.value={async confirm(amount,fields){confirmations.push({amount,fields});return {jobId:'synthetic-loss-job',revision:1}}}
+ f.context.recognitionReady.value=true;f.context.assessment.value='560.601'
+ assert.equal(elements(f).find(n=>n.type==='button'&&n.props?.class==='primary').props.disabled,true)
+ await f.context.run(f.context.proceed);assert.match(f.context.message.value,/有效最终核损金额/);assert.equal(confirmations.length,0)
+ f.context.assessment.value=' 560.60 ';f.context.dirty.value=true
+ assert.equal(f.context.assessmentIssue.value,'');assert.equal(elements(f).find(n=>n.type==='button'&&n.props?.class==='primary').props.disabled,false)
+ f.respondPost(async()=>{throw Error('核损保存失败，请重试')});await f.context.run(f.context.proceed)
+ assert.equal(f.context.busy.value,false);assert.equal(f.context.assessment.value,' 560.60 ');assert.equal(f.context.dirty.value,true)
+ const nodes=elements(f),feedback=nodes.find(n=>n.type==='footer').children.find(n=>n?.props?.class==='action-feedback')
+ assert.ok(feedback.children.some(n=>n?.type==='p'&&n.props.role==='alert'))
+ assert.equal(f.context.message.value,'核损保存失败，请重试')
+ f.respondPost(async()=>({version:3,status:'WAITING_REPAIR_AUTHORIZATION',assessment:{amount:'560.60'},gate:{}}));await f.context.run(f.context.proceed)
+ const posts=f.calls.filter(call=>call[0]==='post');assert.equal(posts.length,2);assert.equal(posts[0][1],'recognized-assessment')
+ assert.deepEqual(posts[0][2],{jobId:'synthetic-loss-job',revision:1,assessment:{expectedVersion:2,amount:'560.60'}})
+ assert.equal(posts[0][3],posts[1][3]);assert.deepEqual(confirmations.map(c=>c.amount),['560.60','560.60'])
+ assert.equal(f.context.dirty.value,false);assert.equal(f.context.drawer.value,false);assert.equal(f.context.message.value,'已保存');assert.ok(f.events.some(e=>e[0]==='changed'))
 })
 test('unsaved review edits cannot be silently submitted against a newer raw quotation',async()=>{
  const f=fixture();f.props.workflow.currentNode='QUOTE_REVIEW';f.props.workflow.canAct=true

@@ -31,6 +31,15 @@ test('parking city/district load and explicit action send only selected region a
   await s.resolve();assert.deepEqual(requests,[['/maps/locations/places',{districtId:3,keywords:'合成街道10号',page:1},{timeout:15000}]])
   assert.equal(s.confirmed,undefined);assert.deepEqual(s.candidates,[result]);s.confirmed=result;s.detail='新的合成街道20号';await settle();assert.equal(s.confirmed,undefined);assert.deepEqual(s.candidates,[]);panel.unmount()
 })
+test('supplier-managed mode permits explicit position search without fabricated local allowances',async()=>{
+ const requests=[],fake=client(async(...args)=>{requests.push(args);return {data:{data:[{token:result.token,candidate:result}]}}})
+ const get=fake.get;fake.get=async(path,options)=>path.endsWith('/budget')?{data:{data:{callsEnabled:true,remaining:null,providerManaged:true,reason:'供应商配额',operations:[]}}}:get(path,options)
+ const panel=mount(fake);await settle();const s=panel.state
+ assert.equal(s.searchAvailable,true);assert.equal(requests.length,0)
+ s.city='2';await settle();s.district='3';s.detail='合成街道10号';await settle();await s.resolve()
+ assert.equal(requests.length,1);assert.equal(requests[0][0],'/maps/locations/places');assert.equal(s.candidates.length,1)
+ assert.equal(s.confirmed,undefined);panel.unmount()
+})
 test('duplicate clicks cause one lookup and changed input rejects stale response',async()=>{
   let finish,calls=0;const panel=mount(client(()=>{calls++;return new Promise(resolve=>{finish=resolve})}));await settle()
   const s=panel.state;s.city='2';await settle();s.district='3';s.detail='合成街道10号';await settle();const pending=s.resolve();await s.resolve();assert.equal(calls,1)
