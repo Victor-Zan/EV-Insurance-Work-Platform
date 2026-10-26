@@ -6,6 +6,11 @@ import org.apache.ibatis.annotations.*;
 
 @Mapper
 public interface MapDataMapper {
+    @Update("UPDATE work_order_assignment SET destination_shop_id=#{shopId},destination_name=#{name},destination_address=#{address},location_precision=#{precision} WHERE id=#{assignmentId} AND destination_shop_id IS NULL")
+    int dispatchSnapshot(@Param("assignmentId") long assignmentId,@Param("shopId") long shopId,@Param("name") String name,@Param("address") String address,@Param("precision") String precision);
+    long simulationShopCount();
+    List<MapData.Shop> simulationShops(@Param("offset") int offset,@Param("size") int size);
+    String candidateRevision(@Param("regionId") long regionId,@Param("modelId") long modelId);
     List<MapData.Model> matchingModels(@Param("brand") String brand,@Param("model") String model);
     List<Long> capabilities(@Param("shopId") long shopId,@Param("offset") int offset,@Param("size") int size);
     long capabilityCount(@Param("shopId") long shopId);

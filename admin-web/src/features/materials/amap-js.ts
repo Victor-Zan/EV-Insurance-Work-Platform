@@ -1,6 +1,6 @@
 export interface MapPoint {longitude:number;latitude:number}
 export interface JsEvent {lnglat?:{getLng():number;getLat():number}}
-export interface JsMap {on(name:string,fn:(event:JsEvent)=>void):void;add(marker:JsMarker):void;remove(marker:JsMarker|JsMarker[]):void;setCenter(point:number[]):void;destroy():void}
+export interface JsMap {on(name:string,fn:(event:JsEvent)=>void):void;add(marker:JsMarker):void;remove(marker:JsMarker|JsMarker[]):void;setCenter(point:number[]):void;setZoom?(zoom:number):void;setFitView?(markers:JsMarker[],immediately?:boolean,padding?:number[],maxZoom?:number):void;destroy():void}
 export interface JsMarker {on(name:string,fn:(event:JsEvent)=>void):void;setPosition(point:number[]):void;setDraggable(value:boolean):void;getPosition():{getLng():number;getLat():number};setMap(map:JsMap|null):void}
 export interface AmapNamespace {Map:new(element:HTMLElement,options:Record<string,unknown>)=>JsMap;Marker:new(options:Record<string,unknown>)=>JsMarker}
 export interface JsBootstrap {publicKey:string;servicePath:string;expires:string}

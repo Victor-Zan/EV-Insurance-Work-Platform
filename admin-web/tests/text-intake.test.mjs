@@ -81,18 +81,26 @@ test('ZIP imports photos into the shared list and extracts text without OCR',asy
  assert.equal(requests.length,1);assert.ok(requests[0].url.endsWith('/extract'));assert.equal(input.value,'')
  assert.match(context.importStatus.value,/聊天.zip.*1张/)
 })
-test('separate images append without changing reviewed text, and reject invalid or excessive batches atomically',async()=>{
- const {context,props,requests}=intake()
- context.text.value='已核对文字';context.source.value='已核对文字'
+test('right-side photos append without changing reviewed text, and reject invalid or excessive batches atomically',()=>{
+ const {context:textContext,props:textProps,requests}=intake()
+ const {descriptor}=parse(readFileSync(new URL('../src/features/workorders/ScenePhotoIntake.vue',import.meta.url),'utf8'))
+ let code=ts.transpileModule(compileScript(descriptor,{id:'photo-selection-test'}).content,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText
+ code=code.replace(/import\s*\{([^}]+)\}\s*from\s*['"]vue['"];?/g,(_,names)=>'const {'+names.replace(/\s+as\s+/g,':')+'}=__vue;').replace(/import\s*\{\s*httpClient\s*\}\s*from\s*['"][^'"]+['"];?/g,'const httpClient=__client;').replace(/import\s*\{\s*validateSceneFiles\s*\}\s*from\s*['"][^'"]+['"];?/g,'const validateSceneFiles=__validate;').replace('export default','return')
+ const component=new Function('__vue','__client','__validate',code)({...Vue,onUnmounted(){}},{},Intake.validateSceneFiles)
+ const props=Vue.reactive({modelValue:[],locked:false})
+ const context=component.setup(props,{expose(){},emit(name,files){assert.equal(name,'update:modelValue');props.modelValue=files;textProps.photos=files}})
+ textContext.text.value='已核对文字';textContext.source.value='已核对文字'
  const input={files:[new File(['image'],'first.jpg')],value:'selected'}
- context.importPhotos({target:input});assert.equal(props.photos.length,1);assert.equal(input.value,'')
- assert.equal(context.source.value,'已核对文字');assert.equal(context.text.value,'已核对文字');assert.equal(requests.length,0)
- input.files=[new File(['image'],'second.png'),new File(['bad'],'bad.pdf')];context.importPhotos({target:input})
- assert.equal(props.photos.length,1);assert.match(context.photoError.value,/JPG\/PNG/)
- input.files=Array.from({length:20},()=>new File(['image'],'extra.jpg'));context.importPhotos({target:input})
- assert.equal(props.photos.length,1);assert.match(context.photoError.value,/最多20张/)
- input.files=[new File(['image'],'second.png')];context.importPhotos({target:input})
- assert.equal(props.photos.length,2);assert.equal(context.photoError.value,'')
+ context.choose({target:input});assert.equal(props.modelValue.length,1);assert.equal(input.value,'')
+ assert.equal(textContext.source.value,'已核对文字');assert.equal(textContext.text.value,'已核对文字');assert.equal(requests.length,0)
+ input.files=[new File(['image'],'second.png'),new File(['bad'],'bad.pdf')];context.choose({target:input})
+ assert.equal(props.modelValue.length,1);assert.match(context.error.value,/JPG\/PNG/)
+ input.files=Array.from({length:20},()=>new File(['image'],'extra.jpg'));context.choose({target:input})
+ assert.equal(props.modelValue.length,1);assert.match(context.error.value,/最多20张/)
+ input.files=[new File(['image'],'second.png')];context.choose({target:input})
+ assert.equal(props.modelValue.length,2);assert.equal(context.error.value,'')
+ assert.equal(textProps.photos.length,2)
+ assert.equal(textContext.text.value,'已核对文字');assert.equal(textContext.source.value,'已核对文字');assert.equal(requests.length,0)
 })
 test('failed package validation preserves the old extracted text and photos, and can be retried',async()=>{
  const {context,props,requests,blocked}=intake()
@@ -108,7 +116,7 @@ test('failed package validation preserves the old extracted text and photos, and
 test('locked controls do not import text or photos',async()=>{
  const {context,props,requests}=intake();props.locked=true
  await context.importText({target:{files:[new File(['text'],'a.txt')]}})
- context.importPhotos({target:{files:[new File(['image'],'a.jpg')]}})
+ await context.importText({target:{files:[new File(['text'],'b.txt'),new File(['image'],'a.jpg')]}})
  assert.equal(props.photos.length,0);assert.equal(context.text.value,'');assert.equal(requests.length,0)
 })
 

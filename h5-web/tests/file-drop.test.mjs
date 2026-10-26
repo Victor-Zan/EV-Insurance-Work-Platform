@@ -140,7 +140,12 @@ test('all registered native upload inputs remain wrapped, transport parity and n
     for(const file of readdirSync(base,{recursive:true}).filter(path=>path.endsWith('.vue'))){
       const code=readFileSync(new URL(file.replaceAll('\\','/'),base),'utf8')
       if(file.endsWith('FundsImportPanel.vue')&&app==='h5-web')continue // Not reachable by H5 roles; do not add an entrance.
-      if(code.includes('type="file"'))assert.equal((code.match(/type="file"/g)??[]).length,(code.match(/<FileDropZone\b/g)??[]).length,app+'/'+file)
+      if(code.includes('type="file"')){
+        const zones=[...code.matchAll(/<FileDropZone\b[^>]*>([\s\S]*?)<\/FileDropZone>/g)]
+        const wrapped=zones.map(zone=>(zone[1].match(/type="file"/g)??[]).length)
+        assert.ok(wrapped.every(count=>count>0),app+'/'+file)
+        assert.equal(wrapped.reduce((sum,count)=>sum+count,0),(code.match(/type="file"/g)??[]).length,app+'/'+file)
+      }
     }
   }
 })

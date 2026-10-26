@@ -134,10 +134,10 @@
     VALUES(#{workOrderId},#{version},#{shopId},'PENDING',#{transferDescription},#{actorId},#{now})
   </insert>
   <select id="activeAssignment" resultType="com.evinsurance.platform.workorder.infrastructure.WorkOrderRows$Assignment">
-    SELECT * FROM work_order_assignment WHERE work_order_id=#{workOrderId} AND status IN ('PENDING','ACCEPTED') ORDER BY assignment_version DESC LIMIT 1
+    SELECT a.*,s.name AS shop_name,s.address AS shop_address FROM work_order_assignment a JOIN repair_shop s ON s.id=a.shop_id WHERE a.work_order_id=#{workOrderId} AND a.status IN ('PENDING','ACCEPTED') ORDER BY a.assignment_version DESC LIMIT 1
   </select>
   <select id="assignment" resultType="com.evinsurance.platform.workorder.infrastructure.WorkOrderRows$Assignment">
-    SELECT * FROM work_order_assignment WHERE work_order_id=#{workOrderId} AND assignment_version=#{version}
+    SELECT a.*,s.name AS shop_name,s.address AS shop_address FROM work_order_assignment a JOIN repair_shop s ON s.id=a.shop_id WHERE a.work_order_id=#{workOrderId} AND a.assignment_version=#{version}
   </select>
   <update id="acceptAssignment">UPDATE work_order_assignment SET status='ACCEPTED',responded_by=#{actorId},responded_at=#{now} WHERE id=#{id} AND status='PENDING'</update>
   <update id="rejectAssignment">UPDATE work_order_assignment SET status='REJECTED',reason=#{reason},responded_by=#{actorId},responded_at=#{now} WHERE id=#{id} AND status='PENDING'</update>

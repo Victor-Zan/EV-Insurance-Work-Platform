@@ -59,6 +59,8 @@ public interface WorkOrderMapper {
     List<WorkOrderRows.CityOption> districts(@Param("query") String query,@Param("offset") int offset,@Param("size") int size);
     @org.apache.ibatis.annotations.Update("UPDATE work_order SET accident_region_id=#{regionId},version=version+1,updated_by=#{actor},updated_at=now() WHERE id=#{id} AND version=#{version}")
     int accidentDistrict(@Param("id") UUID id,@Param("version") long version,@Param("regionId") long regionId,@Param("actor") long actor);
+    @org.apache.ibatis.annotations.Update("UPDATE work_order SET accident_address=#{address},version=version+1,updated_by=#{actor},updated_at=now() WHERE id=#{id} AND version=#{version} AND status='PENDING_DISPATCH'")
+    int supplementDispatchAccidentAddress(@Param("id") UUID id,@Param("version") long version,@Param("address") String address,@Param("actor") long actor);
     long shopEligible(@Param("shopId") long shopId,@Param("regionId") long regionId);
     long eligibleShopCount(@Param("regionId") long regionId);
     List<WorkOrderRows.ShopOption> eligibleShops(@Param("regionId") long regionId,@Param("offset") int offset,@Param("size") int size);

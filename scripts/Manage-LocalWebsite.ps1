@@ -155,7 +155,7 @@ try {
                         if($_ -match '^([A-Z][A-Z0-9_]*)=(.*)$'){[Environment]::SetEnvironmentVariable($matches[1],$matches[2].Trim().Trim('"').Trim("'"),'Process')}
                     }
                     $env:SERVER_ADDRESS='127.0.0.1'
-                    $flywayArguments=@('--spring.flyway.target=28')
+                    $flywayArguments=@('--spring.flyway.target=30')
                     $legacyLocations=Join-Path $runtime 'flyway-legacy-v25'
                     if(Test-Path -LiteralPath (Join-Path $runtime 'legacy-v25.enabled')){
                         if(-not(Test-Path -LiteralPath (Join-Path $legacyLocations 'V25.1__amap_dispatch_safety.sql'))){throw 'Legacy V25 migration bundle missing; do not start against canonical migrations.'}

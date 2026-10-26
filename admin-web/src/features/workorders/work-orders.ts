@@ -9,6 +9,7 @@ export type WorkOrderStatus =
 
 export interface Assignment {
   id: number; assignmentVersion: number; shopId: number; status: string; reason?: string; transferDescription?: string
+  assignedAt?:string;shopName?:string;shopAddress?:string;destinationShopId?:number;destinationName?:string;destinationAddress?:string;locationPrecision?:'ROAD'|'PRECISE'
 }
 export interface WorkOrder {
   workflowNode?:string

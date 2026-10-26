@@ -1,3 +1,22 @@
+## 2026-10-25：管理员／客服建单第一步入口精简
+
+- 按本次两张截图先更新REQUIREMENTS，再局部修改TextFormIntake、ScenePhotoIntake及WorkOrdersView。聊天文件夹／ZIP共用一个上传区，区内保留两种原生选择方式，ZIP沿用拖入处理；纯文字区仅打字／粘贴与提取、核对，移除独立TXT和重复图片入口。右侧照片添加、预览、移除及上传重试保持，去掉重复文件列表和长说明。
+- 文字区和现场物损照片区共用同一条样式规则：背景`#f6f2e9`、边框`#dfd2b9`、左边框`#967342`；浏览器计算颜色逐项一致。保留缺项、冲突、处理中及失败重试提示，上传解析、累计数量、草稿／正式建单门禁、服务端权限与业务接口不变。未修改本轮开始时已有的自动派单等工作。
+- 将原左侧图片追加行为回归迁移到实际右侧ScenePhotoIntake，仍验证追加、非法混合批次整批拒绝、累计超20张、失败后重选、文字不变。两端原上传保护测试由“每区恰好一个input”改为逐区统计，继续严格证明所有文件input均在上传区内，支持本次一个区域包含ZIP／文件夹两个选择器；不跳过测试或放宽上传业务校验。
+- 浏览器使用独立本地页面挂载实际WorkOrdersView，模拟HTTP适配器拦截全部业务请求：ZIP及含子目录文件夹均成功提取合成文字并追加照片至右侧（累计2张），纯文字直接输入并提取成功；没有创建实际草稿或上传到业务库。桌面1280px和390px窄屏核验完成，窄屏文档宽390、上传布局clientWidth和scrollWidth均309，无横向溢出；浏览器error日志为空。未进行操作系统拖放或跨浏览器验收，拖入由既有传输回归覆盖。
+- 截图保存在Git忽略的`tmp/local-website/intake-step-simplified-20261025.png`，仅含模拟页面。临时样本生成器已移出前端目录，避免进入产品lint范围；最初因该临时脚本缺少Node全局声明触发lint错误，清理后重新检查。初次旧入口测试失败已按新布局更新到实际右侧处理函数后通过，未删除断言。
+
+| 本轮检查 | 结果 |
+| --- | --- |
+| 管理端 `npm run lint`、`npm run typecheck` | 最终PASS，lint 0警告；临时夹具脚本引起的lint问题清理后重新通过 |
+| 管理端 `node --test tests/text-intake.test.mjs tests/file-drop.test.mjs tests/intake-files.test.mjs tests/intake-zip.test.mjs tests/intake-recovery.test.mjs tests/manual-case-view.test.mjs` | PASS，48/48，无失败／跳过 |
+| 管理端 `npm test`、`npm run build` | 最终PASS，222/222，失败／取消／跳过0；末次文案及样式由本次全量回归和生产构建覆盖。日志`tmp/local-website/intake-simplify-tests-20261025.log`及`intake-simplify-build-20261025.log` |
+| H5 `node --test tests/file-drop.test.mjs`、`npm run lint` | PASS，10/10及lint 0警告；只同步跨端上传保护测试，无H5产品代码变更，未重跑H5全量类型检查／测试／构建 |
+| `git diff --check` | PASS；保留仓库既有换行提示 |
+| 后端／数据库／Compose／真实业务端到端 | 未验证，本轮无对应变更；需要相应环境与授权后另做，不将模拟预览记为真实建单验收 |
+
+本阶段范围仅建单第一步，已完成并停止，不进入后续业务阶段。临时模拟页面已归档到`tmp/local-website/intake-step-preview-20261025.html`，本轮预览服务停止。
+
 ## 2026-10-25：资金字段顺序调整已完成
 
 - 按用户明确的先后顺序，完成并验收上一项完成节点默认资料后，再仅移动FundsPanel模板中的流水号及中国时间两行：现为流水号/凭证编号→到账/结算时间→人工应收/应付金额→本次到账/结算金额→折叠备注。金额按钮仍在各行最右侧，未改脚本、样式、默认值、禁用条件、绑定、校验、登记/确认逻辑或API。
@@ -2243,3 +2262,79 @@ API用providerManaged=true和remaining=null表达本地不设累计上限、供�
 - 本检查点保存此前工作区的界面修复、确认项调整、完工证据展示及需求/运行记录。新增派单自动化尚未实施。
 - 本轮重新执行管理端和 H5 各自的 npm run lint、npm run typecheck、npm test、npm run build，八项全部通过；管理端216测试、H5 42测试，失败/取消/跳过均0。日志在 Git 忽略的 tmp/pre-map-{admin,h5}-*.log。git diff --check 通过。无后端/数据库结构变更，未重复运行 Maven、Flyway 或数据库集成；未调用真实地图/OCR。
 - 用户已同时授权检查点完成后进入本轮派单改造阶段；新业务界面仅限派单页，其他页面保持检查点版本。拟复用开发模拟网点和其开发端账号，使用明确测试标识的真实地点地址。
+
+## 2026-10-25：派单页自动定位、道路推荐与一次确认（已同步本机）
+
+- 前置检查点按用户顺序完成：main提交ebde202（fix(ui): save confirmed workflow and receipt improvements）并正常推送origin/main。fetch后没有分叉，无需空合并；随后创建codex/automatic-dispatch实现本轮功能，新增功能未再次推送或合并main。
+- 业务界面仅增加AutomaticDispatchPanel并接入DispatchLocation/WorkOrderDetailView的派单部分。接收已保存事故地址或优先保留人工接车位置，首次派单自动定位、复核广东父链及精度、计算合格合作网点道路距离、完整比较后预选最近；更正地址回车/失焦合并处理，允许更换网点，失败/部分/过期保留输入并提示。已有改派及其他业务页面不改。
+- 服务端新增当前任务身份登记V29（不存原始地址、供应商坐标、密钥或结果），复用MapLocationService与MapRecommendationService的受控预算、策略32、最多50家、120秒有效期及既有派单服务。新输入使旧任务不可派单；相同输入刷新复用，不因组件重挂重复调用；重启/失败/过期须明确重算。最后一次确认同事务保存必要区县、接车地址、派单与审计，原事故原文不改写，疑似重复失败全量回滚。旧推荐入口不能用于绕过自动方案最终确认。
+- 管理端新增6项交互测试；后端新增7项真实PostgreSQL集成，覆盖读写分离、人工换店、请求去重、精度/供应商失败、部分比较、进程重启、旧输入隔离、角色/版本、最终幂等、并发晚响应与疑似重复回滚。OpenAPI注解及说明同步，详见AUTOMATIC_DISPATCH.md。
+
+| 实际命令/证据 | 本轮结果 |
+| --- | --- |
+| 改造前管理端和H5各自npm run lint、npm run typecheck、npm test、npm run build | 八项PASS；管理端216、H5 42测试，0失败/取消/跳过，随ebde202推送 |
+| 管理端实现期间npm run lint、typecheck、test、build | 曾全量222测试及四项PASS；最后共享工作区验证期间有其他聊天并发编辑TextFormIntake/ScenePhotoIntake/WorkOrdersView与上传测试，出现219/222通过的中间态；未修改或回滚这些非派单文件 |
+| 隔离前端门禁 | git archive ebde202的admin/H5/backend，覆盖本轮派单文件，在tmp/auto-dispatch/checkpoint-source/admin-web执行npm run lint、npm run typecheck、npm test、npm run build；最终结果以下方收尾记录为准。依赖只联接既有相同lock的node_modules，不安装或更新依赖 |
+| 后端tmp/auto-dispatch/verify-backend.ps1、verify-final.ps1、verify-rollback.ps1 | Java21、Maven offline verify -Ppostgres-it、显式Mockito agent；94单元PASS。相关集成不同用例合计52项PASS（地图26、工单20、主线迁移1、旧V25迁移1、预算4），0最终失败/错误/跳过；最后仅回滚用例修正夹具后单独重跑PASS，未重复累计单元数量。最终BUILD SUCCESS及JAR打包成功 |
+| 初次失败与修复 | 沙箱本机socket禁止导致供应商Mock测试失败，使用本机测试服务权限重跑；V29要求旧版本/数量断言更新；测试会话隔离、Mockito doAnswer避免空参数触发旧替身；更正接车区县可空值拆箱是真实缺陷，已修复；回滚夹具编号长度和正式身份字段补齐。未删测试、跳过测试或放宽类型 |
+| 浏览器合成验证 | 桌面1280×900及390窄屏截图、人工换店和无横向溢出PASS；临时预览强制隔离adapter，无真实业务/供应商回退，临时预览源码已移除，截图保留 |
+| 本机部署/基础设施 | 新JAR SHA256=7514855C0A7CDA533251D2FC24A411809A9F38877127B302F9F27BFAB9A6B515；数据库/JAR/私密配置先备份；新包提取兼容SQL与现用旧SQL逐份字节相同，只追加V29，public28→29成功，旧V25未repair/改写。仅按命令行/创建时间核实后重启后端和隐藏守护；Backend/Admin/AdminApi/LoginApi/WatchRunning/AutoRecoveryEnabled=True；Compose config --quiet PASS，管理端与Docker未重建 |
+| 真实供应商/API验收 | 开发伪网点深圳图书馆地址成功定位。深圳初次测试道路196米，但10家既有店缺车型/坐标，正确PARTIAL且无预选；该自建测试单正常取消，保留历史，无外部通知。广州天河测试区仅开发伪网点具备资格，真实路线128313米、READY、自动预选ID1；任务复用及同键派单重放PASS，开发网点账号实际可见EVR-20261025-000005，停在PENDING_ACCEPTANCE |
+| 真实派单页浏览器 | EVR-20261025-000006保留待派单；页面自动推荐READY、最终按钮可用，刷新读取同一任务，不提交派单、不下载底图SDK。截图dispatch-live-review.png及live-acceptance.json均在tmp/auto-dispatch，无登录Token或Key |
+| 本轮H5、其他领域、MinIO专项 | 新功能无H5/其他领域源码变更，未重复H5专项测试或扩大其他领域集成；前置42项H5验证不冒充本轮新结果。共享工作区其他聊天的H5测试变更不属于本轮 |
+
+- 通过原管理员API复用DEV-SHOP/ID1并保留dev_repair_shop绑定，名称明确“【测试／非真实合作方】”，真实地址只作测试目的地。创建明确标注的测试品牌/车型并授予该开发网点；保留旧服务关系、显式追加深圳9区及天河测试区。真实10家店、现有客户案件、真实资金与账号权限未修改。供应商位置沿原10分钟短期会话，过期/重启须重新定位；tmp/auto-dispatch/refresh-test-location.py可重新准备，随后由用户明确重算，不把临时坐标冒充永久位置。
+- 本机只启用MAP_TEST_SESSION_ENABLED，Key、供应商策略及额度不重置；测试账号密码/Token只在内存使用。备份位于tmp/auto-dispatch/before-install-20261025-212222，测试资料与日志均Git忽略。新功能仍在本地开发分支，完成当前派单阶段后停止，不进入其他业务阶段。
+
+### 派单阶段收尾复验
+
+隔离副本最终执行四项命令全部PASS：lint无警告、TypeScript通过、222测试（失败/取消/跳过0）、生产构建成功。日志为tmp/auto-dispatch/isolated-admin-{lint,typecheck,test,build}.log。逐份SHA/字节核对确认当前派单源码及新增测试与该隔离验证副本完全相同；运行JAR与manifest SHA256一致。私密配置与安装前备份比较，仅MAP_TEST_SESSION_ENABLED变化；本机私密值精确扫描本轮所属源码/API说明无匹配。git diff --check及启动器PowerShell Parser通过。并发建单页面/上传测试的改动原样保留，未纳入本次派单成果，不能将隔离PASS描述为包含所有并发改动的共享工作区最终门禁。当前派单阶段完成，在此停止。
+
+## 2026-10-26：派单地图自动加载、粗定位与两模拟网点（完成）
+
+- 用户要求地图不收起、进入步骤自动加载/定位，地址可编辑补充，并比较香港中文大学（深圳）及市民中心两个模拟维修地点。先补充REQUIREMENTS/DECISIONS，再仅修改派单组件和必要的地图/派单应用服务；共享AmapLocationMap新增显式autoLoad，其他入口不自动加载。原建单、上传、报价、维修、资金和H5页面已有改动均保留，本轮未修改。
+- 地图位于地址下方常驻展开，自动下载高德SDK，显示事故/接车标记和两个目的地；在地图下常驻分页网点列表，展示真实驾车距离、未知/失败原因、当前选择，支持列表和地图联动。地址回车/失焦合并处理；校点不会把事故地址补充误认为车辆转移；迟到结果不能清除新选择。
+- 对唯一道路级候选保留APPROXIMATE地图及参考距离，自动预选完整比较中的最近模拟点，但不开放最终派单。真正多解/行政冲突仍需补充；高德对自由路返回完全相同的两条道路结果，经实测后按完整候选值去重，不把不同地点强行合并。明确事故地址补充在最终确认事务内保存并审计，车辆已转移的接车位置不反写事故地点。
+- 增加dev显式MAP_SIMULATION_DESTINATIONS_ENABLED（默认false，仅dev且CUSTOMER_SERVICE可访问）。模拟目的地只用于道路比较，不声称真实车型维修资格；原真实合作网点资格流程保持。最终选择ID13等目的地时，服务端复核结果及版本后，映射到原DEV-SHOP/ID1接收，继续执行原启用/事故服务区域、状态、幂等、事务和审计；不扩大网点账号的数据可见范围。
+- 通过原管理员API复用DEV-SHOP/ID1作香港中文大学（深圳）模拟地点，新建DEV-SIM-CIVIC/ID13作市民中心模拟地点，均有【测试／非真实合作方】标识；使用与指定名称完全一致的地点候选，排除上园/医院等同名结果，再按原管理员定位接口核实GCJ-02坐标。原10家真实导入店和账号绑定未改。此次固定测试点通过管理员核实录入，不依赖旧10分钟会话；无供应商原响应、Key、完整路线进入Git。
+
+| 本轮实际验证 | 结果与证据 |
+| --- | --- |
+| 管理端 npm run lint、npm run typecheck、npm test、npm run build | 全量227测试PASS，失败/取消/跳过0；完整门禁通过。随后地图视野与小屏排版收尾，重新执行lint/typecheck/build和地图相关18项测试全部PASS；日志tmp/map-open-20261026/admin-*.log及admin-final-*.log |
+| 后端 verify-backend.ps1 / verify-final.ps1 / verify-road-final.ps1 | Java21、Maven offline verify -Ppostgres-it、显式Mockito agent；94单元PASS，相关不同集成合计55项PASS（地图29、工单20、两类迁移各1、预算4），最终0失败/错误/跳过，JAR打包成功。重复道路候选去重后，相关粗定位/补充/派单门禁项单独重跑PASS，不重复累计用例 |
+| 失败修复记录 | 首轮测试夹具的DEV-SHOP服务区域/模拟名称残留干扰原资格测试，已在专用随机schema的BeforeEach隔离；模拟SQL列顺序与MapData.Shop构造顺序不一致造成实际409，已修复并复验；旧静态地图测试固定onMounted(configurationStatus)，已更新为可选autoLoad并保留默认显式加载动态断言。未删除测试、跳过断言或放宽类型 |
+| 真实地址/路线/接单 | 深圳音乐厅→市民中心669米，→香港中文大学（深圳）29321米，自动选择市民中心；EVR-20261026-000002按目的地ID13派单后实际shopId=1，dev_repair_shop回读可见，同键重放没有重复派单。EVR-20261026-000003留在待派单供查看。仅自建合成数据，无真实客户/车辆/付款或外部通知 |
+| 真实浏览器 | 高德SDK自动加载一次、底图完成、两网点常驻及距离、换店、自由路APPROXIMATE、粗定位派单禁用、完整地址恢复推荐、小屏无横向溢出均PASS。visual-acceptance.json、mobile-layout-acceptance.json及三类截图在tmp/map-open-20261026；浏览器未提交最终派单 |
+| 本机部署 | 先备份旧JAR、数据库dump、私密配置，逐份核对旧兼容SQL字节不变，public继续V29，无新迁移/repair/清库。仅按PID/命令行/创建时间核实后重启后端与隐藏守护，管理端/Vite及Docker保持。Backend/Admin/AdminApi/LoginApi/WatchRunning/AutoRecoveryEnabled均True |
+| 最终完整性/配置 | 当前JAR SHA256=56AA216594CBB065DA63A5ABCC36C5607186663E4C9B0FA1687B0D90829EDDBC；最终备份tmp/map-open-20261026/before-install-20261026-160554。与本轮首次安装前配置比较，仅MAP_SIMULATION_DESTINATIONS_ENABLED变化；真实Key、策略、预算保持。私密值精确扫描本轮所属文件无匹配，git diff --check通过 |
+| H5/其他模块 | 本轮无对应源码或业务变更，未重复完整H5/其他领域专项，不冒用历史结果；原有H5测试和建单页面并发任务成果保留 |
+
+接口说明和覆盖此前历史规则的最新边界见AUTOMATIC_DISPATCH.md的2026-10-26部分。当前仍在本地codex/automatic-dispatch，未提交/推送本轮改造或合并main。本派单界面阶段完成，在此停止，不进入其他业务阶段。
+## 2026-10-26：粗略定位可派单、等待接单简页及进度条保留（完成）
+
+- 用户确认有可用粗略定位即可派单，派单后展示等待网点接单及网点/案件信息，随后补充要求顶部原案件进度条保留。本阶段先更新REQUIREMENTS，再修改初次自动派单与等待状态分支，其他建单/上传/H5并发改动保留。
+- 自动派单前后端均允许唯一、行政信息一致的有效道路/街道/路段位置；所选网点必须有成功道路结果，保留精度提示、角色、状态、版本、资格、有效期、幂等与事务回滚。完整比较才自动预选最近，部分比较需人工选店。独立人工定位确认接口保持原行为。
+- V30给派单记录增加可空目的地名称/地址/ID和精度快照，保持模拟目的地ID13与实际接收开发网点ID1的区分；读接口同时返回实际接收网点名称/地址。旧记录回退实际接收方，不造历史目的地。OWNER仍不返回currentAssignment，网点数据范围沿原服务校验。
+- 客户端成功响应立即切换到PENDING_ACCEPTANCE等待视图，再读取持久化信息；顶部复用原页头和九节点WorkflowTimeline，下面只有状态、被派单网点和案件信息。刷新重入保留状态，切换时回到页顶并留出进度条与内容间距；原地图、地址输入、网点选择和派单控制隐藏。网点接单后恢复原后续流程。
+
+| 实际验证/命令 | 结果 |
+| --- | --- |
+| 管理端 npm run lint、npm run typecheck、npm test、npm run build | 初轮及最终完整门禁均PASS；最终231项测试，失败/取消/跳过0。日志tmp/rough-dispatch-20261026/admin-final-*.log |
+| 后端 verify-backend.ps1，Java21、Maven offline verify -Ppostgres-it、显式Mockito agent | 94单元及57相关集成PASS（地图31、工单20、主线/旧V25迁移各1、预算4），失败/错误/跳过0；BUILD SUCCESS。最终OpenAPI说明更新后package-final.ps1再次编译、94单元及打包PASS，不重复累计数量 |
+| 回归覆盖 | 模拟及正式资格分支路段定位均能派单；ROAD目的地快照刷新可读、同键重放一条派单、精确地址补充仍只在最终派单保存；无位置/无路线/过期不可提交，其他权限、并发、回滚及状态回归保持 |
+| 首轮失败与修复 | 重复添加已有assignedAt访问器导致编译失败，移除本次重复项；等待页离线渲染测试未转换编译器注入的Vue导入，修正测试加载器；原“道路不能定位”夹具改为真正不够精细的区县级定位，保留其拒绝与不重复外呼断言。没有删测试、屏蔽错误或放宽类型 |
+| 浏览器真实流程 | 新建明确标记的合成EVR-20261026-000005，深圳宝安自由路APPROXIMATE按钮可用，实际提交到市民中心目的地13、由开发网点1接收；持久化ROAD，dev_repair_shop回读可见。等待页和刷新后均有九节点进度条、所选目的地及案件信息，没有地图/旧派单控制；桌面和390宽度无横向溢出，状态卡片不被进度条遮盖，刷新回到顶部。回执visual-acceptance.json、waiting-layout-acceptance.json及截图均在tmp/rough-dispatch-20261026 |
+| 本机部署 | 先备份数据库dump/JAR/私密配置，逐份核对兼容旧SQL字节不变，仅追加V30，public实际29→30成功；未repair或清库。只重启核实身份的本任务后端/隐藏守护，原Vite/Docker保留。Backend/Admin/AdminApi/LoginApi/WatchRunning/AutoRecoveryEnabled均True；未运行的PreviewApi为False |
+| 最终完整性 | JAR SHA256=DCD225D06F420BE8C258C7CDCCCA0962129561B9E66DC873AC5FB54A354C1F03；备份tmp/rough-dispatch-20261026/before-install-20261026-173031；运行包哈希与manifest一致，私密配置键值未变化、所属源码配置密钥精确扫描无匹配，git diff --check通过 |
+| 验证边界 | 仅自建合成案件实际提交，未接单/支付/发送外部通知。此前000003已不在待派单状态，未改动而另建测试案件。H5与其他业务无本轮代码变更，未重复其专项；Compose配置无本轮变更，未重新执行配置校验 |
+
+本阶段完成并停止；保持本地codex/automatic-dispatch，未再次提交、推送或合并main，不进入下一业务阶段。
+
+## 2026-10-26：本地改动提交及 main 交付检查
+
+- 用户本轮明确授权提交全部现有本地改动、合入 main 并上传。交付包含自动定位/模拟目的地派单、粗略定位派单、等待接单页面、V29/V30迁移，以及已存在的建单文字/照片导入界面与测试调整；不进入新的业务阶段。
+- 提交前重新 fetch origin --prune，当前功能分支、main 与 origin/main 均以 ebde202 为起点，无分叉；采用正常提交及快进合并，不强制推送。
+- 当前完整工作区在 admin-web、h5-web 分别执行 npm run lint、npm run typecheck、npm test、npm run build，八项全部通过。管理端231项、H5 42项测试，失败/取消/跳过均0；日志在 Git 忽略的 tmp/publish-main-20261026/{admin,h5}-*.log。
+- 后端执行 powershell -NoProfile -ExecutionPolicy Bypass -File tmp/publish-main-20261026/verify-backend.ps1，沿用现有Java21、显式Mockito agent、离线Maven verify -Ppostgres-it及独立测试schema设置；94项单元、57项相关集成全部通过，失败/错误/跳过均0，BUILD SUCCESS并完成JAR打包。集成包括地图31项、工单20项、预算4项、主线与旧V25迁移各1项。首轮沙箱禁止本机回环连接导致41项环境错误，在允许本机测试连接的环境重跑通过，未修改代码或放宽断言。日志与构建报告在 tmp/publish-main-20261026/。
+- git diff --check、Manage-LocalWebsite.ps1的PowerShell Parser、docker compose --env-file .env -f infra/docker-compose.yml config --quiet均通过。对改动文件进行本机环境密钥值精确匹配：仅既有.env.example默认示例匹配，新增示例行及其他改动文件无匹配；未纳入.env、运行目录或测试日志。
+- 本轮未重新执行浏览器或真实供应商验收，沿用前述阶段证据，不冒充新验收；未安装新运行包、重启业务服务或部署生产。Git提交、main合并及远端推送的最终结果以本轮Git回执为准。

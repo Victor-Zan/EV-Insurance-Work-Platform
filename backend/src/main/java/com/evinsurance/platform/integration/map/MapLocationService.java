@@ -69,10 +69,15 @@ public class MapLocationService {
         return candidates.stream().map(c->{UUID token=UUID.randomUUID();sessions.put(token,new Session(token,actor,district,c,false,Instant.now().plusSeconds(600),provider.providerId()));return new Choice(token,c);}).toList();
     }
     public synchronized Session confirm(UUID token){
+        return confirmForDispatch(token,false);
+    }
+    synchronized Session confirmForDispatch(UUID token,boolean allowRoad){
         access();var s=session(token,false);
-        if(!"REQUIRES_CONFIRMATION".equals(s.candidate().status()))throw ApiException.invalid("位置有地域冲突或不明确，请补充详细地址");
+        var candidate=s.candidate();boolean road=allowRoad&&!candidate.mock()&&"NEEDS_DETAIL".equals(candidate.status())&&Set.of("道路","街道","路段").contains(candidate.level());
+        if(road){var expected=address(s.districtId(),candidate.address());road=GuangdongAddress.inProvince(candidate)&&expected.city().equals(candidate.city())&&expected.district().equals(candidate.district())&&expected.districtAdcode().equals(candidate.adcode());GuangdongAddress.point(candidate.point());}
+        if(!"REQUIRES_CONFIRMATION".equals(candidate.status())&&!road)throw ApiException.invalid("位置有地域冲突或不明确，请补充详细地址");
         if(!s.confirmed()){s=new Session(s.token(),s.actorId(),s.districtId(),s.candidate(),true,s.expires(),s.provider());sessions.put(token,s);
-            audit.record(CurrentUser.require(),AuditService.Action.MAP_LOCATION_CONFIRM,"MAP_LOCATION",token,"districtId="+s.districtId()+"; provider="+s.provider()+"; address/coordinates omitted");}
+            audit.record(CurrentUser.require(),AuditService.Action.MAP_LOCATION_CONFIRM,"MAP_LOCATION",token,"districtId="+s.districtId()+"; provider="+s.provider()+"; accuracy="+(road?"ROAD":"PRECISE")+"; address/coordinates omitted");}
         return s;
     }
     public synchronized Session session(UUID token,boolean confirmed){

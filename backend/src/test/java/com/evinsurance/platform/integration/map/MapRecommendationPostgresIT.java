@@ -26,19 +26,26 @@ class MapRecommendationPostgresIT {
     private static final String PASSWORD=UUID.randomUUID().toString();
     private static final String SCHEMA="amap_it_"+UUID.randomUUID().toString().replace("-","");
     private static final String SECRET=secret();
+    private static volatile boolean simulationEnabled=false;
     private static String secret(){byte[] bytes=new byte[32];new java.security.SecureRandom().nextBytes(bytes);return Base64.getEncoder().encodeToString(bytes);}
     @DynamicPropertySource static void config(DynamicPropertyRegistry r){
         String url=System.getenv("TEST_DB_URL");if(url==null)throw new IllegalStateException("Dedicated PostgreSQL test configuration required");
         r.add("spring.datasource.url",()->url+(url.contains("?")?"&":"?")+"currentSchema="+SCHEMA);r.add("spring.datasource.username",()->System.getenv("TEST_DB_USERNAME"));r.add("spring.datasource.password",()->System.getenv("TEST_DB_PASSWORD"));r.add("spring.flyway.schemas",()->SCHEMA);r.add("spring.flyway.default-schema",()->SCHEMA);
         r.add("MAP_TEST_SESSION_ENABLED",()->"true");
+        r.add("MAP_SIMULATION_DESTINATIONS_ENABLED",()->simulationEnabled);
         for(String name:List.of("MINIO_ENDPOINT","MINIO_ACCESS_KEY","MINIO_SECRET_KEY","MINIO_BUCKET"))r.add(name,()->System.getenv("TEST_"+name));
         r.add("JWT_SECRET_BASE64",()->SECRET);r.add("JWT_TTL_SECONDS",()->"1800");r.add("OCR_WORKER_ENABLED",()->"false");
         for(String role:List.of("ADMIN","CUSTOMER_SERVICE","REPAIR_SHOP","OWNER"))r.add("DEV_"+role+"_PASSWORD",()->PASSWORD);
     }
     @MockitoBean MapProvider provider;
-    @Autowired MockMvc mvc;@Autowired ObjectMapper json;@Autowired JdbcTemplate db;@Autowired Flyway flyway;@Autowired MapRecommendationService recommendations;
+    @Autowired MockMvc mvc;@Autowired ObjectMapper json;@Autowired JdbcTemplate db;@Autowired Flyway flyway;@Autowired MapRecommendationService recommendations;@Autowired MapLocationService mapLocations;
     private String admin,cs,shop,owner;private long province,city,district,model,actor;private UUID caseId;private final List<Long> shops=new ArrayList<>();private AtomicInteger routes;
     @BeforeEach void setup() throws Exception {
+        simulationEnabled=false;
+        db.update("update repair_shop set name='开发模拟维修网点' where code='DEV-SHOP'");
+        db.update("update repair_shop set name='历史合成模拟目的地',enabled=false where code like 'DEV-SIM-%'");
+        db.update("delete from shop_service_region where shop_id=(select id from repair_shop where code='DEV-SHOP') and region_id in(select id from region where code like '44%')");
+        ((Map<?,?>)ReflectionTestUtils.getField(mapLocations,"sessions")).clear();
         reset(provider);when(provider.providerId()).thenReturn("AMAP_WEB_V1");routes=new AtomicInteger();
         when(provider.resolve(any())).thenAnswer(inv->{var a=(MapProvider.Address)inv.getArgument(0);return List.of(new MapProvider.AddressCandidate("合成停车位置",new MapProvider.Point(23,113),"广东省",a.city(),a.district(),a.districtAdcode(),"门牌号","REQUIRES_CONFIRMATION",false));});
         when(provider.locate(any())).thenReturn(new MapProvider.AddressCandidate("合成位置",new MapProvider.Point(23.1,113.1),"广东省","广州市","天河区","440106","REVERSE","REQUIRES_CONFIRMATION",false));
@@ -71,12 +78,137 @@ class MapRecommendationPostgresIT {
         }
     }
     private String login(String user,String portal) throws Exception{return postJson("/api/v1/auth/login",null,Map.of("username",user,"password",PASSWORD,"portal",portal),null,200).path("data").path("accessToken").asString();}
-    private JsonNode postJson(String path,String token,Object body,String key,int statusCode) throws Exception {var request=post(path).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body));if(token!=null)request.header("Authorization","Bearer "+token);if(key!=null)request.header("Idempotency-Key",key);return json.readTree(mvc.perform(request).andExpect(status().is(statusCode)).andReturn().getResponse().getContentAsString());}
+    private JsonNode postJson(String path,String token,Object body,String key,int statusCode) throws Exception {var request=post(path).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body));if(token!=null)request.header("Authorization","Bearer "+token);if(key!=null)request.header("Idempotency-Key",key);var response=mvc.perform(request).andReturn().getResponse();var payload=json.readTree(response.getContentAsString());assertThat(response.getStatus()).as(path+" code="+payload.path("code").asString()).isEqualTo(statusCode);return payload;}
     private void capability(long shop,List<Long> models) throws Exception{mvc.perform(put("/api/v1/maps/admin/shops/"+shop+"/capabilities").header("Authorization","Bearer "+admin).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("modelIds",models)))).andExpect(status().isOk());}
     private UUID position() throws Exception {var choices=postJson("/api/v1/maps/locations/resolve",cs,Map.of("districtId",district,"detail","合成停车位置10号"),null,200).path("data");UUID token=UUID.fromString(choices.get(0).path("token").asString());postJson("/api/v1/maps/locations/"+token+"/confirm",cs,Map.of(),null,200);return token;}
     private JsonNode query(UUID token,String key,Long cityId,int expected) throws Exception {var body=new HashMap<String,Object>();body.put("locationToken",token);body.put("shopCityId",cityId);return postJson("/api/v1/maps/cases/"+caseId+"/recommendations",cs,body,key,expected);}
 
+    @Autowired AutomaticDispatchService automatic;
+    private JsonNode automatic(Map<String,Object> input)throws Exception{return postJson("/api/v1/maps/cases/"+caseId+"/automatic-dispatch",cs,input,null,200).path("data");}
+    private String automaticPath(String id){return "/api/v1/maps/cases/"+caseId+"/automatic-dispatch/"+id;}
+    @Test void automaticPlanDefersWritesReusesRequestsAndDispatchesManualChoiceOnce()throws Exception{
+        db.update("update work_order set accident_address='广州市天河区合成测试街10号',accident_region_id=?,parking_address=null,parking_region_id=null,dispatch_address_confirmed=false where id=?",city,caseId);
+        var before=db.queryForMap("select version,accident_region_id,accident_address,parking_address,dispatch_address_confirmed from work_order where id=?",caseId);
+        var input=Map.<String,Object>of("requestKey",UUID.randomUUID());var result=automatic(input);
+        assertThat(result.path("status").asString()).isEqualTo("READY");assertThat(result.path("selectedShopId").asLong()).isEqualTo(shops.get(1));assertThat(routes.get()).isEqualTo(3);
+        assertThat(db.queryForMap("select version,accident_region_id,accident_address,parking_address,dispatch_address_confirmed from work_order where id=?",caseId)).isEqualTo(before);
+        assertThat(automatic(Map.of("requestKey",UUID.randomUUID())).path("id").asString()).isEqualTo(result.path("id").asString());assertThat(routes.get()).isEqualTo(3);verify(provider,times(1)).resolve(any());
+        String id=result.path("id").asString(),key=UUID.randomUUID().toString();var body=Map.of("shopId",shops.get(0),"confirmPossibleDuplicate",true,"duplicateReason","合成自动派单测试");
+        postJson("/api/v1/maps/recommendations/"+result.path("recommendation").path("queryId").asString()+"/dispatch",cs,body,UUID.randomUUID().toString(),409);
+        var done=postJson(automaticPath(id)+"/dispatch",cs,body,key,200).path("data");assertThat(done.path("shopId").asLong()).isEqualTo(shops.get(0));assertThat(done.path("dispatchAddressConfirmed").asBoolean()).isTrue();assertThat(done.path("accidentRegionId").asLong()).isEqualTo(district);
+        assertThat(done.path("accidentAddress").asString()).isEqualTo("广州市天河区合成测试街10号");
+        postJson(automaticPath(id)+"/dispatch",cs,body,key,200);assertThat(db.queryForObject("select count(*) from work_order_assignment where work_order_id=?",Long.class,caseId)).isEqualTo(1);
+        assertThat(routes.get()).isEqualTo(3);flyway.validate();
+    }
+    @Test void automaticImpreciseAddressAndSupplierFailureNeverRepeatUntilExplicitRetry()throws Exception{
+        doAnswer(inv->{var a=(MapProvider.Address)inv.getArgument(0);return List.of(new MapProvider.AddressCandidate("区县级合成位置",new MapProvider.Point(23,113),"广东省",a.city(),a.district(),a.districtAdcode(),"区县","NEEDS_DETAIL",false));}).when(provider).resolve(any());
+        var input=Map.<String,Object>of("requestKey",UUID.randomUUID());var result=automatic(input);assertThat(result.path("status").asString()).isEqualTo("NEEDS_REVIEW");assertThat(result.hasNonNull("selectedShopId")).isFalse();assertThat(routes.get()).isZero();
+        automatic(Map.of("requestKey",UUID.randomUUID()));verify(provider,times(1)).resolve(any());
+        doThrow(MapFailure.of("QUOTA")).when(provider).resolve(any());automatic(Map.of("requestKey",UUID.randomUUID(),"retry",true));verify(provider,times(2)).resolve(any());assertThat(routes.get()).isZero();
+    }
+    @Test void automaticPartialComparisonDoesNotClaimNearestAndQualificationChangeBlocksDispatch()throws Exception{
+        when(provider.driving(any(),any(),eq(32))).thenAnswer(inv->{routes.incrementAndGet();var to=(MapProvider.Point)inv.getArgument(1);if(to.longitude()<113.15)throw MapFailure.of("NO_ROUTE");return new MapProvider.DrivingRoute(1000,100L,32,0,false);});
+        var result=automatic(Map.of("requestKey",UUID.randomUUID()));assertThat(result.path("status").asString()).isEqualTo("PARTIAL");assertThat(result.hasNonNull("selectedShopId")).isFalse();
+        var before=db.queryForMap("select version,parking_address,accident_region_id from work_order where id=?",caseId);capability(shops.get(1),List.of());
+        postJson(automaticPath(result.path("id").asString())+"/dispatch",cs,Map.of("shopId",shops.get(1)),UUID.randomUUID().toString(),409);
+        assertThat(db.queryForMap("select version,parking_address,accident_region_id from work_order where id=?",caseId)).isEqualTo(before);
+    }
+    @Test void automaticRestartAndChangedInputInvalidateOldPlansWithoutHiddenCalls()throws Exception{
+        var result=automatic(Map.of("requestKey",UUID.randomUUID()));String id=result.path("id").asString();assertThat(routes.get()).isEqualTo(3);
+        ((Map<?,?>)ReflectionTestUtils.getField(automatic,"plans")).clear();assertThat(automatic(Map.of("requestKey",UUID.randomUUID())).path("status").asString()).isEqualTo("EXPIRED");assertThat(routes.get()).isEqualTo(3);
+        var next=automatic(Map.of("requestKey",UUID.randomUUID(),"address","广州市天河区新接车入口20号","corrected",true));assertThat(next.path("status").asString()).as(next.path("message").asString()).isEqualTo("READY");assertThat(next.path("id").asString()).isNotEqualTo(id);assertThat(routes.get()).isEqualTo(6);
+        postJson(automaticPath(id)+"/dispatch",cs,Map.of("shopId",shops.get(0)),UUID.randomUUID().toString(),404);
+    }
+    @Test void automaticRolesCaseVersionAndAccidentConflictsAreEnforced()throws Exception{
+        String path="/api/v1/maps/cases/"+caseId+"/automatic-dispatch";
+        for(String denied:List.of(admin,shop,owner))postJson(path,denied,Map.of("requestKey",UUID.randomUUID()),null,403);
+        postJson(path,null,Map.of("requestKey",UUID.randomUUID()),null,401);verify(provider,never()).resolve(any());
+        var result=automatic(Map.of("requestKey",UUID.randomUUID()));db.update("update work_order set version=version+1 where id=?",caseId);
+        postJson(automaticPath(result.path("id").asString())+"/dispatch",cs,Map.of("shopId",shops.get(0)),UUID.randomUUID().toString(),409);
+        db.update("update work_order set accident_address='深圳市南山区合成地点10号' where id=?",caseId);
+        long otherCity=db.queryForObject("insert into region(code,name,level,parent_id) values('440300','深圳市',2,?) on conflict(code) do update set enabled=true returning id",Long.class,province);
+        db.update("insert into region(code,name,level,parent_id) values('440305','南山区',3,?) on conflict(code) do update set enabled=true",otherCity);
+        assertThat(automatic(Map.of("requestKey",UUID.randomUUID())).path("status").asString()).isEqualTo("NEEDS_REVIEW");assertThat(routes.get()).isEqualTo(3);
+    }
     @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
+    private long simulationFixtures()throws Exception{
+        simulationEnabled=true;
+        long receiver=db.queryForObject("select id from repair_shop where code='DEV-SHOP'",Long.class);
+        db.update("update repair_shop set name='【测试／非真实合作方】合成模拟网点甲',address='合成测试街道甲10号',enabled=true where id=?",receiver);
+        db.update("insert into shop_service_region(shop_id,region_id) values(?,?) on conflict do nothing",receiver,district);
+        postJson("/api/v1/maps/admin/shops/"+receiver+"/location",admin,Map.of("districtId",district,"longitude",113.1,"latitude",23.1,"gcj02Confirmed",true),null,200);
+        db.update("update repair_shop set code=?,name='【测试／非真实合作方】合成模拟网点乙' where id=?","DEV-SIM-"+UUID.randomUUID().toString().substring(0,8),shops.get(1));
+        return receiver;
+    }
+    @Test void simulationsCompareAllDestinationsAndDispatchOnlyToOriginalDeveloperShop()throws Exception{
+        long receiver=simulationFixtures();db.update("update work_order set vehicle_brand='未映射的合成品牌' where id=?",caseId);
+        var catalog=json.readTree(mvc.perform(get("/api/v1/maps/simulation-shops").header("Authorization","Bearer "+cs)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data");
+        assertThat(catalog.path("total").asLong()).isEqualTo(2);assertThat(routes.get()).isZero();
+        var result=automatic(Map.of("requestKey",UUID.randomUUID()));assertThat(result.path("status").asString()).isEqualTo("READY");assertThat(result.path("simulation").asBoolean()).isTrue();assertThat(result.path("selectedShopId").asLong()).isEqualTo(shops.get(1));assertThat(routes.get()).isEqualTo(2);
+        var body=Map.of("shopId",shops.get(1),"confirmPossibleDuplicate",true,"duplicateReason","仅模拟目的地联调");String key=UUID.randomUUID().toString();
+        var done=postJson(automaticPath(result.path("id").asString())+"/dispatch",cs,body,key,200).path("data");assertThat(done.path("shopId").asLong()).isEqualTo(receiver);
+        mvc.perform(get("/api/v1/work-orders/"+caseId).header("Authorization","Bearer "+shop)).andExpect(status().isOk());
+        postJson(automaticPath(result.path("id").asString())+"/dispatch",cs,body,key,200);assertThat(db.queryForObject("select count(*) from work_order_assignment where work_order_id=?",Long.class,caseId)).isEqualTo(1);
+    }
+    @Test void roughSimulationCanBeDispatchedAndKeepsSelectedDestination()throws Exception{
+        simulationFixtures();
+        doAnswer(inv->{var a=(MapProvider.Address)inv.getArgument(0);var candidate=new MapProvider.AddressCandidate("合成道路粗略位置",new MapProvider.Point(23,113),"广东省",a.city(),a.district(),a.districtAdcode(),"道路","NEEDS_DETAIL",false);return List.of(candidate,candidate);}).when(provider).resolve(any());
+        var rough=automatic(Map.of("requestKey",UUID.randomUUID()));assertThat(rough.path("status").asString()).as(rough.path("message").asString()).isEqualTo("APPROXIMATE");assertThat(rough.path("location").hasNonNull("point")).isTrue();assertThat(rough.hasNonNull("selectedShopId")).isTrue();
+        String key=UUID.randomUUID().toString();var body=Map.of("shopId",shops.get(1),"confirmPossibleDuplicate",true,"duplicateReason","合成粗定位直接派单");
+        var done=postJson(automaticPath(rough.path("id").asString())+"/dispatch",cs,body,key,200).path("data");assertThat(done.path("status").asString()).isEqualTo("PENDING_ACCEPTANCE");
+        var refreshed=json.readTree(mvc.perform(get("/api/v1/work-orders/"+caseId).header("Authorization","Bearer "+cs)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data");
+        assertThat(refreshed.path("currentAssignment").path("destinationShopId").asLong()).isEqualTo(shops.get(1));assertThat(refreshed.path("currentAssignment").path("destinationName").asString()).contains("模拟网点乙");assertThat(refreshed.path("currentAssignment").path("locationPrecision").asString()).isEqualTo("ROAD");
+        postJson(automaticPath(rough.path("id").asString())+"/dispatch",cs,body,key,200);assertThat(db.queryForObject("select count(*) from work_order_assignment where work_order_id=?",Long.class,caseId)).isEqualTo(1);
+    }
+    @Test void preciseSupplementStillSavesOnlyAtFinalDispatch()throws Exception{
+        simulationFixtures();var before=db.queryForMap("select version,accident_address,parking_address from work_order where id=?",caseId);
+        String supplemented="广州市天河区合成事故地点20号";var precise=automatic(Map.of("requestKey",UUID.randomUUID(),"address",supplemented));assertThat(precise.path("status").asString()).isEqualTo("READY");
+        assertThat(db.queryForMap("select version,accident_address,parking_address from work_order where id=?",caseId)).isEqualTo(before);
+        postJson(automaticPath(precise.path("id").asString())+"/dispatch",cs,Map.of("shopId",shops.get(1),"confirmPossibleDuplicate",true,"duplicateReason","合成地址补充测试"),UUID.randomUUID().toString(),200);
+        assertThat(db.queryForObject("select accident_address from work_order where id=?",String.class,caseId)).isEqualTo(supplemented);
+        assertThat(db.queryForObject("select location_precision from work_order_assignment where work_order_id=?",String.class,caseId)).isEqualTo("PRECISE");
+    }
+    @Test void normalCooperativeRecommendationAlsoAllowsUniqueRoadLocation()throws Exception{
+        doAnswer(inv->{var a=(MapProvider.Address)inv.getArgument(0);return List.of(new MapProvider.AddressCandidate("合成道路位置",new MapProvider.Point(23,113),"广东省",a.city(),a.district(),a.districtAdcode(),"道路","NEEDS_DETAIL",false));}).when(provider).resolve(any());
+        var result=automatic(Map.of("requestKey",UUID.randomUUID()));assertThat(result.path("status").asString()).isEqualTo("APPROXIMATE");assertThat(result.path("simulation").asBoolean()).isFalse();
+        postJson(automaticPath(result.path("id").asString())+"/dispatch",cs,Map.of("shopId",shops.get(1),"confirmPossibleDuplicate",true,"duplicateReason","合成合作网点粗定位派单"),UUID.randomUUID().toString(),200);
+        assertThat(db.queryForObject("select location_precision from work_order_assignment where work_order_id=?",String.class,caseId)).isEqualTo("ROAD");
+    }
+    @Test void simulationCatalogAndResultsKeepRoleScopeAndRejectChangedDestination()throws Exception{
+        simulationFixtures();for(String denied:List.of(admin,shop,owner))mvc.perform(get("/api/v1/maps/simulation-shops").header("Authorization","Bearer "+denied)).andExpect(status().isForbidden());
+        var result=automatic(Map.of("requestKey",UUID.randomUUID()));String queryId=result.path("recommendation").path("queryId").asString();
+        for(String denied:List.of(admin,shop,owner))mvc.perform(get("/api/v1/maps/simulation-recommendations/"+queryId).header("Authorization","Bearer "+denied)).andExpect(status().isForbidden());
+        db.update("update repair_shop set enabled=false where id=?",shops.get(1));postJson(automaticPath(result.path("id").asString())+"/dispatch",cs,Map.of("shopId",shops.get(1)),UUID.randomUUID().toString(),409);
+        simulationEnabled=false;mvc.perform(get("/api/v1/maps/simulation-shops").header("Authorization","Bearer "+cs)).andExpect(status().isForbidden());
+    }
+    @Test void automaticFinalDuplicateFailureRollsBackLocationVersionAndAudit()throws Exception{
+        db.update("update work_order set accident_address='广州市天河区合成测试街10号',accident_region_id=?,parking_address=null,parking_region_id=null,dispatch_address_confirmed=false where id=?",city,caseId);
+        UUID duplicate=UUID.randomUUID();
+        db.update("insert into work_order(id,business_no,status,claim_no,vehicle_vin,owner_phone,accident_at,shop_id,current_responsible_id,created_by,updated_by) select ?,'SYNTH-AUTO-DUP-'||?, 'PENDING_ACCEPTANCE',claim_no,vehicle_vin,owner_phone,accident_at,?,current_responsible_id,created_by,updated_by from work_order where id=?",duplicate,duplicate.toString().substring(0,12),shops.get(0),caseId);
+        var result=automatic(Map.of("requestKey",UUID.randomUUID()));assertThat(result.path("status").asString()).isEqualTo("READY");
+        var before=db.queryForMap("select version,accident_region_id,parking_region_id,parking_address,dispatch_address_confirmed from work_order where id=?",caseId);
+        long audits=db.queryForObject("select count(*) from audit_log where object_id=?",Long.class,caseId.toString());
+        String path=automaticPath(result.path("id").asString())+"/dispatch",key=UUID.randomUUID().toString();
+        assertThat(postJson(path,cs,Map.of("shopId",shops.get(0)),key,409).path("code").asString()).isEqualTo("POSSIBLE_DUPLICATE");
+        assertThat(db.queryForMap("select version,accident_region_id,parking_region_id,parking_address,dispatch_address_confirmed from work_order where id=?",caseId)).isEqualTo(before);
+        assertThat(db.queryForObject("select count(*) from audit_log where object_id=?",Long.class,caseId.toString())).isEqualTo(audits);
+        postJson(path,cs,Map.of("shopId",shops.get(0),"confirmPossibleDuplicate",true,"duplicateReason","合成重复确认"),key,200);
+        assertThat(db.queryForObject("select count(*) from work_order_assignment where work_order_id=?",Long.class,caseId)).isEqualTo(1);
+    }
+    @Test void automaticInFlightRefreshReusesWorkAndNewPickupDiscardsLateResult()throws Exception{
+        var entered=new java.util.concurrent.CountDownLatch(1);var release=new java.util.concurrent.CountDownLatch(1);var geocodes=new AtomicInteger();
+        doAnswer(inv->{var a=(MapProvider.Address)inv.getArgument(0);if(geocodes.incrementAndGet()==1){entered.countDown();assertThat(release.await(10,java.util.concurrent.TimeUnit.SECONDS)).isTrue();}return List.of(new MapProvider.AddressCandidate("合成精确入口",new MapProvider.Point(23,113),"广东省",a.city(),a.district(),a.districtAdcode(),"门牌号","REQUIRES_CONFIRMATION",false));}).when(provider).resolve(any());
+        try(var pool=java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()){
+            var first=pool.submit(()->automatic(Map.of("requestKey",UUID.randomUUID())));
+            try{
+                assertThat(entered.await(5,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                assertThat(automatic(Map.of("requestKey",UUID.randomUUID())).path("status").asString()).isEqualTo("RUNNING");assertThat(geocodes.get()).isEqualTo(1);
+                var next=automatic(Map.of("requestKey",UUID.randomUUID(),"address","广州市天河区新接车入口20号","corrected",true));assertThat(next.path("status").asString()).isEqualTo("READY");
+            }finally{release.countDown();}
+            var old=first.get(5,java.util.concurrent.TimeUnit.SECONDS);assertThat(old.path("status").asString()).isEqualTo("NEEDS_REVIEW");assertThat(routes.get()).isEqualTo(3);
+            postJson(automaticPath(old.path("id").asString())+"/dispatch",cs,Map.of("shopId",shops.get(0)),UUID.randomUUID().toString(),409);
+        }
+    }
     @Autowired MapTestPositions testPositions;
     @Test void explicitExtraAttemptIsAppendOnlySharedAndStopsWithOriginalRun() throws Exception {
         String run="offline-extra-"+UUID.randomUUID();
@@ -244,7 +376,7 @@ class MapRecommendationPostgresIT {
         assertThatThrownBy(()->db.update("insert into shop_map_location(shop_id,version,district_id,address_snapshot,longitude,latitude,coordinate_system,source,created_by) values(?,3,?,'合成',113,23,'GPS','ADMIN_CONFIRMED_GCJ02',?)",shopId,district,actor)).isInstanceOf(org.springframework.dao.DataAccessException.class);
         query(position(),UUID.randomUUID().toString(),null,200);
         String audit=String.join("\n",db.queryForList("select summary from audit_log where action like 'MAP_%'",String.class));assertThat(audit).doesNotContain("合成停车位置","合成测试街道","113.15",PASSWORD,"access_token","key=");
-        flyway.validate();assertThat(flyway.info().current().getVersion().toString()).isEqualTo("28");
+        flyway.validate();assertThat(flyway.info().current().getVersion().toString()).isEqualTo("30");
     }
     @Test void ambiguousModelForeignPositionAndUnknownSourceCannotBecomeRealRecommendation() throws Exception {
         when(provider.locate(any())).thenReturn(new MapProvider.AddressCandidate("合成外省",new MapProvider.Point(28,112),"湖南省","长沙市","合成区","430100","REVERSE","REQUIRES_CONFIRMATION",false));

@@ -112,3 +112,18 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Manage-LocalWe
 真实OCR验证任务使用合成单据，未创建工单：在管理端`/ocr/intake?job=c196a576-8677-4274-8dee-9edac3f6e199`可查看`SUCCEEDED`、7行原文及候选，仍须人工核对。聊天上传图片仍不自动OCR。高德定位和驾车API已真实成功，但当前业务库只有模拟/不完整的区域目录，12个启用网点缺车型适配及真实GCJ-02位置；用户已明确“暂时没有，资料以后再补”。本轮不改造成真实资料，不完成真实网点距离推荐验收；原人工地址核对与选店可用。
 
 - 运行包与守护固定 Flyway target=25，2026-10-23启动实际校验26条迁移、public从V24执行V25成功。本地历史数据库备份为Git忽略的 `tmp/login-runtime-sync/db-before-runtime-sync.dump`。更新运行包或迁移时需要重新构建、验证、停止旧进程后替换；拉取源码不会自动替换常驻JAR。
+
+## 2026-10-25 自动派单运行同步
+
+新版派单服务已同步本机8080，管理端5173由原Vite服务提供新页面，H5保持原版本。部署前的JAR、数据库dump、私密配置和进程回执保存在Git忽略的tmp/auto-dispatch/before-install-20261025-212222。新运行包SHA256为7514855C0A7CDA533251D2FC24A411809A9F38877127B302F9F27BFAB9A6B515；原旧V25目录全部SQL逐份字节比对相同，仅追加V29，实际public升级28→29成功。守护Flyway target=29，后台/代理/登录/守护健康通过；前端和Docker未重建。
+
+本机仅显式增加MAP_TEST_SESSION_ENABLED=true，用于标明的开发伪网点10分钟定位会话；原Key、供应商和预算策略保持。测试数据、有效期、复验入口见[AUTOMATIC_DISPATCH.md](AUTOMATIC_DISPATCH.md)。这不表示既有真实10家店已具备车型和坐标资料。
+
+## 2026-10-26：地图自动加载及两个模拟目的地
+
+本机继续使用8080/5173和原public V29，未增加业务迁移。新增dev显式MAP_SIMULATION_DESTINATIONS_ENABLED=true；原供应商Key、PROVIDER/CONTROLLED策略与预算均保持。用户指定的香港中文大学（深圳）和市民中心作为标记测试的目的地，复用原管理员定位维护接口复核GCJ-02坐标，不依赖旧短期测试坐标。后台已备份并同步；当前运行包、数据库dump、私密配置与清单见tmp/map-open-20261026，本轮最终哈希及备份位置以PROGRESS.md收尾记录为准。真实门店资料/账号权限/H5页面未修改。
+## 2026-10-26：粗定位派单、等待接单及顶部进度条
+
+本机8080已同步最终验证JAR，SHA256为DCD225D06F420BE8C258C7CDCCCA0962129561B9E66DC873AC5FB54A354C1F03。安装前数据库dump、JAR、私密配置和进程信息备份在tmp/rough-dispatch-20261026/before-install-20261026-173031。旧兼容SQL逐份字节核对保持，只追加V30；public实际从29升级30，守护target=30。原Vite管理端及Docker保持运行，Backend/Admin/AdminApi/LoginApi/WatchRunning/AutoRecoveryEnabled均True。
+
+等待接单页保留顶部原案件进度条，刷新后显示持久化的目的地和粗定位标记；切换到等待状态回到页顶，避免沿用派单按钮所在的滚动位置。合成测试EVR-20261026-000005从深圳宝安自由路粗定位派往市民中心模拟目的地ID13，实际开发接收shopId=1，开发网点账号回读可见；停在PENDING_ACCEPTANCE，没有代网点接单。既有案件未改动；此前保留的000003已不在待派单状态，因此没有复用它做本轮提交。截图及回执在tmp/rough-dispatch-20261026。

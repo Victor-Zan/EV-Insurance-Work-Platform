@@ -29,9 +29,9 @@ test('map events preserve longitude latitude order and reject missing or invalid
  for(const [lon,lat] of [[NaN,23],[113,Infinity],[181,23],[113,91]])assert.equal(pointFromEvent({lnglat:{getLng:()=>lon,getLat:()=>lat}}),undefined)
  assert.equal(pointFromEvent({}),undefined)
 })
-test('map component waits for explicit bootstrap and completed map, never uses geolocation or client geocoder/routing',()=>{
+test('map component supports optional dispatch autoload and completed map, never uses geolocation or client geocoder/routing',()=>{
  const source=readFileSync(new URL('../src/features/materials/AmapLocationMap.vue',import.meta.url),'utf8')
- assert.match(source,/onMounted\(configurationStatus\)/);assert.match(source,/@click="load"/);assert.match(source,/map\.on\('complete'/)
+ assert.match(source,/onMounted\(async\(\)=>\{await configurationStatus\(\)/);assert.match(source,/props\.autoLoad&&configuration\.value\?\.enabled&&configuration\.value\.configured/);assert.match(source,/@click="load"/);assert.match(source,/map\.on\('complete'/)
  assert.doesNotMatch(source,/Geolocation|navigator\.geolocation|AMap\.Geocoder|AMap\.Driving|securityJsCode|SECURITY_CODE|console\./)
  assert.match(source,/method:'DELETE'/)
 })

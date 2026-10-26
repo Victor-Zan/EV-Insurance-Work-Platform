@@ -19,6 +19,19 @@ public final class WorkOrderRows {
         private String transferDescription;
         private Long assignedBy;
         private Instant assignedAt;
+        private Long destinationShopId;
+        private String destinationName;
+        private String destinationAddress;
+        private String locationPrecision;
+        private String shopName;
+        private String shopAddress;
+
+        public Long getDestinationShopId(){return destinationShopId;} public void setDestinationShopId(Long v){destinationShopId=v;}
+        public String getDestinationName(){return destinationName;} public void setDestinationName(String v){destinationName=v;}
+        public String getDestinationAddress(){return destinationAddress;} public void setDestinationAddress(String v){destinationAddress=v;}
+        public String getLocationPrecision(){return locationPrecision;} public void setLocationPrecision(String v){locationPrecision=v;}
+        public String getShopName(){return shopName;} public void setShopName(String v){shopName=v;}
+        public String getShopAddress(){return shopAddress;} public void setShopAddress(String v){shopAddress=v;}
 
         public Long getId(){return id;} public void setId(Long v){id=v;}
         public UUID getWorkOrderId(){return workOrderId;} public void setWorkOrderId(UUID v){workOrderId=v;}

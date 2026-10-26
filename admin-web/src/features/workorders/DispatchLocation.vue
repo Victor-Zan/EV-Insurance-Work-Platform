@@ -1,15 +1,19 @@
 <script setup lang="ts">
-import {onMounted,ref} from 'vue'
+import {computed,onMounted,ref,watch} from 'vue'
 import {httpClient,currentUser} from '@/shared/http/client'
 import {workOrderApi,type WorkOrder} from './work-orders'
 import MockDispatchLocation from './MockDispatchLocation.vue'
 import ParkingLocationPanel from '../materials/ParkingLocationPanel.vue'
 import AccidentDistrictReview from './AccidentDistrictReview.vue'
 import ManualDispatchChoice from './ManualDispatchChoice.vue'
+import AutomaticDispatchPanel from './AutomaticDispatchPanel.vue'
 const props=defineProps<{caseId:string;order:WorkOrder;selectedShopId?:number}>()
-const emit=defineEmits<{changed:[];pending:[value:boolean];select:[id:number|undefined];recommendation:[id:string|undefined]}>()
-const config=ref<{provider:string;mock:boolean;testEnvironment?:boolean}>(),error=ref('')
+const emit=defineEmits<{changed:[order?:WorkOrder];pending:[value:boolean];select:[id:number|undefined];recommendation:[id:string|undefined];automatic:[value:boolean]}>()
+const config=ref<{provider:string;mock:boolean;testEnvironment?:boolean;simulationDestinations?:boolean}>(),error=ref('')
 const api=workOrderApi(httpClient)
+const manualFlow=ref(false)
+const automatic=computed(()=>Boolean(config.value&&!config.value.mock&&props.order.status==='PENDING_DISPATCH'&&currentUser.value?.roles.includes('CUSTOMER_SERVICE')&&!manualFlow.value))
+watch(automatic,value=>{clearChoice();emit('automatic',value)},{immediate:true})
 const mapRevision=ref(0)
 const realRevision=ref(0),parkingInitial=ref<string>()
 // Manual form synchronization must not invalidate a saved map location.
@@ -33,6 +37,6 @@ async function confirm(value:{districtId:number;address:string}){
 async function loadConfiguration(){emit('pending',true);error.value='';if(!currentUser.value?.roles.includes('CUSTOMER_SERVICE')){config.value={provider:'MANUAL',mock:false};return}try{config.value=(await httpClient.get('/maps/locations/configuration')).data.data}catch(e){error.value=e instanceof Error?e.message:'地图配置读取失败'}}
 onMounted(loadConfiguration)
 </script>
-<template><section class="dispatch-location" data-reading="定位与推荐"><p v-if="config?.testEnvironment" role="note" class="test-banner">隔离测试环境 · 三个学校仅为虚构网点目的地，不是合作维修商，不代表具备维修能力；没有真实事故、车辆或客户。</p><AccidentDistrictReview v-if="['PENDING_DISPATCH','PENDING_ACCEPTANCE','PENDING_ARRIVAL','ARRIVAL_EXCEPTION'].includes(order.status)" :order="order" @changed="accidentChanged" @pending="accidentPending"/><p v-if="error" role="alert">{{ error }} <button v-if="!config" type="button" @click="loadConfiguration">重试读取地图配置</button></p><p v-if="!config&&!error">正在读取地图供应商…</p><MockDispatchLocation :key="'mock-'+mapRevision" v-if="config?.mock" :case-id="caseId" :order="order" :selected-shop-id="selectedShopId" @changed="emit('changed')" @pending="pending" @select="choose($event==null?undefined:{shopId:$event,queryId:''})"/><ParkingLocationPanel :key="'amap-'+mapRevision+'-'+realRevision" v-else-if="config&&currentUser?.roles.includes('CUSTOMER_SERVICE')" :case-id="caseId" :selected-shop-id="selectedShopId" :parking-saved="!mapPending&&!accidentBusy&&order.dispatchAddressConfirmed" :initial-address="parkingInitial??order.parkingAddress??order.accidentAddress??''" @choose="choose" @pending="pending" @confirmed="confirm"/><ManualDispatchChoice v-if="config&&!config.mock" expanded :key="'manual-'+mapRevision" :order="order" :selected-shop-id="selectedShopId" @changed="manualChanged" @editing="manualEditing" @pending="manualPending" @select="manualChoose"/></section></template>
+<template><section class="dispatch-location" data-reading="定位与推荐"><p v-if="config?.testEnvironment" role="note" class="test-banner">开发测试目的地 · 标注为测试的网点地址仅用于联调，不是真实合作维修商，不代表该地点具备维修能力。</p><AutomaticDispatchPanel v-if="automatic" :case-id="caseId" :order="order" :simulation-destinations="config?.simulationDestinations" @changed="emit('changed',$event)" @manual="manualFlow=true"/><template v-else><button v-if="manualFlow&&order.status==='PENDING_DISPATCH'" type="button" @click="manualFlow=false">返回自动定位与推荐</button><AccidentDistrictReview v-if="['PENDING_DISPATCH','PENDING_ACCEPTANCE','PENDING_ARRIVAL','ARRIVAL_EXCEPTION'].includes(order.status)" :order="order" @changed="accidentChanged" @pending="accidentPending"/><p v-if="error" role="alert">{{ error }} <button v-if="!config" type="button" @click="loadConfiguration">重试读取地图配置</button></p><p v-if="!config&&!error">正在读取地图供应商…</p><MockDispatchLocation :key="'mock-'+mapRevision" v-if="config?.mock" :case-id="caseId" :order="order" :selected-shop-id="selectedShopId" @changed="emit('changed')" @pending="pending" @select="choose($event==null?undefined:{shopId:$event,queryId:''})"/><ParkingLocationPanel :key="'amap-'+mapRevision+'-'+realRevision" v-else-if="config&&currentUser?.roles.includes('CUSTOMER_SERVICE')" :case-id="caseId" :selected-shop-id="selectedShopId" :parking-saved="!mapPending&&!accidentBusy&&order.dispatchAddressConfirmed" :initial-address="parkingInitial??order.parkingAddress??order.accidentAddress??''" @choose="choose" @pending="pending" @confirmed="confirm"/><ManualDispatchChoice v-if="config&&!config.mock" expanded :key="'manual-'+mapRevision" :order="order" :selected-shop-id="selectedShopId" @changed="manualChanged" @editing="manualEditing" @pending="manualPending" @select="manualChoose"/></template></section></template>
 
 <style scoped>.test-banner{padding:12px;border:1px solid #c58a28;background:#fff8e6;color:#684714;border-radius:8px}</style>

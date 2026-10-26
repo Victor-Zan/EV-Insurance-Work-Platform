@@ -575,6 +575,17 @@ public class WorkOrderService {
         return view(mapper.find(id),true,actor);
     }
 
+    @Transactional public WorkOrderViews.WorkOrder supplementDispatchAccidentAddress(UUID id,long expectedVersion,String address) {
+        var actor=requireStaff();var row=lock(id);requireVisibleRow(row,actor);requireStatus(row,WorkOrderStatus.PENDING_DISPATCH);
+        if(row.getVersion()!=expectedVersion)throw state("案件版本已变化，请重新核对事故地址");
+        String value=trim(address);if(value==null||value.length()<4||value.length()>200)throw ApiException.invalid("事故地址应为4至200字");
+        if(!Objects.equals(value,row.getAccidentAddress())){
+            if(mapper.supplementDispatchAccidentAddress(id,expectedVersion,value,actor.id())!=1)throw state("案件已被其他操作更新");
+            audit.record(actor,Action.WORK_ORDER_DRAFT_UPDATE,"WORK_ORDER",id,"Accident address supplemented at final dispatch; previousAddressPresent="+(trim(row.getAccidentAddress())!=null)+"; newLength="+value.length()+"; address omitted");
+        }
+        return view(mapper.find(id),true,actor);
+    }
+
     public PageResponse<WorkOrderRows.CityOption> accidentDistricts(String query,int page,int size) {
         requireStaff();int offset=PageResponse.offset(page,size);String search=query==null?"":query.trim();
         if(search.length()>100)throw ApiException.invalid("区县搜索内容不能超过100字符");

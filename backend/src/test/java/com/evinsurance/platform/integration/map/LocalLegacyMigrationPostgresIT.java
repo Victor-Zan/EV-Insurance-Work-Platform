@@ -46,8 +46,9 @@ class LocalLegacyMigrationPostgresIT {
         db.update("insert into work_order(id,business_no,status,insurance_company,claim_no,owner_phone,vehicle_vin,current_responsible_id,created_by,updated_by) values(?,'SYNTH-LEGACY-2','PENDING_DISPATCH','合成保险','REPEATED','13800000000','SYNTH-VIN-2',?,?,?)",UUID.randomUUID(),actor,actor,actor);
         var after=Flyway.configure().dataSource(scoped,user,password).schemas(schema).defaultSchema(schema)
             .locations("filesystem:"+migrations.toAbsolutePath()).placeholders(placeholders).load();
-        assertThat(after.migrate().migrationsExecuted).isEqualTo(4);after.validate();
-        assertThat(after.info().current().getVersion().toString()).isEqualTo("28");
+        assertThat(after.migrate().migrationsExecuted).isEqualTo(6);after.validate();
+        assertThat(after.info().current().getVersion().toString()).isEqualTo("30");
+        assertThat(db.queryForObject("select count(*) from automatic_dispatch_attempt",Long.class)).isZero();
         assertThat(db.queryForObject("select checksum from flyway_schema_history where version='25'",Integer.class)).isEqualTo(checksum);
         assertThat(db.queryForObject("select script from flyway_schema_history where version='25'",String.class)).isEqualTo("V25__allow_repeated_formal_claims.sql");
         assertThat(db.queryForObject("select count(*) from work_order where claim_no='REPEATED'",Long.class)).isEqualTo(2);
