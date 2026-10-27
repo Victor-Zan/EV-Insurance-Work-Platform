@@ -56,7 +56,7 @@ public class SecurityConfiguration {
                 .requestMatchers("/api/v1/ocr/**").hasAnyRole("ADMIN","CUSTOMER_SERVICE")
                 .requestMatchers("/api/v1/maps/admin/**","/api/v1/maps/locations/admin-regions").hasRole("ADMIN")
                 .requestMatchers("/api/v1/maps/configuration", "/api/v1/maps/search", "/api/v1/maps/cities", "/api/v1/maps/geocode", "/api/v1/maps/reverse", "/api/v1/maps/distance", "/api/v1/maps/cases/*/shops").hasAnyRole("ADMIN", "CUSTOMER_SERVICE")
-                .requestMatchers("/api/v1/maps/**").hasRole("CUSTOMER_SERVICE")
+                .requestMatchers("/_AMapService/**","/api/v1/maps/**").hasRole("CUSTOMER_SERVICE")
                 .requestMatchers("/api/v1/work-orders/**").hasAnyRole("ADMIN","CUSTOMER_SERVICE","REPAIR_SHOP","OWNER")
                 .requestMatchers("/api/v1/admin/session").hasAnyRole("ADMIN","CUSTOMER_SERVICE")
                 .requestMatchers("/api/v1/h5/session").hasAnyRole("REPAIR_SHOP","OWNER")

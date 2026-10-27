@@ -26,11 +26,13 @@
 GET /api/v1/maps/js/configuration：客服读取启用/已配置标志，不返回凭据，不外呼。
 POST /api/v1/maps/js/bootstrap：客服明确加载后，返回浏览器所需的公开JS Key、固定servicePath和到期时间；不返回jscode、Web服务Key或Cookie令牌正文。
 
-短期HttpOnly、SameSite=Strict资源Cookie只限 /api/v1/maps/js-proxy，最长10分钟且不超过原JWT有效期。代理请求逐次检查账号启用/激活/绑定、角色和authVersion；仅客服，不能用于其他业务API。登出离页时组件撤销会话；失效或重启不会自动续签。
+高德安全模式要求 serviceHost 使用一级路由 `/_AMapService`。bootstrap 返回此固定路径；资源和 DELETE 会话撤销分别使用 `/_AMapService/v4/map/styles`、`/_AMapService/v3/vectormap`、`/_AMapService/session`，原 `/api/v1/maps/js-proxy` 不再接受资源 Cookie 认证。配置和 bootstrap 仍位于 `/api/v1/maps/js`。
+
+短期HttpOnly、SameSite=Strict资源Cookie只限 /_AMapService，最长10分钟且不超过原JWT有效期。代理请求逐次检查账号启用/激活/绑定、角色和authVersion；仅客服，不能用于其他业务API。登出离页时组件撤销会话；失效或重启不会自动续签。
 
 只代理GET /v4/map/styles及 /v3/vectormap，分别到固定官方webapi.amap.com及fmap01.amap.com。不提供任意URL、POI、地理或路线代理。回调名称受限，不接受调用方jscode或改换Key；拒绝跨站、重定向、超大/异常类型响应及含安全密钥的响应。不转发请求Cookie/Authorization给高德。每会话最多120个代理资源请求、每秒最多20个；这是防滥用技术限制，不是高德计费或既有业务额度。禁用自动重试，连接3秒/读取8秒/总10秒、响应4MiB。
 
-Vite的/api代理使用配置的VITE_API_BASE_URL对应后端，确保SDK资源Cookie同源。生产须使用HTTPS、正确的受信反向代理和/api同源转发；本轮不部署或认可生产配置。
+Vite的/api代理使用配置的VITE_API_BASE_URL对应后端；`/_AMapService` 仅精确转发上述三个路径到同一后端，保留原请求来源，确保SDK资源Cookie同源，不提供任意路径转发。生产须使用HTTPS、正确的受信反向代理，以及/api和上述地图路径的同源转发；本轮不部署或认可生产配置。此路径调整后须重启后端和Vite，并重新打开页面显式加载地图，旧页面的SDK配置不会自动替换。
 
 ## 新增协议
 

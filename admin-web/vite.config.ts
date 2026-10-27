@@ -14,7 +14,10 @@ export default defineConfig(({mode}) => {
     },
   },
   server: {
-    proxy: { '/api': {target:backendOrigin,changeOrigin:false} },
+    proxy: {
+      '/api': {target:backendOrigin,changeOrigin:false},
+      '^/_AMapService/(?:v4/map/styles|v3/vectormap|session)(?:\\?|$)': {target:backendOrigin,changeOrigin:false},
+    },
     port: 5173,
   },
   }

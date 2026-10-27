@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 /** JS base-layer access only; no geocode, POI, routing or arbitrary URL proxy. */
 @Service
 public class JsMapService {
-    public static final String PREFIX="/api/v1/maps/js-proxy",COOKIE="map_js_session";
+    public static final String PREFIX="/_AMapService",COOKIE="map_js_session";
     private static final int LIMIT=4*1024*1024;
     private final boolean enabled;private final String key,code,webBase,vectorBase;
     private final UserMapper users;private final Clock clock;private final OkHttpClient client;

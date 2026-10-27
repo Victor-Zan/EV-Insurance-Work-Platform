@@ -8,7 +8,7 @@ export interface BrowserMapWindow {AMap?:AmapNamespace;_AMapSecurityConfig?:{ser
 let loading:Promise<AmapNamespace>|undefined,identity=''
 /** Explicit invocation only. No side effects at module import; script is never cached locally. */
 export function loadAmapJs(config:JsBootstrap,browser:BrowserMapWindow=window as BrowserMapWindow,doc:Document=document,origin=window.location.origin):Promise<AmapNamespace>{
- if(!/^[A-Za-z0-9_-]{16,128}$/.test(config.publicKey)||config.servicePath!=='/api/v1/maps/js-proxy')return Promise.reject(new Error('地图加载配置无效'))
+ if(!/^[A-Za-z0-9_-]{16,128}$/.test(config.publicKey)||config.servicePath!=='/_AMapService')return Promise.reject(new Error('地图加载配置无效'))
  const requested=origin+config.servicePath+'|'+config.publicKey
  if(loading)return identity===requested?loading:Promise.reject(new Error('本页地图配置已改变，请重新打开页面'))
  if(browser.AMap||browser._AMapSecurityConfig)return Promise.reject(new Error('本页已有不同地图配置，请重新打开页面'))

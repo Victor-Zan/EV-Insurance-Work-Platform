@@ -27,9 +27,16 @@ MAP_PROVIDER=MOCK_V1
 AMAP_WEB_SERVICE_KEY=
 AMAP_MAX_CALLS_PER_PROCESS=0
 AMAP_REQUESTS_PER_SECOND=2
+AMAP_BUDGET_RUN_ID=
+MAP_TEST_SESSION_ENABLED=false
+AMAP_JS_ENABLED=false
+AMAP_JS_API_KEY=
+AMAP_JS_SECURITY_CODE=
 ```
 
-用户只在本机文件填写 Web服务Key，不发聊天、不放VITE。`scripts/Start-Local.ps1` 先读取既有 `-EnvironmentFile`，再自动读取仓库 `.env.amap`；也可用 `-MapEnvironmentFile` 指定私密路径。`scripts/Load-AmapEnvironment.ps1 -EnvironmentFile <本机私密文件>` 可用于手动启动前加载，只接受上述四个后端变量，不输出值。配置文件不会被 Spring 自动读取，直接启动Java/Maven时必须先加载。
+用户只在本机文件填写凭据，不发聊天、不放VITE。`AMAP_WEB_SERVICE_KEY` 是后端地址解析、逆地理与路线查询使用的 **Web服务 Key**；`AMAP_JS_API_KEY` 是控制台选择 **Web端（JS API）** 创建的另一个 Key，配套安全密钥填入 `AMAP_JS_SECURITY_CODE`，两种 Key 不能互相替代。真实底图需同时设置 `MAP_PROVIDER=AMAP_WEB_V1`、`AMAP_JS_ENABLED=true` 并填写完整 JS 配置；JS 安全密钥仅由后端资源代理使用，不注入前端环境。底图加载不会授予 Web 服务查询预算；具体入口与资源请求边界见 [高德 JS 地图说明](AMAP_JS_MAP.md)。
+
+`scripts/Start-Local.ps1` 先读取既有 `-EnvironmentFile`，再自动读取仓库 `.env.amap`；也可用 `-MapEnvironmentFile` 指定私密路径。`scripts/Load-AmapEnvironment.ps1 -EnvironmentFile <本机私密文件>` 可用于手动启动前加载，仅接受上述白名单内的地图变量，不输出值。配置文件不会被 Spring 自动读取，直接启动Java/Maven时必须先加载。修改配置后须重启实际提供 API 的后端；仅刷新浏览器、重跑会复用健康进程的启动器或改文件本身，都不会使既有进程重新读取配置。前端不需要因此重新注入凭据。
 
 真实供应商必须明确设 `MAP_PROVIDER=AMAP_WEB_V1`，缺Key即启动失败；调用上限0表示关闭外呼，正整数为本进程批准预算，所有地址、逆编码、路线请求共用并发安全计数，无自动重试。计数重启会归零，不能通过重启延长已批准预算。只有另行确认真实联调预算与地址之后才设置正数。本轮仅完成实现和离线验收，不启用真实联调。客服入口为工单详情→派单与异常；管理员入口为维修网点→车型与位置。dev Mock可显式维护合成位置，真实模式禁止拿合成坐标计算道路距离。详情见 AMAP_INTEGRATION.md。
 

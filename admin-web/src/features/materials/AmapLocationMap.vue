@@ -22,7 +22,7 @@ async function load(){
   if(props.point)position(props.point);renderShopMarkers()
  }catch{if(!disposed){state.value='failed';error.value='高德地图未能加载。请核对JS Key、安全代理与域名限制；未自动重试，原输入保留。'}}
 }
-async function revoke(){if(issued){issued=false;try{await fetch('/api/v1/maps/js-proxy/session',{method:'DELETE',credentials:'same-origin',keepalive:true})}catch{/* No credential or transport details in browser logs. */}}}
+async function revoke(){if(issued){issued=false;try{await fetch('/_AMapService/session',{method:'DELETE',credentials:'same-origin',keepalive:true})}catch{/* No credential or transport details in browser logs. */}}}
 watch(()=>props.point,point=>{if(point){position(point);map?.setCenter([point.longitude,point.latitude]);map?.setZoom?.(props.approximate?13:15)}else if(parking){map?.remove(parking);parking=undefined}},{deep:true})
 watch(()=>[props.shops,props.selectedShopId,props.disabled,props.publicShops],()=>{parking?.setDraggable(!props.disabled);renderShopMarkers();fitDispatchView()},{deep:true})
 watch(()=>props.publicFocus,point=>{if(point)map?.setCenter([point.longitude,point.latitude])},{deep:true})

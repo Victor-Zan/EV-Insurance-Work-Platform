@@ -9,7 +9,7 @@ function setup(overrides={}){
  const events=[],requests=[],maps=[],fetches=[],hooks={};let sdkCalls=0,bootstrap
  class Map {constructor(_host,options){this.options=options;this.events={};this.destroyed=false;maps.push(this)}on(name,fn){this.events[name]=fn}add(){}remove(){}setCenter(){}destroy(){this.destroyed=true}}
  class Marker {constructor(options){this.position=options.position;this.events={}}on(n,fn){this.events[n]=fn}setPosition(p){this.position=p}setDraggable(){}getPosition(){return {getLng:()=>this.position[0],getLat:()=>this.position[1]}}}
- const client={get:async path=>{requests.push(['get',path]);return {data:{data:{enabled:true,configured:true,reason:'synthetic'}}}},post:async path=>{requests.push(['post',path]);return bootstrap?bootstrap():{data:{data:{publicKey:'synthetic-public-key',servicePath:'/api/v1/maps/js-proxy'}}}}}
+ const client={get:async path=>{requests.push(['get',path]);return {data:{data:{enabled:true,configured:true,reason:'synthetic'}}}},post:async path=>{requests.push(['post',path]);return bootstrap?bootstrap():{data:{data:{publicKey:'synthetic-public-key',servicePath:'/_AMapService'}}}}}
  const source=readFileSync(new URL('../src/features/materials/AmapLocationMap.vue',import.meta.url),'utf8'),{descriptor}=parse(source)
  let code=ts.transpileModule(compileScript(descriptor,{id:'js-map-view'}).content,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText
  code=code.replace(/import\s*\{([^}]+)\}\s*from\s*['"]vue['"];?/g,(_,names)=>`const {${names.replace(/\s+as\s+/g,':')}}=__vue;`)
@@ -27,8 +27,8 @@ test('mount only reads local config; explicit loading waits for complete and map
  f.props.disabled=true;await Vue.nextTick();f.maps[0].events.click({lnglat:{getLng:()=>114,getLat:()=>24}});assert.equal(f.events.length,1)
 })
 test('leaving during bootstrap cannot initialize a late map and revokes its cookie without vendor calls',async()=>{
- const f=setup();let release;f.setBootstrap(()=>new Promise(resolve=>{release=resolve}));await f.hooks.mount();const loading=f.state.load();f.hooks.unmount();release({data:{data:{publicKey:'synthetic-public-key',servicePath:'/api/v1/maps/js-proxy'}}});await loading
- assert.equal(f.sdkCalls(),0);assert.equal(f.maps.length,0);assert.deepEqual(f.fetches[0],[ '/api/v1/maps/js-proxy/session',{method:'DELETE',credentials:'same-origin',keepalive:true}]);f.scope.stop()
+ const f=setup();let release;f.setBootstrap(()=>new Promise(resolve=>{release=resolve}));await f.hooks.mount();const loading=f.state.load();f.hooks.unmount();release({data:{data:{publicKey:'synthetic-public-key',servicePath:'/_AMapService'}}});await loading
+ assert.equal(f.sdkCalls(),0);assert.equal(f.maps.length,0);assert.deepEqual(f.fetches[0],[ '/_AMapService/session',{method:'DELETE',credentials:'same-origin',keepalive:true}]);f.scope.stop()
 })
 
 test('dispatch autoload starts one SDK bootstrap on mount and uses a road-level zoom without geolocation',async t=>{

@@ -25,15 +25,26 @@ class JsMapControllerTest {
  @Test void bootstrapAndConfigurationRetainFourRoleBoundaryAndReturnOnlyPublicConfiguration()throws Exception{
  for(Role role:Role.values()){int status=role==Role.CUSTOMER_SERVICE?200:403;mvc.perform(get("/api/v1/maps/js/configuration").header("Authorization","Bearer "+role.name())).andExpect(status().is(status));mvc.perform(post("/api/v1/maps/js/bootstrap").header("Authorization","Bearer "+role.name()).contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().is(status));}
  mvc.perform(post("/api/v1/maps/js/bootstrap")).andExpect(status().isUnauthorized());
- mvc.perform(post("/api/v1/maps/js/bootstrap").header("Authorization","Bearer CUSTOMER_SERVICE")).andExpect(status().isOk()).andExpect(header().string("Cache-Control","no-store")).andExpect(header().string("Set-Cookie",org.hamcrest.Matchers.allOf(org.hamcrest.Matchers.containsString("HttpOnly"),org.hamcrest.Matchers.containsString("SameSite=Strict"),org.hamcrest.Matchers.containsString("Path="+JsMapService.PREFIX)))).andExpect(jsonPath("$.data.publicKey").value(key)).andExpect(jsonPath("$.data.securityJsCode").doesNotExist()).andExpect(jsonPath("$.data.cookie").doesNotExist());
+ mvc.perform(post("/api/v1/maps/js/bootstrap").header("Authorization","Bearer CUSTOMER_SERVICE")).andExpect(status().isOk()).andExpect(header().string("Cache-Control","no-store")).andExpect(header().string("Set-Cookie",org.hamcrest.Matchers.allOf(org.hamcrest.Matchers.containsString("HttpOnly"),org.hamcrest.Matchers.containsString("SameSite=Strict"),org.hamcrest.Matchers.containsString("Path="+JsMapService.PREFIX)))).andExpect(jsonPath("$.data.servicePath").value("/_AMapService")).andExpect(jsonPath("$.data.publicKey").value(key)).andExpect(jsonPath("$.data.securityJsCode").doesNotExist()).andExpect(jsonPath("$.data.cookie").doesNotExist());
  mvc.perform(get("/api/v1/maps/js/bootstrap").header("Authorization","Bearer CUSTOMER_SERVICE")).andExpect(status().isMethodNotAllowed());
  }
  @Test void proxyUsesOnlyItsScopedCookieAndDoesNotOpenOtherMapApis()throws Exception{
  var actor=new CurrentUser(1,"synthetic","合成客服",Set.of(Role.CUSTOMER_SERVICE),null,0);when(maps.authenticate(cookie)).thenReturn(actor);when(maps.asset(anyString(),anyMap(),eq(cookie))).thenReturn(new JsMapService.Asset("{}".getBytes(),"application/json"));
  mvc.perform(get(JsMapService.PREFIX+"/v4/map/styles")).andExpect(status().isUnauthorized());
+ mvc.perform(get(JsMapService.PREFIX+"/v4/map/styles").cookie(new jakarta.servlet.http.Cookie(JsMapService.COOKIE,cookie)).header("Sec-Fetch-Site","cross-site")).andExpect(status().isForbidden());
+ mvc.perform(get("/api/v1/maps/js-proxy/v4/map/styles").cookie(new jakarta.servlet.http.Cookie(JsMapService.COOKIE,cookie))).andExpect(status().isUnauthorized());
  mvc.perform(get(JsMapService.PREFIX+"/v4/map/styles").cookie(new jakarta.servlet.http.Cookie(JsMapService.COOKIE,cookie))).andExpect(status().isOk()).andExpect(header().string("Cache-Control","no-store"));
+ verify(maps).asset(eq("/v4/map/styles"),anyMap(),eq(cookie));
+ mvc.perform(post(JsMapService.PREFIX+"/v4/map/styles").cookie(new jakarta.servlet.http.Cookie(JsMapService.COOKIE,cookie))).andExpect(status().isForbidden());
  mvc.perform(get("/api/v1/maps/locations/regions").cookie(new jakarta.servlet.http.Cookie(JsMapService.COOKIE,cookie))).andExpect(status().isUnauthorized());
  mvc.perform(get(JsMapService.PREFIX+"/v3/geocode/geo").cookie(new jakarta.servlet.http.Cookie(JsMapService.COOKIE,cookie))).andExpect(status().isNotFound());
  when(maps.authenticate(cookie)).thenThrow(new com.evinsurance.platform.foundation.api.ApiException(org.springframework.http.HttpStatus.UNAUTHORIZED,"MAP_JS_SESSION_INVALID","invalid"));mvc.perform(get(JsMapService.PREFIX+"/v4/map/styles").cookie(new jakarta.servlet.http.Cookie(JsMapService.COOKIE,cookie))).andExpect(status().isUnauthorized());
+ }
+ @Test void sessionRevocationUsesSameScopedCookieAndRejectsCrossSiteDelete()throws Exception{
+ var actor=new CurrentUser(1,"synthetic","合成客服",Set.of(Role.CUSTOMER_SERVICE),null,0);when(maps.authenticate(cookie)).thenReturn(actor);
+ mvc.perform(delete(JsMapService.PREFIX+"/session").cookie(new jakarta.servlet.http.Cookie(JsMapService.COOKIE,cookie)).header("Sec-Fetch-Site","cross-site")).andExpect(status().isForbidden());
+ verify(maps,never()).revoke(anyString());
+ mvc.perform(delete(JsMapService.PREFIX+"/session").cookie(new jakarta.servlet.http.Cookie(JsMapService.COOKIE,cookie)).header("Sec-Fetch-Site","same-origin")).andExpect(status().isNoContent()).andExpect(header().string("Set-Cookie",org.hamcrest.Matchers.allOf(org.hamcrest.Matchers.containsString("Path=/_AMapService"),org.hamcrest.Matchers.containsString("Max-Age=0"),org.hamcrest.Matchers.containsString("HttpOnly"),org.hamcrest.Matchers.containsString("SameSite=Strict"))));
+ verify(maps).revoke(cookie);
  }
 }
