@@ -14,6 +14,13 @@
   --color-warning-soft:#f6f0e5;
   --color-danger:#a04c47;
   --color-danger-soft:#f8edeb;
+  --case-surface:#fff;
+  --case-surface-muted:#f7faf9;
+  --case-border:#dce5e4;
+  --case-text:#20383c;
+  --case-text-secondary:#607477;
+  --case-success:#176346;
+  --case-success-soft:#e6efec;
   --glass-surface:rgba(255,254,250,.86);
   --shadow-surface:0 6px 22px rgba(65,55,38,.045);
   --shadow-floating:0 18px 48px rgba(65,55,38,.12);
@@ -51,7 +58,8 @@ button:active,.van-button:active{transform:scale(.98)}
 .van-skeleton__row,.van-skeleton__title{background:linear-gradient(100deg,#e9e5dd 24%,#f7f5f0 42%,#e9e5dd 62%);background-size:220% 100%;animation:skeleton-pass 1.35s ease-in-out infinite}
 
 /* Existing business panels keep their API behavior and share one restrained H5 surface language. */
-:is(.quotation,.repair,.funds,.complaint,.materials,.notifications){min-width:0;margin:0 16px;padding:20px 0;border-top:1px solid var(--color-border);background:transparent;scroll-margin-top:72px}
+:is(.quotation,.repair,.funds,.complaint,.materials){min-width:0;margin:0 12px 12px;padding:20px 16px;border:1px solid var(--case-border);border-radius:15px;background:var(--case-surface);box-shadow:var(--shadow-surface);scroll-margin-top:72px;color:var(--case-text)}
+.notifications{min-width:0;margin:0 16px;padding:20px 0;border-top:1px solid var(--color-border);background:transparent;scroll-margin-top:72px}
 :is(.quotation,.repair,.funds,.complaint,.materials,.notifications) h2{margin:0 0 8px;font-size:19px}
 :is(.quotation,.repair,.funds,.complaint,.materials,.notifications) h3{margin:24px 0 10px;font-size:16px}
 :is(.quotation,.repair,.funds,.complaint,.materials,.notifications) article{padding:12px 0;border-bottom:1px solid var(--color-border)}

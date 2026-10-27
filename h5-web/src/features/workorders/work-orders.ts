@@ -9,7 +9,7 @@ export type WorkOrderStatus =
 export interface Assignment { id: number; assignmentVersion: number; shopId: number; status: string }
 export interface WorkOrder {
   id: string; businessNo?: string; insuranceCompany?: string; claimNo?: string; ownerName?: string; ownerPhone?: string
-  vehicleBrand?: string; vehicleModel?: string; accidentAt?: string; accidentAddress?: string; accidentDescription?: string
+  vehicleBrand?: string; vehicleModel?: string; vehiclePlate?: string; accidentAt?: string; accidentAddress?: string; accidentDescription?: string
   status: WorkOrderStatus; shopId?: number; currentAssignment?: Assignment; workflowNode?: string
 }
 export interface History { id: number; fromStatus?: string; toStatus: string; action: string; reason?: string; occurredAt: string }
