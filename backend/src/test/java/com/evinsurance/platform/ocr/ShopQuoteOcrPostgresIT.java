@@ -75,7 +75,68 @@ class ShopQuoteOcrPostgresIT {
         assertThat(db.queryForObject("SELECT count(*) FROM quote_raw WHERE work_order_id=?::uuid",Long.class,c)).isEqualTo(2);assertThat(db.queryForObject("SELECT count(*) FROM quote_raw_ocr_line WHERE raw_quote_id=?::uuid",Long.class,quote)).isEqualTo(1);
         assertThatThrownBy(()->db.update("UPDATE quote_raw_item SET unit_price=1 WHERE raw_quote_id=?::uuid",quote)).isInstanceOf(org.springframework.dao.DataAccessException.class);
         assertThat(get(shop,base(c)+"/"+j+"/raw",200).path("text").asString()).isEqualTo(new String(raw,StandardCharsets.UTF_8));assertThat(get(shop,base(c)+"/"+j+"/program",200).at("/items/0/description").asString()).isEqualTo("合成轮胎");
-        var audit=json.writeValueAsString(db.queryForList("SELECT summary FROM audit_log WHERE object_id=?",j));assertThat(audit).doesNotContain("人工核对合成轮胎","access_token","13800000000","words_result");flyway.validate();assertThat(flyway.info().current().getVersion().toString()).isEqualTo("28");
+        var audit=json.writeValueAsString(db.queryForList("SELECT summary FROM audit_log WHERE object_id=?",j));assertThat(audit).doesNotContain("人工核对合成轮胎","access_token","13800000000","words_result");flyway.validate();assertThat(flyway.info().current().getVersion().toString()).isEqualTo("31");
+    }
+    @Test void providerSwitchReusesOriginalButCreatesNewJobAndKeepsHistoricalEvidence() throws Exception {
+        String c=arrived(),key=UUID.randomUUID().toString();when(provider.id()).thenReturn("MOCK_V1");
+        String old=upload(shop,c,1,"SHOP_QUOTE",image,key,200).path("id").asString();tick();
+        var original=jobs.find(UUID.fromString(old));var historical=get(shop,base(c)+"/"+old+"/program",200);
+        when(provider.id()).thenReturn("BAIDU_HANDWRITING_V1");
+        String current=upload(shop,c,1,"SHOP_QUOTE",image,key,200).path("id").asString();
+        assertThat(current).isNotEqualTo(old);assertThat(jobs.find(UUID.fromString(current)).fileId()).isEqualTo(original.fileId());
+        assertThat(jobs.find(UUID.fromString(current)).provider()).isEqualTo("BAIDU_HANDWRITING_V1");
+        assertThat(upload(shop,c,1,"SHOP_QUOTE",image,key,200).path("id").asString()).isEqualTo(current);
+        assertThat(upload(shop,c,1,"SHOP_QUOTE",image,UUID.randomUUID().toString(),200).path("id").asString()).isEqualTo(current);
+        assertThat(get(shop,base(c)+"/"+current,200).path("pageNo").asInt()).isEqualTo(1);
+        tick();assertThat(get(shop,base(c)+"/"+old+"/program",200)).isEqualTo(historical);
+        assertThat(db.queryForObject("SELECT count(*) FROM shop_quote_ocr_scope WHERE work_order_id=?::uuid",Long.class,c)).isEqualTo(2);
+        assertThat(db.queryForObject("SELECT count(*) FROM case_file WHERE work_order_id=?::uuid AND category='SHOP_QUOTE'",Long.class,c)).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT count(*) FROM shop_quote_ocr_command WHERE command_key=?",Long.class,key)).isEqualTo(2);
+        when(provider.id()).thenReturn("MOCK_V1");assertThat(upload(shop,c,1,"SHOP_QUOTE",image,key,200).path("id").asString()).isEqualTo(old);
+        verify(provider,times(2)).recognize(anyString(),any(byte[].class),anyBoolean());
+    }
+    @Test void concurrentFirstUploadsShareTaskAndCrossCaseCommandReuseIsFriendlyConflict() throws Exception {
+        String first=arrived(),second=arrived(),key=UUID.randomUUID().toString();
+        try(var pool=Executors.newFixedThreadPool(2)){
+            Callable<String> upload=()->upload(shop,first,1,"SHOP_QUOTE",image,key,200).path("id").asString();
+            var a=pool.submit(upload);var b=pool.submit(upload);assertThat(a.get()).isEqualTo(b.get());
+        }
+        assertThat(db.queryForObject("SELECT count(*) FROM shop_quote_ocr_scope WHERE work_order_id=?::uuid",Long.class,first)).isEqualTo(1);
+        upload(shop,second,1,"SHOP_QUOTE",image,key,409);
+        assertThat(db.queryForObject("SELECT count(*) FROM shop_quote_ocr_scope WHERE work_order_id=?::uuid",Long.class,second)).isZero();
+        String racedKey=UUID.randomUUID().toString();
+        java.util.function.Function<String,Callable<Integer>> attempt=id->()->mvc.perform(multipart("/api/v1/"+base(id)).file(new MockMultipartFile("file","synthetic.png","image/png",image)).param("assignmentVersion","1").param("category","SHOP_QUOTE").param("pageNo","1").header("Authorization","Bearer "+shop).header("Idempotency-Key",racedKey)).andReturn().getResponse().getStatus();
+        try(var pool=Executors.newFixedThreadPool(2)){var a=pool.submit(attempt.apply(first));var b=pool.submit(attempt.apply(second));assertThat(List.of(a.get(),b.get())).containsExactlyInAnyOrder(200,409);}
+        assertThat(db.queryForObject("SELECT count(*) FROM shop_quote_ocr_command WHERE command_key=?",Long.class,racedKey)).isEqualTo(1);
+        verify(provider,never()).recognize(anyString(),any(byte[].class),anyBoolean());
+    }
+    @Test void migrationBackfillsProviderWithoutChangingOldTaskReviewsOrAppendOnlyProtection(){
+        String schema="ocr_provider_migration_"+UUID.randomUUID().toString().replace("-","");
+        String url=System.getenv("TEST_DB_URL"),username=System.getenv("TEST_DB_USERNAME"),password=System.getenv("TEST_DB_PASSWORD");
+        Flyway.configure().dataSource(url,username,password).schemas(schema).defaultSchema(schema).target("30").load().migrate();
+        var source=new org.springframework.jdbc.datasource.DriverManagerDataSource(url+(url.contains("?")?"&":"?")+"currentSchema="+schema,username,password);
+        var old=new JdbcTemplate(source);UUID c=UUID.randomUUID(),file=UUID.randomUUID(),job=UUID.randomUUID();String sha="a".repeat(64);
+        old.update("INSERT INTO app_user(id,username,display_name,password_hash) VALUES(1,'synthetic','合成迁移测试','not-a-login-hash')");
+        old.update("INSERT INTO repair_shop(id,code,name) VALUES(1,'SYNTHETIC','合成测试网点')");
+        old.update("INSERT INTO work_order(id,current_responsible_id,created_by,updated_by) VALUES(?,1,1,1)",c);
+        old.update("INSERT INTO case_file(id,work_order_id,group_id,category,version_no,state,object_key,original_name,content_type,byte_size,sha256,shop_id,assignment_version,uploaded_by) VALUES(?,?,?,'SHOP_QUOTE',1,'ACTIVE','synthetic-migration','synthetic.png','image/png',1,?,1,1,1)",file,c,file,sha);
+        old.update("INSERT INTO ocr_job(id,file_id,provider,state,candidate_json,created_by) VALUES(?,?,'MOCK_V1','SUCCEEDED','{}',1)",job,file);
+        old.update("INSERT INTO shop_quote_ocr_scope(job_id,work_order_id,shop_id,assignment_version,file_sha256,category,page_no) VALUES(?,?,1,1,?,'SHOP_QUOTE',1)",job,c,sha);
+        old.update("INSERT INTO shop_quote_ocr_command(actor_id,command_key,request_hash,job_id) VALUES(1,'original-key',?,?)",sha,job);
+        old.update("INSERT INTO ocr_review(job_id,revision,candidate_json,actor_id,command_key) VALUES(?,0,'{}',1,'original-review')",job);
+        old.update("INSERT INTO ocr_confirmation(job_id,revision,actor_id) VALUES(?,0,1)",job);
+        Flyway.configure().dataSource(url,username,password).schemas(schema).defaultSchema(schema).load().migrate();
+        assertThat(old.queryForObject("SELECT provider FROM shop_quote_ocr_scope WHERE job_id=?",String.class,job)).isEqualTo("MOCK_V1");
+        assertThat(old.queryForObject("SELECT provider FROM shop_quote_ocr_command WHERE job_id=?",String.class,job)).isEqualTo("MOCK_V1");
+        assertThat(old.queryForObject("SELECT candidate_json FROM ocr_review WHERE job_id=?",String.class,job)).isEqualTo("{}");
+        assertThat(old.queryForObject("SELECT count(*) FROM ocr_confirmation WHERE job_id=?",Long.class,job)).isEqualTo(1);
+        assertThatThrownBy(()->old.update("UPDATE shop_quote_ocr_scope SET page_no=2 WHERE job_id=?",job)).isInstanceOf(org.springframework.dao.DataAccessException.class);
+        assertThatThrownBy(()->old.update("DELETE FROM shop_quote_ocr_command WHERE job_id=?",job)).isInstanceOf(org.springframework.dao.DataAccessException.class);
+        UUID real=UUID.randomUUID();old.update("INSERT INTO ocr_job(id,file_id,provider,state,created_by) VALUES(?,?,'BAIDU_HANDWRITING_V1','QUEUED',1)",real,file);
+        old.update("INSERT INTO shop_quote_ocr_scope(job_id,work_order_id,shop_id,assignment_version,file_sha256,category,page_no,provider) VALUES(?,?,1,1,?,'SHOP_QUOTE',1,'BAIDU_HANDWRITING_V1')",real,c,sha);
+        old.update("INSERT INTO shop_quote_ocr_command(actor_id,command_key,request_hash,job_id,provider) VALUES(1,'original-key',?,?,'BAIDU_HANDWRITING_V1')",sha,real);
+        assertThatThrownBy(()->old.update("INSERT INTO ocr_job(id,file_id,provider,state,created_by) VALUES(?,?,'BAIDU_HANDWRITING_V1','QUEUED',1)",UUID.randomUUID(),file)).isInstanceOf(org.springframework.dao.DuplicateKeyException.class);
+        assertThat(old.queryForObject("SELECT count(*) FROM shop_quote_ocr_scope",Long.class)).isEqualTo(2);
     }
     @Test void roleCaseAssignmentAndFileCategoryBoundaries() throws Exception {
         String c=arrived(),j=upload(c);tick();for(String token:List.of(admin,cs)){get(token,base(c)+"/"+j,200);upload(token,c,1,"SHOP_QUOTE",image,UUID.randomUUID().toString(),403);post(token,base(c)+"/"+j+"/retry",Map.of(),403);post(token,base(c)+"/"+j+"/apply",Map.of("expectedVersion",0,"items",List.of(item("x","2","12.50"))),403);}

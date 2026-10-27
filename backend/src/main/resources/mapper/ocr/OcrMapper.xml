@@ -3,7 +3,7 @@
 <mapper namespace="com.evinsurance.platform.ocr.infrastructure.OcrMapper">
  <select id="find" resultType="com.evinsurance.platform.ocr.infrastructure.OcrRow">SELECT * FROM ocr_job WHERE id=#{id}</select>
  <select id="lock" resultType="com.evinsurance.platform.ocr.infrastructure.OcrRow">SELECT * FROM ocr_job WHERE id=#{id} FOR UPDATE</select>
- <select id="byFile" resultType="com.evinsurance.platform.ocr.infrastructure.OcrRow">SELECT * FROM ocr_job WHERE file_id=#{fileId}</select>
+ <select id="byFile" resultType="com.evinsurance.platform.ocr.infrastructure.OcrRow">SELECT * FROM ocr_job WHERE file_id=#{fileId} AND provider=#{provider}</select>
  <insert id="insert">INSERT INTO ocr_job(id,file_id,intake_id,state,created_by,simulate_failure,provider,provider_api,provider_version) VALUES(#{id},#{fileId,jdbcType=OTHER},#{intakeId,jdbcType=OTHER},'QUEUED',#{actor},#{fail},#{provider},#{api},#{version})</insert>
  <update id="retry">UPDATE ocr_job SET state='QUEUED',error_code=NULL,updated_at=now() WHERE id=#{id} AND state='FAILED'</update>
  <update id="expire">WITH expired AS (SELECT j.id FROM ocr_job j WHERE j.provider='MOCK_V1' AND j.state='RUNNING' AND j.lease_until&lt;now() AND j.attempts&gt;=#{maxAttempts} AND (j.intake_id IS NOT NULL OR EXISTS(SELECT 1 FROM case_file f JOIN work_order w ON w.id=f.work_order_id WHERE f.id=j.file_id AND w.status NOT IN ('COMPLETED','CANCELLED'))) ORDER BY j.lease_until,j.id FOR UPDATE OF j SKIP LOCKED LIMIT 50) UPDATE ocr_job j SET state='FAILED',error_code='LEASE_EXHAUSTED',lease_token=NULL,lease_until=NULL,updated_at=now() FROM expired e WHERE j.id=e.id</update>

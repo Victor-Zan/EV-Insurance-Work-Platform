@@ -5,7 +5,7 @@ import org.apache.ibatis.annotations.*;
 public interface OcrMapper {
     OcrRow find(UUID id);
     OcrRow lock(UUID id);
-    OcrRow byFile(UUID fileId);
+    OcrRow byFile(@Param("fileId") UUID fileId,@Param("provider") String provider);
     void insert(@Param("id") UUID id,@Param("fileId") UUID fileId,@Param("intakeId") UUID intakeId,@Param("actor") long actor,@Param("fail") boolean fail,@Param("provider") String provider,@Param("api") String api,@Param("version") String version);
     int retry(UUID id);
     int expire(int maxAttempts);
