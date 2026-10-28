@@ -146,7 +146,8 @@
     INSERT INTO work_order_status_history(work_order_id,from_status,to_status,action,reason,actor_id,actor_roles,assignment_version,trace_id,occurred_at)
     VALUES(#{workOrderId},#{fromStatus},#{toStatus},#{action},#{reason},#{actorId},#{actorRoles},#{assignmentVersion},#{traceId},#{now})
   </insert>
-  <select id="historyCount" resultType="long">SELECT count(*) FROM work_order_status_history WHERE work_order_id=#{workOrderId}</select>
+  <sql id="visibleHistory">work_order_id=#{workOrderId}<if test="!staff"> AND action&lt;&gt;'FUNDS_WORKFLOW'</if></sql>
+  <select id="historyCount" resultType="long">SELECT count(*) FROM work_order_status_history WHERE <include refid="visibleHistory"/></select>
   <select id="milestones" resultType="com.evinsurance.platform.workorder.infrastructure.WorkOrderRows$Milestone">
     SELECT to_status AS status,CASE WHEN to_status IN ('PENDING_DISPATCH','WAITING_OWNER_CONFIRMATION') THEN min(occurred_at) ELSE max(occurred_at) END AS occurred_at FROM work_order_status_history
     WHERE work_order_id=#{workOrderId} GROUP BY to_status ORDER BY to_status
@@ -157,7 +158,7 @@
   </select>
   <select id="history" resultType="com.evinsurance.platform.workorder.infrastructure.WorkOrderRows$History">
     SELECT id,from_status,to_status,action,reason,actor_id,actor_roles,assignment_version,occurred_at
-    FROM work_order_status_history WHERE work_order_id=#{workOrderId} ORDER BY occurred_at,id LIMIT #{size} OFFSET #{offset}
+    FROM work_order_status_history WHERE <include refid="visibleHistory"/> ORDER BY occurred_at,id LIMIT #{size} OFFSET #{offset}
   </select>
 
   <insert id="reserveCommand">

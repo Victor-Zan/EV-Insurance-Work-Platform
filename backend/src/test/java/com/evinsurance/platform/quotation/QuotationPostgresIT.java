@@ -52,6 +52,16 @@ class QuotationPostgresIT {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
+        // Keep formal migrations and the existing account fixture; local map demo data are unrelated.
+        try {
+            var directory=java.nio.file.Files.createTempDirectory("quotation-foundation-");directory.toFile().deleteOnExit();
+            var seed=directory.resolve("V2.1__development_foundation.sql");
+            try(var input=QuotationPostgresIT.class.getResourceAsStream("/db/dev/V2.1__development_foundation.sql")){
+                java.nio.file.Files.copy(java.util.Objects.requireNonNull(input),seed);
+            }
+            seed.toFile().deleteOnExit();
+            registry.add("spring.flyway.locations",()->"classpath:db/migration,filesystem:"+directory);
+        } catch(java.io.IOException error){throw new java.io.UncheckedIOException(error);}
         String url=System.getenv("TEST_DB_URL");
         String username=System.getenv("TEST_DB_USERNAME");
         String password=System.getenv("TEST_DB_PASSWORD");
@@ -202,10 +212,42 @@ class QuotationPostgresIT {
         String text=mvc.perform(post("/api/v1/"+path).header("Authorization","Bearer "+token).header("Idempotency-Key",key).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body))).andExpect(status().is(expected)).andReturn().getResponse().getContentAsString();return json.readTree(text).path("data");
     }
     private JsonNode request(String token,String path,Object body,int expected) throws Exception{return request(token,path,body,UUID.randomUUID().toString(),expected);}
-    private String arrived() throws Exception {
+    private String arrived() throws Exception {return arrived(true);}
+    private String arrived(boolean withPhoto) throws Exception {
         String id=formal(customerService,"QUOTE-"+UUID.randomUUID(),OWNER_PHONE,"VIN-"+UUID.randomUUID(),Instant.now()).path("id").asText();
         var dispatched=dispatch(customerService,id,shopId,true,"合成报价测试",UUID.randomUUID().toString(),200).path("data");int version=assignmentVersion(dispatched);
-        request(shop,"work-orders/"+id+"/accept",Map.of("assignmentVersion",version),200);request(shop,"work-orders/"+id+"/arrive",Map.of("assignmentVersion",version),200);return id;
+        request(shop,"work-orders/"+id+"/accept",Map.of("assignmentVersion",version),200);request(shop,"work-orders/"+id+"/arrive",Map.of("assignmentVersion",version),200);if(withPhoto)arrivalPhoto(shop,id,version);return id;
+    }
+    private String arrivalPhoto(String token,String id,int assignment) throws Exception {
+        byte[] image=Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jFWkAAAAASUVORK5CYII=");
+        var result=mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/v1/materials/cases/{id}",id)
+            .file(new org.springframework.mock.web.MockMultipartFile("file","synthetic-arrival.png","image/png",image))
+            .param("category","ARRIVAL_PHOTO").param("assignmentVersion",Integer.toString(assignment))
+            .header("Authorization","Bearer "+token).header("Idempotency-Key",UUID.randomUUID().toString()))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        return json.readTree(result).path("data").path("id").asText();
+    }
+    @Test void rawQuoteRequiresCurrentShopArrivalImageAndKeepsSuccessfulReplay() throws Exception {
+        String id=arrived(false);
+        var body=rawBody(id,List.of(Map.of("description","合成配件","quantity",1,"unitPrice","1.00")));
+        assertThat(context(shop,id).path("arrivalPhotoUploaded").asBoolean()).isFalse();
+        request(shop,path(id,"raw-quotes"),body,409);
+        arrivalPhoto(customerService,id,1);
+        assertThat(context(shop,id).path("arrivalPhotoUploaded").asBoolean()).isFalse();
+        request(shop,path(id,"raw-quotes"),body,409);
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/v1/materials/cases/{id}",id)
+            .file(new org.springframework.mock.web.MockMultipartFile("file","not-a-photo.pdf","application/pdf","%PDF-1.7\nSYNTHETIC\n%%EOF".getBytes()))
+            .param("category","ARRIVAL_PHOTO").param("assignmentVersion","1")
+            .header("Authorization","Bearer "+shop).header("Idempotency-Key",UUID.randomUUID().toString())).andExpect(status().isOk());
+        assertThat(context(shop,id).path("arrivalPhotoUploaded").asBoolean()).isFalse();
+        String photo=arrivalPhoto(shop,id,1);
+        assertThat(context(shop,id).path("arrivalPhotoUploaded").asBoolean()).isTrue();
+        String key=UUID.randomUUID().toString();
+        var submitted=request(shop,path(id,"raw-quotes"),body,key,200);
+        request(customerService,"materials/"+photo+"/void",Map.of(),200);
+        assertThat(context(shop,id).path("arrivalPhotoUploaded").asBoolean()).isFalse();
+        assertThat(request(shop,path(id,"raw-quotes"),body,key,200)).isEqualTo(submitted);
+        request(shop,path(id,"raw-quotes"),rawBody(id,List.of(Map.of("description","修订","quantity",1,"unitPrice","2.00"))),409);
     }
     private JsonNode context(String token,String id) throws Exception{return json.readTree(mvc.perform(get("/api/v1/quotations/cases/{id}",id).header("Authorization","Bearer "+token)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data");}
     private String path(String id,String suffix){return "quotations/cases/"+id+"/"+suffix;}
@@ -332,10 +374,9 @@ class QuotationPostgresIT {
         assertThat(request(customerService,path(id,"confirmations/CUSTOMER_SERVICE"),body,key,200)).isEqualTo(accepted);
         var stored=json.readTree(db.queryForObject("select file_snapshot from quotation_confirmation where work_order_id=?::uuid and kind='CUSTOMER_SERVICE' order by created_at desc limit 1",String.class,id));
         assertThat(stored.path("amount").asText()).isEqualTo("18.00");assertThat(stored.path("lossFileId").asText()).isEqualTo(a.path("lossFileId").asText());
-        upload(id,"LOSS_ASSESSMENT",null,200);
-        c=context(customerService,id);assertThat(c.path("assessment").path("sourceCurrent").asBoolean()).isFalse();start(id,409);
-        confirm(id,"INSURER");body.put("expectedVersion",context(customerService,id).path("version").asInt());request(customerService,path(id,"confirmations/CUSTOMER_SERVICE"),body,409);
-        assess(id,"19.00",200);confirm(id,"INSURER");confirm(id,"CUSTOMER_SERVICE");start(id,200);
+        assertThat(accepted.path("status").asText()).isEqualTo("REPAIRING");
+        upload(id,"LOSS_ASSESSMENT",null,409);
+        assess(id,"19.00",409);start(id,200);
     }
     @Test void manualAssessmentWithoutAnyFileAuthorizesWithVersionedAmountAndBothConfirmations() throws Exception {
         String id=arrived();prepareFormal(id);var c=context(customerService,id);
@@ -351,7 +392,7 @@ class QuotationPostgresIT {
         mvc.perform(get("/api/v1/work-orders/{id}/workflow",id).header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andExpect(jsonPath("$.data.currentNode").value("REPAIR")).andExpect(jsonPath("$.data.legacyNeedsReview").value(false));
         var shopView=context(shop,id);assertThat(shopView.has("assessment")).isFalse();assertThat(shopView.has("formalQuote")).isFalse();start(id,409);
         confirm(id,"INSURER");start(id,409);confirm(id,"CUSTOMER_SERVICE");
-        mvc.perform(get("/api/v1/work-orders/{id}",id).header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andExpect(jsonPath("$.data.workflowNode").value("REPAIR")).andExpect(jsonPath("$.data.workflowActor").value("网点"));
+        mvc.perform(get("/api/v1/work-orders/{id}",id).header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andExpect(jsonPath("$.data.workflowNode").value("REPAIR")).andExpect(jsonPath("$.data.workflowActor").value("网点或客服"));
         start(id,200);
         assertThat(db.queryForObject("select count(*) from case_file where work_order_id=?::uuid and category='LOSS_ASSESSMENT'",Long.class,id)).isZero();
         assertThat(db.queryForObject("select count(*) from quote_assessment where work_order_id=?::uuid",Long.class,id)).isEqualTo(1);
@@ -360,6 +401,15 @@ class QuotationPostgresIT {
         assertThat(stored.path("amount").asText()).isEqualTo("12.50");assertThat(stored.path("assessmentId").asText()).isEqualTo(recorded.path("assessment").path("id").asText());assertThat(stored.has("lossFileId")).isFalse();
         int assignment=context(shop,id).path("assignmentVersion").asInt();request(shop,"repairs/cases/"+id+"/progress",Map.of("expectedVersion",0,"assignmentVersion",assignment,"note","无核损单维修进度","photoIds",List.of()),200);
         assess(id,"13.00",409);flyway.validate();
+    }
+    @Test void manualAssessmentRemainsValidWithAnOptionalFileButCannotForgeOcrProvenance() throws Exception {
+        String id=arrived();prepareFormal(id);upload(id,"LOSS_ASSESSMENT",null,200);
+        var c=context(customerService,id);var recorded=request(customerService,path(id,"assessments"),Map.of("expectedVersion",c.path("version").asInt(),"amount","12.00"),200);
+        assertThat(recorded.path("assessment").path("sourceCurrent").asBoolean()).isTrue();confirm(id,"INSURER");c=context(customerService,id);
+        String file=db.queryForObject("select id::text from case_file where work_order_id=?::uuid and category='LOSS_ASSESSMENT' and state='ACTIVE' order by created_at desc,id desc limit 1",String.class,id);
+        request(customerService,path(id,"confirmations/CUSTOMER_SERVICE"),Map.of("expectedVersion",c.path("version").asInt(),"assessmentId",c.path("assessment").path("id").asText(),"lossFileId",file,"amount","12.00","originalReviewed",true),409);
+        assertThat(context(customerService,id).path("authorized").asBoolean()).isFalse();
+        confirm(id,"CUSTOMER_SERVICE");assertThat(context(customerService,id).path("authorized").asBoolean()).isTrue();
     }
     @Test void documentPreviewsRenderTheAuthorizedPdfAndKeepRoleAndCaseScope() throws Exception {
         String id=arrived();prepareFormal(id);String quote=context(customerService,id).path("formalQuote").path("id").asText();
@@ -375,20 +425,20 @@ class QuotationPostgresIT {
         mvc.perform(get("/api/v1/materials/{id}/preview",file).header("Authorization","Bearer "+admin)).andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("X-Page-Count","1"));
         for(String token:List.of(shop,owner))mvc.perform(get("/api/v1/materials/{id}/preview",file).header("Authorization","Bearer "+token)).andExpect(status().isForbidden());
     }
-    @Test void confirmationRequiresCurrentAmountAndInsurerInOrderWithoutFile() throws Exception {
+    @Test void confirmationRequiresAmountAndInsurerInOrderThenStartsRepair() throws Exception {
         String id=arrived();prepareFormal(id);
         request(customerService,path(id,"confirmations/INSURER"),Map.of("expectedVersion",context(customerService,id).path("version").asInt()),409);
         assess(id,"0.00",200);
+        upload(id,"LOSS_ASSESSMENT",null,200);
         request(customerService,path(id,"confirmations/CUSTOMER_SERVICE"),Map.of("expectedVersion",context(customerService,id).path("version").asInt()),409);
         assertThat(db.queryForObject("select count(*) from quotation_confirmation where work_order_id=?::uuid",Long.class,id)).isZero();
         assess(id,"0.00",200);confirm(id,"INSURER");confirm(id,"CUSTOMER_SERVICE");
-        mvc.perform(get("/api/v1/work-orders/{id}/workflow",id).header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andExpect(jsonPath("$.data.currentNode").value("REPAIR")).andExpect(jsonPath("$.data.canAct").value(false)).andExpect(jsonPath("$.data.action").value("START_REPAIR"));
-        raw(id,"1.00");
-        assertThat(context(customerService,id).hasNonNull("assessment")).isFalse();
-        assertThat(db.queryForObject("select assessment_id from quotation_context where work_order_id=?::uuid",UUID.class,id)).isNull();
-        // Both manual amount versions are retained.
+        mvc.perform(get("/api/v1/work-orders/{id}/workflow",id).header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andExpect(jsonPath("$.data.currentNode").value("REPAIR")).andExpect(jsonPath("$.data.action").value("SUBMIT_COMPLETION"));
+        request(shop,path(id,"raw-quotes"),rawBody(id,List.of(Map.of("description","维修中不可重新报价","quantity",1,"unitPrice","1.00"))),409);
+        assertThat(context(customerService,id).hasNonNull("assessment")).isTrue();
+        // Original unlinked amount and the subsequent document-reviewed revision are both retained.
         assertThat(db.queryForObject("select count(*) from quote_assessment where work_order_id=?::uuid",Long.class,id)).isEqualTo(2);
-        assertThat(context(customerService,id).path("authorized").asBoolean()).isFalse();
+        assertThat(context(customerService,id).path("authorized").asBoolean()).isTrue();
         request(customerService,path(id,"confirmations/INSURER"),Map.of("expectedVersion",context(customerService,id).path("version").asInt()),409);
     }
     @Test void workflowRequiresActualShopCompletionEvidenceAndProtectsOtherDrafts() throws Exception {
@@ -514,10 +564,10 @@ class QuotationPostgresIT {
     }
     @Test void changesInvalidateConfirmationsAndPostStartModificationsAreFrozen() throws Exception {
         String id=arrived();raw(id,"0.01");request(customerService,"materials/cases/"+id+"/missing-notice",Map.of("reason","合成缺失"),200);var quote=review(id,"FIXED_AMOUNT","0.01",200).path("formalQuote");assertThat(quote.path("lines").get(0).path("externalUnitPrice").asText()).isEqualTo("0.013333");assertThat(quote.path("total").asText()).isEqualTo("0.04");
-        String file=upload(id,"LOSS_ASSESSMENT",null,200);assess(id,"0.04",200);confirm(id,"INSURER");confirm(id,"CUSTOMER_SERVICE");
+        String file=upload(id,"LOSS_ASSESSMENT",null,200);assess(id,"0.04",200);confirm(id,"INSURER");
         var changed=assess(id,"0.05",200);assertThat(changed.path("authorized").asBoolean()).isFalse();assertThat(changed.path("gate").path("insurerConfirmationRecorded").asBoolean()).isFalse();assertThat(changed.path("gate").path("customerServiceConfirmationRecorded").asBoolean()).isFalse();start(id,409);
-        confirm(id,"INSURER");confirm(id,"CUSTOMER_SERVICE");String next=upload(id,"LOSS_ASSESSMENT",file,200);assertThat(context(shop,id).path("authorized").asBoolean()).isFalse();assertThat(context(customerService,id).path("assessment").path("amount").asText()).isEqualTo("0.05");
-        assertThat(context(customerService,id).path("assessment").path("sourceCurrent").asBoolean()).isFalse();assess(id,"0.05",200);confirm(id,"INSURER");confirm(id,"CUSTOMER_SERVICE");raw(id,"0.02");var afterRaw=context(customerService,id);assertThat(afterRaw.path("formalQuote").isNull()).isTrue();assertThat(afterRaw.path("authorized").asBoolean()).isFalse();
+        confirm(id,"INSURER");String next=upload(id,"LOSS_ASSESSMENT",file,200);assertThat(context(shop,id).path("authorized").asBoolean()).isFalse();assertThat(context(customerService,id).path("assessment").path("amount").asText()).isEqualTo("0.05");
+        assertThat(context(customerService,id).path("assessment").path("sourceCurrent").asBoolean()).isFalse();assess(id,"0.05",200);confirm(id,"INSURER");raw(id,"0.02");var afterRaw=context(customerService,id);assertThat(afterRaw.path("formalQuote").isNull()).isTrue();assertThat(afterRaw.path("authorized").asBoolean()).isFalse();
         review(id,"PERCENTAGE","0.00",200);assess(id,"0.05",200);confirm(id,"INSURER");confirm(id,"CUSTOMER_SERVICE");start(id,200);
         assess(id,"1.00",409);request(shop,path(id,"raw-quotes"),rawBody(id,List.of(Map.of("description","开修后修订","quantity",1,"unitPrice","9.00"))),409);upload(id,"LOSS_ASSESSMENT",next,409);request(customerService,"materials/"+next+"/void",Map.of(),409);assertThat(db.queryForObject("select count(*) from quotation_confirmation where work_order_id=?::uuid",Long.class,id)).isGreaterThan(2);
     }
@@ -742,10 +792,21 @@ class QuotationPostgresIT {
         request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"PAY","PAY-"+UUID.randomUUID(),"30.00"),200);request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"PAY","PAY-"+UUID.randomUUID(),"50.00"),200);
         caseStatus(id,"WAITING_SHOP_SETTLEMENT");fundsConfirm(id,"PAY",200);
         assertThat(funds(customerService,id).path("receivable").path("net").asText()).isEqualTo("100.01");assertThat(funds(customerService,id).path("payable").path("status").asText()).isEqualTo("SETTLED");assertThat(funds(shop,id).has("receivable")).isFalse();
-        String shopHistory=mvc.perform(get("/api/v1/funds/cases/{id}/entries",id).header("Authorization","Bearer "+shop)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();assertThat(shopHistory).doesNotContain("RECEIVE","SYNTHETIC_INTERNAL_NOTE","transactionNo","reversalReason");
+        for(String token:List.of(shop,owner)){
+            for(String path:List.of("pricing/brands","pricing/records","funds/workbench","funds/reconciliation/export","funds/cases/"+id+"/entries","funds/cases/"+id+"/export","funds/cases/"+id+"/targets"))
+                mvc.perform(get("/api/v1/"+path).header("Authorization","Bearer "+token)).andExpect(status().isForbidden());
+            request(token,"funds/cases/"+id+"/targets",Map.of(),403);
+            request(token,"funds/cases/"+id+"/entries",Map.of(),403);
+            var visibleHistory=json.readTree(mvc.perform(get("/api/v1/work-orders/{id}/history",id).header("Authorization","Bearer "+token)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data");
+            assertThat(visibleHistory.toString()).doesNotContain("FUNDS_WORKFLOW","SYNTHETIC_INTERNAL_NOTE");
+        }
+        var staffHistory=json.readTree(mvc.perform(get("/api/v1/work-orders/{id}/history",id).param("size","100").header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data");
+        assertThat(staffHistory.toString()).contains("FUNDS_WORKFLOW");
         mvc.perform(get("/api/v1/funds/cases/{id}",id).header("Authorization","Bearer "+owner)).andExpect(status().isForbidden());mvc.perform(get("/api/v1/funds/cases/{id}/export",id).header("Authorization","Bearer "+owner)).andExpect(status().isForbidden());
         request(admin,"funds/cases/"+id+"/entries",fundsEntry(id,"RECEIVE","NO-"+UUID.randomUUID(),"1.00"),403);
-        var other=createUser("REPAIR_SHOP",createEligibleShop());mvc.perform(get("/api/v1/funds/cases/{id}/export",id).header("Authorization","Bearer "+login(other.path("username").asText(),"H5"))).andExpect(status().isForbidden());
+        var other=createUser("REPAIR_SHOP",createEligibleShop());String otherToken=login(other.path("username").asText(),"H5");
+        mvc.perform(get("/api/v1/funds/cases/{id}",id).header("Authorization","Bearer "+otherToken)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/v1/funds/cases/{id}/export",id).header("Authorization","Bearer "+otherToken)).andExpect(status().isForbidden());
         assertThat(db.queryForObject("select status from work_order where id=?::uuid",String.class,id)).isEqualTo("COMPLETED");assertThat(db.queryForObject("select count(*) from funds_entry where work_order_id=?::uuid",Integer.class,id)).isEqualTo(4);
     }
     @Test void fundsZeroUnknownTargetVersionsAndReversalsProtectHistory() throws Exception {
@@ -918,6 +979,37 @@ class QuotationPostgresIT {
         mvc.perform(get("/api/v1/work-orders/{id}/text-source",result.path("id").asText()).header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andExpect(jsonPath("$.data.text").value(text));
         mvc.perform(get("/api/v1/work-orders/{id}/text-source",result.path("id").asText()).header("Authorization","Bearer "+shop)).andExpect(status().isForbidden());
         assertThat(db.queryForObject("select count(*) from ocr_job",Long.class)).isEqualTo(count);
+    }
+
+    @Test void amountOnlyAssessmentCanAdvanceAndAuthorizeWithoutAnyLossAttachment() throws Exception {
+        String id=arrived();prepareFormal(id);var before=context(customerService,id);
+        String key=UUID.randomUUID().toString();
+        var body=Map.of("expectedVersion",before.path("version").asInt(),"amount","470.00");
+        for(String actor:List.of(shop,owner,admin))request(actor,path(id,"assessments"),body,403);
+        request(customerService,path(id,"assessments"),Map.of("expectedVersion",0,"amount","470.00"),409);
+        request(customerService,path(id,"assessments"),Map.of("expectedVersion",before.path("version").asInt(),"amount","470.001"),400);
+        var saved=request(customerService,path(id,"assessments"),body,key,200);
+        assertThat(request(customerService,path(id,"assessments"),body,key,200).path("assessment").path("id")).isEqualTo(saved.path("assessment").path("id"));
+        assertThat(saved.path("assessment").path("sourceCurrent").asBoolean()).isTrue();
+        assertThat(saved.path("assessment").hasNonNull("lossFileId")).isFalse();
+        assertThat(saved.path("gate").path("lossAssessmentFileUploaded").asBoolean()).isFalse();
+        assertThat(saved.path("gate").path("finalAssessmentAmountRecorded").asBoolean()).isTrue();
+        mvc.perform(get("/api/v1/work-orders/{id}/workflow",id).header("Authorization","Bearer "+customerService))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.currentNode").value("REPAIR"))
+            .andExpect(jsonPath("$.data.legacyNeedsReview").value(false));
+        start(id,409);confirm(id,"INSURER");start(id,409);
+        var current=context(customerService,id);
+        request(customerService,path(id,"confirmations/CUSTOMER_SERVICE"),Map.of("expectedVersion",current.path("version").asInt(),
+            "assessmentId",current.path("assessment").path("id").asText(),"amount","471.00","originalReviewed",true),409);
+        confirm(id,"CUSTOMER_SERVICE");assertThat(context(shop,id).path("gate").path("allowed").asBoolean()).isTrue();
+        assertThat(context(shop,id).path("status").asText()).isEqualTo("REPAIRING");
+        assertThat(db.queryForObject("select count(*) from quotation_event where work_order_id=?::uuid and kind='REPAIR_STARTED'",Long.class,id)).isEqualTo(1);
+        request(shop,path(id,"raw-quotes"),rawBody(id,List.of(Map.of("description","授权后不再编辑","quantity",1,"unitPrice","9.00"))),409);
+        start(id,200);
+        assertThat(db.queryForObject("select count(*) from quotation_event where work_order_id=?::uuid and kind='REPAIR_STARTED'",Long.class,id)).isEqualTo(1);
+        assertThat(db.queryForObject("select count(*) from case_file where work_order_id=?::uuid and category='LOSS_ASSESSMENT'",Long.class,id)).isZero();
+        assertThat(db.queryForObject("select count(*) from quotation_confirmation where work_order_id=?::uuid",Long.class,id)).isEqualTo(2);
+        flyway.validate();
     }
 
     @Test void legacyPendingAssessmentWithoutFormalQuoteOpensEarliestReviewWithoutRewritingHistory() throws Exception {

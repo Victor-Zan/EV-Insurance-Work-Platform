@@ -31,7 +31,19 @@ import tools.jackson.databind.*;
 class ShopQuoteOcrPostgresIT {
     static final String PASSWORD=UUID.randomUUID().toString(),SCHEMA="shop_ocr_it_"+UUID.randomUUID().toString().replace("-","");
     static final String SECRET=Base64.getEncoder().encodeToString(UUID.randomUUID().toString().getBytes(StandardCharsets.UTF_8));
+    // Isolate the formal OCR migrations from unrelated local simulation destinations.
+    static String testLocations(){
+        try{
+            var dir=java.nio.file.Files.createTempDirectory("shop-ocr-fixture-");dir.toFile().deleteOnExit();
+            var seed=dir.resolve("V2.1__development_foundation.sql");
+            try(var input=ShopQuoteOcrPostgresIT.class.getResourceAsStream("/db/dev/V2.1__development_foundation.sql")){
+                java.nio.file.Files.copy(Objects.requireNonNull(input),seed);
+            }
+            seed.toFile().deleteOnExit();return "classpath:db/migration,filesystem:"+dir;
+        }catch(IOException e){throw new java.io.UncheckedIOException(e);}
+    }
     @DynamicPropertySource static void properties(DynamicPropertyRegistry r){
+        String locations=testLocations();r.add("spring.flyway.locations",()->locations);
         String url=Objects.requireNonNull(System.getenv("TEST_DB_URL"));r.add("spring.datasource.url",()->url+(url.contains("?")?"&":"?")+"currentSchema="+SCHEMA);r.add("spring.datasource.username",()->System.getenv("TEST_DB_USERNAME"));r.add("spring.datasource.password",()->System.getenv("TEST_DB_PASSWORD"));r.add("spring.flyway.schemas",()->SCHEMA);r.add("spring.flyway.default-schema",()->SCHEMA);
         r.add("OCR_WORKER_ENABLED",()->"false");r.add("JWT_SECRET_BASE64",()->SECRET);r.add("JWT_TTL_SECONDS",()->"1800");for(String role:List.of("ADMIN","CUSTOMER_SERVICE","REPAIR_SHOP","OWNER"))r.add("DEV_"+role+"_PASSWORD",()->PASSWORD);
         for(String name:List.of("MINIO_ENDPOINT","MINIO_ACCESS_KEY","MINIO_SECRET_KEY","MINIO_BUCKET"))r.add(name,()->Objects.requireNonNull(System.getenv("TEST_"+name)));
@@ -57,7 +69,8 @@ class ShopQuoteOcrPostgresIT {
         String id=post(cs,"work-orders/drafts",body,200).path("id").asString();
         mvc.perform(multipart("/api/v1/materials/cases/"+id).file(new MockMultipartFile("file","synthetic-scene.png","image/png",image)).param("category","SCENE_PHOTO").header("Authorization","Bearer "+cs).header("Idempotency-Key",UUID.randomUUID().toString())).andExpect(status().isOk());
         var submitted=post(cs,"work-orders/"+id+"/submit",Map.of("confirmPossibleDuplicate",true,"duplicateReason","合成测试"),200);
-        mvc.perform(put("/api/v1/work-orders/"+id+"/dispatch-location").header("Authorization","Bearer "+cs).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("expectedVersion",submitted.path("version").asLong(),"regionId",region,"address","合成接车地址","confirmed",true)))).andExpect(status().isOk());post(cs,"work-orders/"+id+"/dispatch",Map.of("shopId",shopId,"confirmPossibleDuplicate",true,"duplicateReason","合成测试"),200);post(shop,"work-orders/"+id+"/accept",Map.of("assignmentVersion",1),200);post(shop,"work-orders/"+id+"/arrive",Map.of("assignmentVersion",1),200);return id;
+        mvc.perform(put("/api/v1/work-orders/"+id+"/dispatch-location").header("Authorization","Bearer "+cs).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("expectedVersion",submitted.path("version").asLong(),"regionId",region,"address","合成接车地址","confirmed",true)))).andExpect(status().isOk());post(cs,"work-orders/"+id+"/dispatch",Map.of("shopId",shopId,"confirmPossibleDuplicate",true,"duplicateReason","合成测试"),200);post(shop,"work-orders/"+id+"/accept",Map.of("assignmentVersion",1),200);post(shop,"work-orders/"+id+"/arrive",Map.of("assignmentVersion",1),200);
+        mvc.perform(multipart("/api/v1/materials/cases/"+id).file(new MockMultipartFile("file","synthetic-arrival.png","image/png",image)).param("category","ARRIVAL_PHOTO").param("assignmentVersion","1").header("Authorization","Bearer "+shop).header("Idempotency-Key",UUID.randomUUID().toString())).andExpect(status().isOk());return id;
     }
     String base(String c){return "quotations/cases/"+c+"/ocr";}
     JsonNode upload(String token,String c,int version,String category,byte[] bytes,String key,int code) throws Exception {return json.readTree(mvc.perform(multipart("/api/v1/"+base(c)).file(new MockMultipartFile("file","synthetic.png","image/png",bytes)).param("assignmentVersion",String.valueOf(version)).param("category",category).param("pageNo","1").header("Authorization","Bearer "+token).header("Idempotency-Key",key)).andExpect(status().is(code)).andReturn().getResponse().getContentAsString()).path("data");}
@@ -75,7 +88,7 @@ class ShopQuoteOcrPostgresIT {
         assertThat(db.queryForObject("SELECT count(*) FROM quote_raw WHERE work_order_id=?::uuid",Long.class,c)).isEqualTo(2);assertThat(db.queryForObject("SELECT count(*) FROM quote_raw_ocr_line WHERE raw_quote_id=?::uuid",Long.class,quote)).isEqualTo(1);
         assertThatThrownBy(()->db.update("UPDATE quote_raw_item SET unit_price=1 WHERE raw_quote_id=?::uuid",quote)).isInstanceOf(org.springframework.dao.DataAccessException.class);
         assertThat(get(shop,base(c)+"/"+j+"/raw",200).path("text").asString()).isEqualTo(new String(raw,StandardCharsets.UTF_8));assertThat(get(shop,base(c)+"/"+j+"/program",200).at("/items/0/description").asString()).isEqualTo("合成轮胎");
-        var audit=json.writeValueAsString(db.queryForList("SELECT summary FROM audit_log WHERE object_id=?",j));assertThat(audit).doesNotContain("人工核对合成轮胎","access_token","13800000000","words_result");flyway.validate();assertThat(flyway.info().current().getVersion().toString()).isEqualTo("31");
+        var audit=json.writeValueAsString(db.queryForList("SELECT summary FROM audit_log WHERE object_id=?",j));assertThat(audit).doesNotContain("人工核对合成轮胎","access_token","13800000000","words_result");flyway.validate();assertThat(flyway.info().current().getVersion().toString()).isEqualTo("32");
     }
     @Test void providerSwitchReusesOriginalButCreatesNewJobAndKeepsHistoricalEvidence() throws Exception {
         String c=arrived(),key=UUID.randomUUID().toString();when(provider.id()).thenReturn("MOCK_V1");
@@ -157,7 +170,7 @@ class ShopQuoteOcrPostgresIT {
         String reassigned=arrived(),old=upload(reassigned);tick();db.update("UPDATE work_order_assignment SET status='CANCELLED' WHERE work_order_id=?::uuid",reassigned);get(shop,base(reassigned)+"/"+old,403);
     }
     @Test void failureStillAllowsManualQuoteAndUnconfirmedOrTamperedSourcesReject() throws Exception {
-        String c=arrived(),j=upload(c);doThrow(new OcrFailure("BAIDU_QUOTA")).when(provider).recognize(anyString(),any(byte[].class),anyBoolean());tick();assertThat(get(shop,base(c)+"/"+j,200).path("errorCode").asString()).isEqualTo("BAIDU_QUOTA");post(shop,base(c)+"/"+j+"/retry",Map.of(),409);
+        String c=arrived(),j=upload(c);doThrow(new OcrFailure("BAIDU_QUOTA")).when(provider).recognize(anyString(),any(byte[].class),anyBoolean());tick();assertThat(get(shop,base(c)+"/"+j,200).path("errorCode").asString()).isEqualTo("BAIDU_QUOTA");post(shop,base(c)+"/"+j+"/retry",Map.of("expectedVersion",0),200);tick();assertThat(get(shop,base(c)+"/"+j,200).path("rerunsUsed").asInt()).isEqualTo(1);
         post(shop,"quotations/cases/"+c+"/raw-quotes",Map.of("expectedVersion",0,"assignmentVersion",1,"lines",List.of(Map.of("description","纯手填项目","quantity",1,"unitPrice","8.00"))),200);
         String c2=arrived(),j2=upload(c2);doAnswer(invocation->new OcrProvider.Result(new HandwritingCandidates().extract(json.readTree(raw),"SHOP_QUOTE"),raw,"18446744073709551615")).when(provider).recognize(anyString(),any(byte[].class),anyBoolean());tick();apply(c2,j2,0,200);
         var body=rawRequest(0,j2,1);var line=new HashMap<>((Map<String,Object>)((List<?>)body.get("lines")).getFirst());line.put("unitPrice","99.00");post(shop,"quotations/cases/"+c2+"/raw-quotes",Map.of("expectedVersion",0,"assignmentVersion",1,"lines",List.of(line)),409);
@@ -179,6 +192,52 @@ class ShopQuoteOcrPostgresIT {
         db.update("INSERT INTO work_order_assignment(work_order_id,assignment_version,shop_id,status,assigned_by,assigned_at) VALUES(?::uuid,2,?,'ACCEPTED',(SELECT id FROM app_user WHERE username='dev_customer_service'),now())",c,shopId);
         get(shop,base(c)+"/"+j,403);post(shop,"quotations/cases/"+c+"/raw-quotes",Map.of("expectedVersion",0,"assignmentVersion",2,"lines",((List<?>)rawRequest(0,j,1).get("lines"))),403);
         String document=mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/v3/api-docs")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();assertThat(document).contains("/api/v1/quotations/cases/{caseId}/ocr","/api/v1/quotations/cases/{caseId}/ocr/{job}/apply");
+    }
+    @Test void threeManualRerunsAreIdempotentAndPreserveOriginalQuoteHistory() throws Exception {
+        String c=arrived(),j=upload(c);
+        var worker=new OcrWorker(tasks,sources,storage,provider,json,1,180);worker.tick();
+        apply(c,j,0,200);
+        var quote=post(shop,"quotations/cases/"+c+"/raw-quotes",rawRequest(0,j,1),200);
+        String snapshot=db.queryForObject("SELECT candidate_json FROM ocr_review WHERE job_id=?::uuid AND revision=1",String.class,j);
+        for(int n=1;n<=3;n++){
+            int expected=n;String key=UUID.randomUUID().toString();var body=Map.of("expectedVersion",expected);
+            if(n==1){
+                try(var pool=Executors.newFixedThreadPool(2)){
+                    Callable<JsonNode> same=()->post(shop,base(c)+"/"+j+"/retry",body,key,200);
+                    var a=pool.submit(same);var b=pool.submit(same);
+                    assertThat(a.get().path("rerunsUsed").asInt()).isEqualTo(1);
+                    assertThat(b.get().path("rerunsUsed").asInt()).isEqualTo(1);
+                }
+            }else post(shop,base(c)+"/"+j+"/retry",body,key,200);
+            post(shop,base(c)+"/"+j+"/retry",body,key,200);
+            post(shop,base(c)+"/"+j+"/retry",Map.of("expectedVersion",expected+1),409);
+            assertThat(upload(shop,c,1,"SHOP_QUOTE",image,UUID.randomUUID().toString(),200).path("rerunsUsed").asInt()).isEqualTo(n);
+            worker.tick();worker.tick(); // No automatic extra external call, even with queued command history.
+            var result=get(shop,base(c)+"/"+j,200);
+            assertThat(result.path("state").asString()).isEqualTo("SUCCEEDED");
+            assertThat(result.path("reviewVersion").asInt()).isEqualTo(n+1);
+            assertThat(result.path("attempts").asInt()).isEqualTo(n+1);
+            assertThat(result.path("rerunsUsed").asInt()).isEqualTo(n);
+            var restored=get(shop,base(c)+"?assignmentVersion=1&page=1&size=20",200);
+            assertThat(restored.path("records").size()).isEqualTo(1);
+            assertThat(restored.at("/records/0/rerunsUsed").asInt()).isEqualTo(n);
+            get(owner,base(c)+"?assignmentVersion=1",403);
+            get(shop,base(c)+"?assignmentVersion=2",403);
+        }
+        post(shop,base(c)+"/"+j+"/retry",Map.of("expectedVersion",4),409);
+        post(shop,base(c)+"/"+j+"/retry",Map.of("expectedVersion",0),409);
+        post(cs,base(c)+"/"+j+"/retry",Map.of("expectedVersion",4),403);
+        String other=arrived();post(shop,base(other)+"/"+j+"/retry",Map.of("expectedVersion",4),403);
+        assertThat(db.queryForObject("SELECT candidate_json FROM ocr_review WHERE job_id=?::uuid AND revision=1",String.class,j)).isEqualTo(snapshot);
+        assertThat(db.queryForObject("SELECT revision FROM quote_raw_ocr_line WHERE raw_quote_id=?::uuid",Integer.class,quote.at("/rawQuote/id").asString())).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT count(*) FROM ocr_raw_result WHERE job_id=?::uuid",Integer.class,j)).isEqualTo(4);
+        assertThat(db.queryForObject("SELECT count(*) FROM ocr_confirmation WHERE job_id=?::uuid AND revision=1",Integer.class,j)).isEqualTo(1);
+        assertThatThrownBy(()->db.update("DELETE FROM shop_quote_ocr_rerun WHERE job_id=?::uuid",j)).isInstanceOf(org.springframework.dao.DataAccessException.class);
+        when(provider.id()).thenReturn("MOCK_V1");
+        String switched=upload(c);worker=new OcrWorker(tasks,sources,storage,provider,json,1,180);worker.tick();
+        assertThat(get(shop,base(c)+"/"+switched,200).path("rerunsUsed").asInt()).isEqualTo(3);
+        post(shop,base(c)+"/"+switched+"/retry",Map.of("expectedVersion",0),409);
+        verify(provider,times(5)).recognize(anyString(),any(byte[].class),anyBoolean());flyway.validate();
     }
     @Test void separateImagesKeepServerPageAndSourceIdentityWithoutMergingSameNamedRows() throws Exception {
         String c=arrived(),j1=upload(c);String j2=upload(shop,c,1,"SHOP_QUOTE",image(4),UUID.randomUUID().toString(),200).path("id").asString();assertThat(j2).isNotEqualTo(j1);tick();tick();

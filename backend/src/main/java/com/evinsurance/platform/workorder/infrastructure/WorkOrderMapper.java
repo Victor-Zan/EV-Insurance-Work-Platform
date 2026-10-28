@@ -81,10 +81,10 @@ public interface WorkOrderMapper {
         @Param("action") String action,@Param("reason") String reason,@Param("actorId") long actorId,
         @Param("actorRoles") String actorRoles,@Param("assignmentVersion") Integer assignmentVersion,
         @Param("traceId") String traceId,@Param("now") Instant now);
-    long historyCount(@Param("workOrderId") UUID workOrderId);
+    long historyCount(@Param("workOrderId") UUID workOrderId,@Param("staff") boolean staff);
     List<WorkOrderRows.Milestone> milestones(@Param("workOrderId") UUID workOrderId);
     WorkOrderRows.History latestHistory(@Param("workOrderId") UUID workOrderId);
-    List<WorkOrderRows.History> history(@Param("workOrderId") UUID workOrderId,@Param("offset") int offset,@Param("size") int size);
+    List<WorkOrderRows.History> history(@Param("workOrderId") UUID workOrderId,@Param("offset") int offset,@Param("size") int size,@Param("staff") boolean staff);
 
     int reserveCommand(@Param("actorId") long actorId,@Param("operation") String operation,@Param("key") String key,
         @Param("workOrderId") UUID workOrderId,@Param("assignmentVersion") Integer assignmentVersion,@Param("now") Instant now);

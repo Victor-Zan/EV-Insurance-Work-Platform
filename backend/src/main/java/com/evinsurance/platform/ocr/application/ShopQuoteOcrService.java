@@ -53,11 +53,20 @@ public class ShopQuoteOcrService {
         audit.record(CurrentUser.require(),Action.OCR_CREATE,"OCR_JOB",id,"Shop quotation; provider="+provider.id()+"; assignment="+assignmentVersion+"; page="+nextPage);return ocr.get(id);
     }
     private void saveCommand(String key,String hash,UUID job){db.update("INSERT INTO shop_quote_ocr_command(actor_id,command_key,request_hash,job_id,provider) VALUES(?,?,?,?,?)",CurrentUser.require().id(),key,hash,job,provider.id());}
+    public PageResponse<OcrService.View> list(UUID c,int assignmentVersion,int page,int size){
+        policy.shopCase(c,assignmentVersion,false);
+        String from=" FROM shop_quote_ocr_scope s JOIN ocr_job j ON j.id=s.job_id JOIN case_file f ON f.id=j.file_id WHERE s.work_order_id=? AND s.shop_id=? AND s.assignment_version=? AND s.provider=? AND f.state='ACTIVE'";
+        Object[] args={c,CurrentUser.require().shopId(),assignmentVersion,provider.id()};
+        long count=db.queryForObject("SELECT count(*)"+from,Long.class,args);
+        int offset=PageResponse.offset(page,size);
+        var ids=db.queryForList("SELECT s.job_id"+from+" ORDER BY s.page_no,s.created_at,s.job_id LIMIT ? OFFSET ?",c,CurrentUser.require().shopId(),assignmentVersion,provider.id(),size,offset);
+        return new PageResponse<>(page,size,count,ids.stream().map(row->get(c,(UUID)row.get("job_id"))).toList());
+    }
     public OcrService.View get(UUID c,UUID j){check(c,j,false);return ocr.get(j);}
     public JsonNode program(UUID c,UUID j){check(c,j,false);return ocr.program(j);}
     public OcrSources.Raw raw(UUID c,UUID j){check(c,j,false);return ocr.raw(j);}
     public PageResponse<Map<String,Object>> history(UUID c,UUID j,int page,int size){check(c,j,false);return ocr.history(j,page,size);}
-    @Transactional public OcrService.View retry(UUID c,UUID j){check(c,j,true);return ocr.retry(j);}
+    @Transactional public OcrService.View retry(UUID c,UUID j,int expected,String key){check(c,j,true);return ocr.recognizeAgain(j,expected,key);}
     @Transactional public OcrService.View apply(UUID c,UUID j,int expected,List<Item> items,String key){
         check(c,j,true);if(items==null||items.isEmpty()||items.size()>200)throw ApiException.invalid("人工候选须为1至200行");
         var prior=jobs.reviewCommand(j,key);if(prior!=null&&((Number)prior.get("revision")).intValue()!=jobs.find(j).reviewVersion())throw ApiException.conflict("OCR_VERSION_CONFLICT","原确认后已发生其他修订，请重新核对最新结果");

@@ -1,5 +1,15 @@
 # 当前电脑的登录恢复与常驻启动
 
+## 2026-10-27 当前源码与运行态边界
+
+当前工作区源码为 `main@8705396`，主线迁移已到 V31；它包含 2026-10-26 的自动派单/粗定位/等待接单，以及 2026-10-27 的高德 `/_AMapService` 代理路径修复、OCR Provider 级幂等隔离和 H5 案件办理更新。此处只确认源码状态，不据此推断常驻运行包、业务库或已打开页面已经同步。
+
+本轮已修复第二阶段真实入口 `Manage-Website.ps1` 在 PowerShell 7 下因 `docker info` 非零退出而提前终止的问题，并完成真实一键启动。Docker Desktop 原 4.94.0 per-user 产品注册缺失，先将约 10 GB 的两个 WSL VHDX 备份至 Git 忽略的 `tmp/docker-repair-backup-20261027/` 并完成 SHA-256 校验，再用 Docker Inc. 有效签名的官方 4.97.0 安装器按原 per-user/WSL2 模式覆盖修复；安装前后原数据盘哈希不变。
+
+随后从第二阶段目录执行 `启动本地网站.ps1 -NoBrowser`：脚本自动拉起 Docker Desktop，Docker Engine 29.9.2 正常；复用 2026-10-09 创建的 `ev-insurance-phase5-audit` PostgreSQL/MinIO 容器，两者均 healthy。项目自带检查脚本确认 backend、admin-web、h5-web、5173/5174 API proxy 全部 UP。此次只确认基础设施、页面与健康代理恢复，没有做账号登录、业务写入或真实地图/OCR验收；下方 2026-10-25/26 的业务验收边界仍按各自记录解释。
+
+更新本机运行环境前，应先按现有脚本核对 Docker CLI 实际路径、守护状态、当前 JAR、Flyway 历史和兼容目录；保留数据库 dump、旧 JAR 和私密配置后再升级。不得只把源码 HEAD 或普通 health `UP` 当作 V31 已部署，也不得在未核对旧 V25 兼容迁移链时直接替换运行包。
+
 ## 2026-10-25 位置搜索与已导入网点派单已实测
 
 本节覆盖下方“CONTROLLED无预算、位置搜索关闭、深圳店仅市级覆盖”的历史状态。用户明确要求启用位置搜索，并选择“本机测试：这10家覆盖深圳全部9区”。根目录私密`.env`现为`AMAP_CALL_POLICY=PROVIDER`，后端已通过原守护重载；JS配置及其他环境项保持，原JAR未替换。私密原配置备份在Git忽略的`tmp/local-website/.env.before-location-search-20261025`。供应商实际免费剩余额度仍未知，不以无限数值冒充余额，未充值或购买资源。
@@ -65,7 +75,7 @@ public 已从本机旧 V25 追加迁移至 V28，保留原 V25 名称及 checksu
 3. 双击 `检查本地网站.cmd` 查看后端、页面、API 代理、统一登录接口和守护状态；正常情况下 Backend、Admin、AdminApi、LoginApi、WatchRunning、AutoRecoveryEnabled 均为 True。LoginApi为False时先核对后端运行包，不要重置密码。
 4. 不用网站时双击 `停止本地网站.cmd`。它关闭自动恢复，只结束本启动器登记、校验过路径及创建时间的进程；保留 Docker、数据库、数据卷和图片。下次双击启动会重新启用恢复。
 
-关闭浏览器或启动终端不会停止后台。Windows 当前用户登录后，任务 `EVInsurance-LocalWebsite` 会启动守护；每分钟另有一次兜底触发，已有运行实例时忽略。正常情况下每10秒检查一次，恢复退出的本项目后端或管理端；后端仍在启动时保留120秒宽限。Docker不可用时等待依赖，最多每5分钟请求启动一次已安装的 Docker Desktop。不会清库、重建容器、强占端口或结束未知 Java／Node 进程。
+关闭浏览器或启动终端不会停止后台。Windows 当前用户登录后，任务 `EVInsurance-LocalWebsite` 会启动守护；每分钟另有一次兜底触发，已有运行实例时忽略。正常情况下每10秒检查一次，恢复退出的本项目后端或管理端；一键启动最多等待180秒。Docker不可用时，启动器先从 PATH 或用户目录/Program Files 的已知安装位置发现 CLI，并在后端进程不存在时请求启动 Docker Desktop；引擎未就绪期间每30秒复查一次。不会清库、重建容器、强占端口或结束未知 Java／Node 进程。
 
 ## 当前运行配置
 

@@ -46,7 +46,7 @@ AMAP_JS_SECURITY_CODE=
 
 对于已配置第二阶段 `local-validation/.env` 与 `.env.phase5` 的本机，从第二阶段目录执行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\启动本地网站.ps1`。启动器调用本仓库 `scripts/Manage-Website.ps1`，复用既有 `ev-insurance-phase5-audit` PostgreSQL/MinIO，以 `phase5_local` 启动网站。管理端5173、H5 5174、后端8080。
 
-后端与两端前端分别在独立隐藏控制台后台运行，启动完成可关闭终端；重复启动复用健康服务、补启动缺失服务。`检查本地网站.ps1` 检查健康，`停止本地网站.ps1` 只停止登记且核验路径/启动时间的网站进程树，保留 Docker 和数据。各服务自行将日志写到仓库外 `local-validation`，不继承启动器的输出捕获管道；进程登记也保存在该目录。没有开机自启或自动重启，故障恢复时重新运行启动器；未知进程占用端口时不自动杀进程。
+后端与两端前端分别由当前用户的无触发器按需任务在独立后台运行，启动完成可关闭终端；重复启动复用健康服务、补启动缺失服务。任务通过 `wscript.exe` 与 `Run-WebsiteService.vbs` 创建无窗口的系统 Windows PowerShell，不委托启动终端承载控制台，不保存密码，也不会自行开机启动。工作器退出由无窗口宿主间隔1分钟、最多重启3次（登记宿主PID，因此恢复不会令进程登记失效）；显式 `停止本地网站.ps1` 先结束通过路径/启动时间核验的登记宿主及其子进程树，再取消本仓库任务实例，避免停后自动重启，保留 Docker 和数据。各服务日志及进程登记保存在仓库外 `local-validation`；恢复耗尽时重新运行启动器，未知进程占用端口时不自动杀进程。
 
 完整恢复说明在第二阶段 `本地网站使用说明.md`，验证见 [WORKFLOW_FIXES.md](WORKFLOW_FIXES.md)。以下是新环境或手动分别启动时的基础步骤。
 
@@ -135,7 +135,7 @@ npm ci
 npm run dev
 ```
 
-默认地址：`http://localhost:5173`。
+默认地址：`http://127.0.0.1:5173`。
 
 质量检查：
 
@@ -154,7 +154,7 @@ npm ci
 npm run dev
 ```
 
-默认地址：`http://localhost:5174`。
+默认地址：`http://127.0.0.1:5174`。
 
 质量检查：
 
@@ -183,7 +183,7 @@ dev 配置在 Flyway 执行前将注入值转换为 BCrypt 哈希，V2.1 开发�
 
 第一位生产管理员的安全初始化属于上线加固阶段，本阶段不提供公开注册或无认证初始化 API。
 
-管理端默认 http://localhost:5173，H5 默认 http://localhost:5174；本地端口占用时，当前开发环境也允许 H5 使用 http://localhost:5175。两端通过 Vite /api 代理后端。部署时配置同源反向代理或明确配置 VITE_API_BASE_URL 与 CORS_ALLOWED_ORIGINS，不能用通配 CORS 替代授权。
+阶段目录一键入口的管理端默认 http://127.0.0.1:5173，H5 默认 http://127.0.0.1:5174；其他历史本机运行方案可能使用不同端口。两端通过 Vite /api 代理后端。部署时配置同源反向代理或明确配置 VITE_API_BASE_URL 与 CORS_ALLOWED_ORIGINS，不能用通配 CORS 替代授权。
 
 API 契约详见 Swagger：POST /api/v1/auth/login 输入 username、password、portal（ADMIN 或 H5）；GET /api/v1/auth/me 读取实时身份。Token 过期、账号停用或认证版本变化返回 401。管理员用户/角色、区域、网点及服务区域、审计 API 均在 /api/v1/admin 下。密码重置只返回成功状态；退出登录清理浏览器会话状态，已签发 Token 在到期或认证版本变化前仍遵守服务端校验。
 

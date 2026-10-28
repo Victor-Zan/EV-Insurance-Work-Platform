@@ -23,7 +23,7 @@ test('H5 case lists use real service pagination and role-specific next actions',
 
 test('owner and repair shop case sections keep forbidden fields out of their rendered routes', () => {
   const detail=source('../src/features/workorders/WorkOrderDetailView.vue'),quote=source('../src/features/quotation/QuotationPanel.vue')
-  assert.match(detail,/QuotationPanel v-if="isShop&&activeSection==='quotation'"/)
+  assert.match(detail,/QuotationPanel v-if="isShop&&\['quotation','quote-records'\]\.includes\(activeSection\)"/)
   assert.match(detail,/FundsPanel v-if="isShop&&activeSection==='settlement'"/)
   assert.match(detail,/\{key:'photos',label:'维修照片'\}/);assert.match(detail,/WAITING_INSURER_PAYMENT.*WAITING_SHOP_SETTLEMENT.*COMPLETED/);assert.match(detail,/'评价':'收车确认'/)
   assert.doesNotMatch(detail,/车主.*(?:报价|加价|核损金额|利润|结算)/)

@@ -56,3 +56,12 @@ test('manual assessment needs no loss document, retains exact amount verificatio
  assert.equal(f.context.error.value,'');f.context.amount.value='18';assert.deepEqual(f.context.confirmation(),{assessmentId:'assessment-1',amount:'18.00',originalReviewed:true})
  f.context.amount.value='30';assert.throws(()=>f.context.confirmation(),/必须与最终核损金额/)
 })
+test('missing optional loss document permits final amount confirmation; an attachment download failure stays local',async()=>{
+ const f=fixture();delete f.props.quote.assessment.lossFileId
+ await f.context.load();assert.equal(f.context.error.value,'');assert.equal(f.calls.length,1)
+ f.context.amount.value='18';assert.deepEqual(f.context.confirmation(),{assessmentId:'assessment-1',amount:'18.00',originalReviewed:true})
+ f.props.quote.assessment.fileSnapshot=[{id:'optional-loss'}]
+ f.respond(async path=>{if(path.includes('/materials/'))throw Error('附件下载失败');return {data:{type:'image/png'}}})
+ await f.context.load();assert.equal(f.context.error.value,'');assert.equal(f.context.lossError.value,'附件下载失败')
+ f.context.amount.value='18';assert.equal(f.context.confirmation().amount,'18.00')
+})

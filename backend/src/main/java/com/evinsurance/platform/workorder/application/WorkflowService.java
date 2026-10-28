@@ -66,7 +66,7 @@ public class WorkflowService {
                     else if("ARRIVAL_EXCEPTION".equals(displayStatus)){role="ADMIN_OR_CUSTOMER_SERVICE";action="HANDLE_ARRIVAL_EXCEPTION";}
                     else {role="REPAIR_SHOP";action="PENDING_ACCEPTANCE".equals(displayStatus)?"ACCEPT_ASSIGNMENT":"CONFIRM_ARRIVAL";}
                 }
-                case SHOP_QUOTE -> {role="REPAIR_SHOP";action="SUBMIT_RAW_QUOTE";}
+                case SHOP_QUOTE -> {role="REPAIR_SHOP";action=eligible(counts,FileCategory.ARRIVAL_PHOTO)?"SUBMIT_RAW_QUOTE":"UPLOAD_ARRIVAL_PHOTO";if(!eligible(counts,FileCategory.ARRIVAL_PHOTO))missing.add("请先由本次派单网点上传有效JPG/PNG到店照片");}
                 case QUOTE_REVIEW -> {
                     role="CUSTOMER_SERVICE";action="ISSUE_FORMAL_QUOTE";
                     if(c==null||c.rawQuoteId==null)missing.add("缺少当前网点原始报价");
@@ -88,7 +88,7 @@ public class WorkflowService {
                     else action=c!=null&&c.insurerConfirmed?"CONFIRM_CUSTOMER_SERVICE":"CONFIRM_INSURER";
                     // Keep already authorized legacy evidence valid; new confirmations require current formal context.
                     if(!"START_REPAIR".equals(action)&&!currentFormal)missing.add("请先完成当前报价审核");
-                    if(!lifecycle.hasCurrentAssessment(c))missing.add("请核对当前最终核损金额");
+                    if(!lifecycle.hasCurrentAssessment(c))missing.add("请录入并核对当前最终核损金额");
                 }
                 case RECEIPT -> {role="OWNER_OR_CUSTOMER_SERVICE";action="CONFIRM_RECEIPT";}
                 case FUNDS -> {
@@ -132,7 +132,8 @@ public class WorkflowService {
             boolean allowed=category!=FileCategory.NOTICE&&category!=FileCategory.LOSS_ASSESSMENT&&FileStagePolicy.allowed(order.status(),category,currentFormal);
             boolean present=present(counts,category);
             if(!allowed&&!present)continue;
-            boolean required=(category==FileCategory.SCENE_PHOTO&&(current==WorkflowNode.CREATE||current==WorkflowNode.QUOTE_REVIEW))
+            boolean required=(category==FileCategory.ARRIVAL_PHOTO&&current==WorkflowNode.SHOP_QUOTE)
+                ||(category==FileCategory.SCENE_PHOTO&&(current==WorkflowNode.CREATE||current==WorkflowNode.QUOTE_REVIEW))
                 ||(category==FileCategory.COMPLETION_PHOTO&&current==WorkflowNode.REPAIR&&"REPAIRING".equals(displayStatus));
             boolean exception=category==FileCategory.NOTICE&&!present&&!blank(files.missingReason(id));
             materials.add(new Material(category.name(),required,present,eligible(counts,category)||exception,exception,allowed&&(actor.roles().contains(Role.CUSTOMER_SERVICE)||(category==FileCategory.SCENE_PHOTO&&actor.roles().contains(Role.ADMIN))),counts.containsKey(category)&&counts.get(category).shopUploadedCount()>0));

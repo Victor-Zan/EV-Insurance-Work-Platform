@@ -9,7 +9,20 @@ $taskName='EVInsurance-LocalWebsite'
 $java=Join-Path $env:USERPROFILE '.jdks/corretto-21.0.11/bin/java.exe'
 $jar=Join-Path $runtime 'backend.jar'
 $node=(Get-Command node.exe -ErrorAction Stop).Source
-$docker=(Get-Command docker.exe -ErrorAction Stop).Source
+$dockerStartupWaitSeconds=180
+$dockerRetrySeconds=30
+function Resolve-Executable([string]$Command,[string[]]$Fallbacks){
+    $resolved=Get-Command $Command -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if($resolved -and (Test-Path -LiteralPath $resolved.Source -PathType Leaf)){return $resolved.Source}
+    foreach($candidate in $Fallbacks){
+        if($candidate -and (Test-Path -LiteralPath $candidate -PathType Leaf)){return (Resolve-Path -LiteralPath $candidate).Path}
+    }
+    throw "$Command is unavailable. Checked PATH and: $($Fallbacks -join '; ')"
+}
+$docker=Resolve-Executable 'docker.exe' @(
+    (Join-Path $env:LOCALAPPDATA 'Programs\DockerDesktop\resources\bin\docker.exe'),
+    (Join-Path $env:ProgramFiles 'Docker\Docker\resources\bin\docker.exe')
+)
 New-Item -ItemType Directory -Path $runtime -Force | Out-Null
 
 function Ready([string]$Url){
@@ -21,9 +34,21 @@ function Ready([string]$Url){
     } catch {return $false}
 }
 function Docker-Ready {
-    $ErrorActionPreference='Continue'
-    & $docker info --format '{{.ServerVersion}}' *> $null
-    return $LASTEXITCODE -eq 0
+    $previous=$ErrorActionPreference
+    try {
+        $ErrorActionPreference='Continue'
+        & $docker info --format '{{.ServerVersion}}' *> $null
+        return $LASTEXITCODE -eq 0
+    } finally {$ErrorActionPreference=$previous}
+}
+function Start-DockerDesktop {
+    if(Get-Process 'com.docker.backend' -ErrorAction SilentlyContinue){return $false}
+    $desktop=Resolve-Executable 'Docker Desktop.exe' @(
+        (Join-Path $env:LOCALAPPDATA 'Programs\DockerDesktop\Docker Desktop.exe'),
+        (Join-Path $env:ProgramFiles 'Docker\Docker\Docker Desktop.exe')
+    )
+    Start-Process -FilePath $desktop -WindowStyle Hidden | Out-Null
+    return $true
 }
 function Login-Ready {
     try {
@@ -105,7 +130,7 @@ if($Action -eq 'Start'){
             Start-Process -FilePath $shell -ArgumentList @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',('"'+$scriptPath+'"'),'-Action','Watch') -WindowStyle Hidden | Out-Null
         }
     }
-    $deadline=(Get-Date).AddSeconds(120)
+    $deadline=(Get-Date).AddSeconds($dockerStartupWaitSeconds)
     do {
         if((Ready 'http://127.0.0.1:8080/actuator/health') -and (Ready 'http://127.0.0.1:5173/api/v1/health')){
             if(-not(Login-Ready)){throw 'Unified login API is unavailable. Rebuild and update tmp/local-website/backend.jar to match the frontend; do not reset account passwords.'}
@@ -129,12 +154,9 @@ try {
     while(Test-Path -LiteralPath $enabledPath){
         try {
             if(-not(Docker-Ready)){
-                if(((Get-Date)-$lastDockerAttempt).TotalSeconds -ge 300){
+                if(((Get-Date)-$lastDockerAttempt).TotalSeconds -ge $dockerRetrySeconds){
                     $lastDockerAttempt=Get-Date
-                    $desktop=Join-Path $env:ProgramFiles 'Docker/Docker/Docker Desktop.exe'
-                    if(-not(Get-Process 'com.docker.backend' -ErrorAction SilentlyContinue)){
-                        Start-Process -FilePath $desktop -WindowStyle Hidden | Out-Null
-                    }
+                    Start-DockerDesktop | Out-Null
                 }
                 throw 'Docker engine is unavailable; waiting for it before starting the backend.'
             }

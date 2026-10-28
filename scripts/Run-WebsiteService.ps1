@@ -15,7 +15,7 @@ try{
         }else{
             Set-Location (Join-Path $repo $Service)
             $port=if($Service -eq 'admin-web'){5173}else{5174}
-            & node.exe (Join-Path (Get-Location) 'node_modules/vite/bin/vite.js') --host localhost --port $port --strictPort
+            & node.exe (Join-Path (Get-Location) 'node_modules/vite/bin/vite.js') --host 127.0.0.1 --port $port --strictPort
         }
     } 3>&1 4>&1 5>&1 6>&1 1>> $stdout 2>> $stderr
     exit $LASTEXITCODE

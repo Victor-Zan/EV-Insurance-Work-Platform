@@ -16,12 +16,16 @@ public class ShopQuoteOcrController {
     @GetMapping("/configuration") public ApiResponse<Map<String,String>> configuration(){return ApiResponse.success(service.configuration());}
     @PostMapping(consumes="multipart/form-data") @Operation(summary="当前已接单网点上传本次报价清单并创建去重OCR任务；不提交报价")
     public ApiResponse<OcrService.View> upload(@PathVariable UUID caseId,@RequestParam int assignmentVersion,@RequestParam(defaultValue="SHOP_QUOTE") String category,@RequestParam(defaultValue="1") int pageNo,@RequestHeader("Idempotency-Key") String key,@RequestPart MultipartFile file){return ApiResponse.success(service.upload(caseId,assignmentVersion,category,pageNo,key,file));}
+    @GetMapping @Operation(summary="读取本次已接单网点当前供应商的有效清单图片及识别次数，不发起识别")
+    public ApiResponse<PageResponse<OcrService.View>> list(@PathVariable UUID caseId,@RequestParam int assignmentVersion,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size){return ApiResponse.success(service.list(caseId,assignmentVersion,page,size));}
     @GetMapping("/{job}") public ApiResponse<OcrService.View> get(@PathVariable UUID caseId,@PathVariable UUID job){return ApiResponse.success(service.get(caseId,job));}
     @GetMapping("/{job}/program") public ApiResponse<tools.jackson.databind.JsonNode> program(@PathVariable UUID caseId,@PathVariable UUID job){return ApiResponse.success(service.program(caseId,job));}
     @GetMapping("/{job}/raw") public ApiResponse<OcrSources.Raw> raw(@PathVariable UUID caseId,@PathVariable UUID job){return ApiResponse.success(service.raw(caseId,job));}
     @GetMapping("/{job}/history") public ApiResponse<PageResponse<Map<String,Object>>> history(@PathVariable UUID caseId,@PathVariable UUID job,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size){return ApiResponse.success(service.history(caseId,job,page,size));}
     @GetMapping("/{job}/image") public ResponseEntity<InputStreamResource> image(@PathVariable UUID caseId,@PathVariable UUID job){service.check(caseId,job,false);var source=ocr.source(job);return ResponseEntity.ok().contentType(MediaType.parseMediaType(source.contentType())).contentLength(source.size()).header("Cache-Control","no-store").header("X-Content-Type-Options","nosniff").body(new InputStreamResource(ocr.image(job)));}
-    @PostMapping("/{job}/retry") public ApiResponse<OcrService.View> retry(@PathVariable UUID caseId,@PathVariable UUID job){return ApiResponse.success(service.retry(caseId,job));}
+    public record Rerun(int expectedVersion){}
+    @PostMapping("/{job}/retry") @Operation(summary="复用原图重新识别，首次之外最多3次；处理中拒绝，重复请求不重复扣次数")
+    public ApiResponse<OcrService.View> retry(@PathVariable UUID caseId,@PathVariable UUID job,@RequestHeader("Idempotency-Key") String key,@RequestBody Rerun body){return ApiResponse.success(service.retry(caseId,job,body.expectedVersion(),key));}
     @PostMapping("/{job}/apply") @Operation(summary="网点保存人工候选并确认快照；应用到当前表单，不自动提交报价")
     public ApiResponse<OcrService.View> apply(@PathVariable UUID caseId,@PathVariable UUID job,@RequestHeader("Idempotency-Key") String key,@RequestBody Apply body){return ApiResponse.success(service.apply(caseId,job,body.expectedVersion(),body.items(),key));}
 }

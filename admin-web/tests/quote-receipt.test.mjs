@@ -6,6 +6,7 @@ import {compile} from '@vue/compiler-dom'
 import ts from 'typescript'
 import * as Vue from 'vue'
 import * as reviewHelpers from '../src/features/quotation/quote-review.ts'
+import {formalPayload} from '../src/features/quotation/quotation.ts'
 
 const source=readFileSync(new URL('../src/features/quotation/QuotationPanel.vue',import.meta.url),'utf8')
 const {descriptor}=parse(source)
@@ -18,7 +19,7 @@ function fixture(dev=true,roles=['CUSTOMER_SERVICE']){
  const props=Vue.reactive({caseId:'synthetic-receipt-case',workflow:flow}),events=[],calls=[],timers=new Map(),hooks={};let nextFlow=flow,resolveGet,nextQuote={version:0,rawQuote:null,gate:{},status:'ARRIVED'},postReply=async()=>{throw Error('Unexpected write')}
  const document={hidden:false}
  const httpClient={async get(path){calls.push(['get',path]);return resolveGet?await resolveGet():{data:{data:nextFlow}}}}
- const deps={httpClient,currentUser:Vue.ref({roles}),quotationApi:()=>({get:async()=>nextQuote,post:async(...args)=>{calls.push(['post',...args]);return postReply(...args)}}),formalPayload(){throw Error('Unexpected formal quote')}}
+ const deps={httpClient,currentUser:Vue.ref({roles}),quotationApi:()=>({get:async()=>nextQuote,post:async(...args)=>{calls.push(['post',...args]);return postReply(...args)}}),formalPayload}
  const component=new Function('__vue','__deps','__dev','__timers','document','__helpers',code)({...Vue,onMounted(){},onActivated(){},onDeactivated(fn){hooks.deactivated=fn},onUnmounted(fn){hooks.unmounted=fn}},deps,dev,{setTimeout(fn,delay){const id=Symbol();timers.set(id,{fn,delay});return id},clearTimeout(id){timers.delete(id)}},document,reviewHelpers)
  const context=component.setup(props,{expose(){},emit(...event){events.push(event)}})
  return {context,props,events,calls,timers,hooks,document,setFlow(value){nextFlow=value},setQuote(value){nextQuote=value},deferGet(fn){resolveGet=fn},respondPost(fn){postReply=fn}}
@@ -106,4 +107,38 @@ test('shop-quote task never renders the shared material uploader, while other ta
  assert.notEqual(render({workflow,activeSection:'quotation'},[]).type,'section')
  for(const node of ['QUOTE_REVIEW','INSURER_ASSESSMENT']){workflow.currentNode=node;assert.notEqual(render({workflow,activeSection:'quotation'},[]).type,'section')}
  workflow.currentNode='REPAIR';assert.equal(render({workflow,activeSection:'repair'},[]).type,'section')
+})
+
+test('formal review submits exactly the selected markup mode and restores fixed-amount history',async()=>{
+ for(const mode of ['FIXED_AMOUNT','PERCENTAGE']){
+  const f=fixture();Object.assign(f.props.workflow,{currentNode:'QUOTE_REVIEW',canAct:true})
+  f.setQuote({version:1,rawQuote:{id:'raw-markup',lines:[{description:'核对项目',quantity:1,unitPrice:'460.00'}]}})
+  await f.context.load()
+  const workbench=elements(f).find(n=>n.type==='QuoteReviewWorkbench')
+  workbench.props.onMode(mode)
+  assert.equal(f.context.markup.value,'0.00');assert.equal(f.context.dirty.value,true)
+  workbench.props.onValue(mode==='FIXED_AMOUNT'?'69.00':'15.00')
+  f.respondPost(async()=>({version:2,rawQuote:{id:'raw-markup',lines:[]},gate:{}}))
+  await f.context.proceed()
+  const body=f.calls.find(call=>call[0]==='post')[2]
+  assert.equal(body.mode,mode);assert.equal(body.reviewedLines[0].unitPrice,'460.00')
+  if(mode==='FIXED_AMOUNT'){assert.equal(body.fixedAmount,'69.00');assert.equal('percentage' in body,false)}
+  else{assert.equal(body.percentage,'15.00');assert.equal('fixedAmount' in body,false)}
+ }
+ const f=fixture()
+ f.setQuote({version:3,rawQuote:{id:'raw-fixed',lines:[]},formalQuote:{rawQuoteId:'raw-fixed',mode:'FIXED_AMOUNT',markupValue:'69.00',reviewedLines:[]}})
+ await f.context.load()
+ assert.equal(f.context.mode.value,'FIXED_AMOUNT');assert.equal(f.context.markup.value,'69.00')
+})
+
+test('assessment identifiers follow saved case facts through read-only fields without OCR replacement',async()=>{
+ const f=fixture();Object.assign(f.props,{claimNo:'CASE-123',insuranceCompany:'案件保险公司'})
+ Object.assign(f.props.workflow,{currentNode:'INSURER_ASSESSMENT',status:'WAITING_INSURER_ASSESSMENT'})
+ await f.context.load();await Vue.nextTick()
+ const values=()=>elements(f).filter(node=>node.type==='input'&&node.props.readonly!==undefined).map(node=>node.props.value)
+ assert.deepEqual(values(),['CASE-123','案件保险公司','未填写'])
+ f.context.assessment.value='470.00';f.props.claimNo='UPDATED-CASE';await Vue.nextTick()
+ assert.deepEqual(values(),['UPDATED-CASE','案件保险公司','未填写'])
+ assert.equal(f.context.assessment.value,'470.00')
+ assert.equal(elements(f).some(node=>node.type==='DocumentRecognition'),false)
 })

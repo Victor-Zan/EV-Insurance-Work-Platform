@@ -8,7 +8,7 @@
  <select id="activeCount" resultType="long">SELECT count(*) FROM case_file WHERE work_order_id=#{orderId} AND category=#{category} AND state='ACTIVE'</select>
  <select id="summary" resultType="com.evinsurance.platform.document.infrastructure.FileMapper$Summary">
   SELECT f.category,count(*) AS count,
-   count(*) FILTER (WHERE f.category!='COMPLETION_PHOTO' OR (f.content_type IN ('image/jpeg','image/png') AND EXISTS(
+   count(*) FILTER (WHERE f.category NOT IN ('ARRIVAL_PHOTO','COMPLETION_PHOTO') OR (f.content_type IN ('image/jpeg','image/png') AND EXISTS(
     SELECT 1 FROM audit_log a WHERE a.object_type='CASE_FILE' AND a.object_id=CAST(f.id AS text)
      AND a.action='FILE_UPLOAD' AND a.actor_id=f.uploaded_by AND 'REPAIR_SHOP'=ANY(string_to_array(a.actor_roles,','))
    ))) AS eligible_count,

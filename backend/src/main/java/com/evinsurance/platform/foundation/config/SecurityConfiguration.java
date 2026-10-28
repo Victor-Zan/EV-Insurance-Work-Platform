@@ -29,7 +29,7 @@ public class SecurityConfiguration {
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http,ObjectMapper json,JwtService jwt,UserMapper users,
         org.springframework.beans.factory.ObjectProvider<com.evinsurance.platform.integration.map.JsMapService> jsMaps,
-        @Value("${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://localhost:5175}") String origins) throws Exception {
+        @Value("${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:5175}") String origins) throws Exception {
         var cors=new CorsConfiguration(); cors.setAllowedOrigins(List.of(origins.split(",")));
         cors.setAllowedMethods(List.of("GET","POST","PUT","PATCH","DELETE","OPTIONS"));
         cors.setAllowedHeaders(List.of("Authorization","Content-Type","X-Request-Id","Idempotency-Key")); cors.setExposedHeaders(List.of("X-Request-Id"));
@@ -46,7 +46,8 @@ public class SecurityConfiguration {
                 .requestMatchers("/api/v1/health","/actuator/health","/v3/api-docs/**","/swagger-ui.html","/swagger-ui/**").permitAll()
                 .requestMatchers(HttpMethod.POST,"/api/v1/auth/login","/api/v1/auth/sign-in","/api/v1/auth/handoff","/api/v1/auth/activation/inspect","/api/v1/auth/activation/complete").permitAll()
                 .requestMatchers("/api/v1/auth/me").authenticated()
-                .requestMatchers("/api/v1/funds/**").hasAnyRole("ADMIN","CUSTOMER_SERVICE","REPAIR_SHOP")
+                .requestMatchers(HttpMethod.GET,"/api/v1/funds/cases/*").hasAnyRole("ADMIN","CUSTOMER_SERVICE","REPAIR_SHOP")
+                .requestMatchers("/api/v1/funds/**").hasAnyRole("ADMIN","CUSTOMER_SERVICE")
                 .requestMatchers("/api/v1/historical-cases/**").hasAnyRole("ADMIN","CUSTOMER_SERVICE")
                 .requestMatchers("/api/v1/notifications/**").hasAnyRole("ADMIN","CUSTOMER_SERVICE","REPAIR_SHOP","OWNER")
                 .requestMatchers("/api/v1/materials/**").hasAnyRole("ADMIN","CUSTOMER_SERVICE","REPAIR_SHOP","OWNER")

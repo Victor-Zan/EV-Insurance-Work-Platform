@@ -225,7 +225,7 @@ class MaterialsPostgresIT {
     private String caseId() throws Exception{return formal(customerService,"FILE-"+UUID.randomUUID(),OWNER_PHONE,"VIN-"+UUID.randomUUID(),Instant.now()).path("id").asText();}
     private JsonNode upload(String token,String id,String category,String key,String replace,Integer version,int expected) throws Exception {
         var request=org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/v1/materials/cases/{id}",id)
-            .file(new org.springframework.mock.web.MockMultipartFile("file","synthetic.pdf","application/pdf","%PDF-1.7\nsynthetic desensitized material\n%%EOF".getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+            .file("ARRIVAL_PHOTO".equals(category)?new org.springframework.mock.web.MockMultipartFile("file","synthetic-arrival.png","image/png",java.util.Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jFWkAAAAASUVORK5CYII=")):new org.springframework.mock.web.MockMultipartFile("file","synthetic.pdf","application/pdf","%PDF-1.7\nsynthetic desensitized material\n%%EOF".getBytes(java.nio.charset.StandardCharsets.UTF_8)))
             .header("Authorization","Bearer "+token).header("Idempotency-Key",key).param("category",category);
         if(replace!=null)request.param("replace",replace);if(version!=null)request.param("assignmentVersion",version.toString());
         return json.readTree(mvc.perform(request).andExpect(status().is(expected)).andReturn().getResponse().getContentAsString()).path("data");
@@ -279,6 +279,8 @@ class MaterialsPostgresIT {
         command(customerService,"quotations/cases/"+id+"/formal-quotes",Map.of("expectedVersion",0,"rawQuoteId",UUID.randomUUID().toString(),"mode","FIXED_AMOUNT","fixedAmount","0.00"),409);
         command(customerService,"materials/"+photo.path("id").asText()+"/void",Map.of(),200);
         assertThat(material(workflow(id),"ARRIVAL_PHOTO").path("shopUploaded").asBoolean()).isFalse();
+        command(shop,"quotations/cases/"+id+"/raw-quotes",Map.of("expectedVersion",0,"assignmentVersion",version,"lines",List.of(Map.of("description","合成配件","quantity",1,"unitPrice","1.00"))),409);
+        upload(shop,id,"ARRIVAL_PHOTO",UUID.randomUUID().toString(),null,version,200);
         command(shop,"quotations/cases/"+id+"/raw-quotes",Map.of("expectedVersion",0,"assignmentVersion",version,"lines",List.of(Map.of("description","合成配件","quantity",1,"unitPrice","1.00"))),200);
         assertThat(workflow(id).path("currentNode").asText()).isEqualTo("QUOTE_REVIEW");
     }
@@ -305,6 +307,7 @@ class MaterialsPostgresIT {
         int version=assignmentVersion(assigned);
         command(shop,"work-orders/"+id+"/accept",Map.of("assignmentVersion",version),200);
         command(shop,"work-orders/"+id+"/arrive",Map.of("assignmentVersion",version),200);
+        upload(shop,id,"ARRIVAL_PHOTO",UUID.randomUUID().toString(),null,version,200);
         var raw=command(shop,"quotations/cases/"+id+"/raw-quotes",Map.of("expectedVersion",0,"assignmentVersion",version,"lines",List.of(Map.of("description","合成配件","quantity",1,"unitPrice","1.00"))),200);
         command(customerService,"quotations/cases/"+id+"/formal-quotes",Map.of("expectedVersion",raw.path("version").asInt(),"rawQuoteId",raw.path("rawQuote").path("id").asText(),"mode","FIXED_AMOUNT","fixedAmount","0.00"),200);
     }

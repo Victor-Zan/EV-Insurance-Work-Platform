@@ -337,6 +337,8 @@ class WorkOrderPostgresIT {
         int assignment=dispatched.path("currentAssignment").path("assignmentVersion").asInt();
         api(shop,"POST","/api/v1/work-orders/"+id+"/accept",Map.of("assignmentVersion",assignment),"accept-"+id,200);
         api(shop,"POST","/api/v1/work-orders/"+id+"/arrive",Map.of("assignmentVersion",assignment),"arrive-"+id,200);
+        byte[] arrivalImage=java.util.Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jFWkAAAAASUVORK5CYII=");
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/v1/materials/cases/{id}",id).file(new org.springframework.mock.web.MockMultipartFile("file","synthetic-arrival.png","image/png",arrivalImage)).param("category","ARRIVAL_PHOTO").param("assignmentVersion",Integer.toString(assignment)).header("Authorization","Bearer "+shop).header("Idempotency-Key",UUID.randomUUID().toString())).andExpect(status().isOk());
         var raw=api(shop,"POST","/api/v1/quotations/cases/"+id+"/raw-quotes",Map.of("expectedVersion",0,"assignmentVersion",assignment,"lines",List.of(Map.of("description","合成配件","quantity",1,"unitPrice","18.30"))),"raw-"+id,200);
         var reviewed=api(customerService,"POST","/api/v1/quotations/cases/"+id+"/formal-quotes",Map.of("expectedVersion",raw.path("version").asInt(),"rawQuoteId",raw.path("rawQuote").path("id").asText(),"mode","FIXED_AMOUNT","fixedAmount","0.00"),"formal-"+id,200);
         assertThat(reviewed.path("formalQuote").path("total").asText()).isEqualTo("18.30");

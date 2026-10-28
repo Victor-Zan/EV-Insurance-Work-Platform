@@ -23,6 +23,7 @@ public class QuotationLifecycle {
         if(c==null||c.assessmentId==null||c.formalQuoteId==null)return false;
         var amount=mapper.assessment(c.assessmentId);var proof=mapper.assessmentProof(c.assessmentId);
         if(amount==null||!java.util.Objects.equals(amount.sourceFormalId(),c.formalQuoteId))return false;
+        // Independently recorded amounts need no OCR attachment. Existing linked evidence still must be current.
         if(proof==null)return true;
         if(!proof.currentFile())return false;
         var adopted=json.readTree(proof.candidateJson());var value=adopted.path("adopted");

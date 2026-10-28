@@ -8,6 +8,7 @@ public interface OcrMapper {
     OcrRow byFile(@Param("fileId") UUID fileId,@Param("provider") String provider);
     void insert(@Param("id") UUID id,@Param("fileId") UUID fileId,@Param("intakeId") UUID intakeId,@Param("actor") long actor,@Param("fail") boolean fail,@Param("provider") String provider,@Param("api") String api,@Param("version") String version);
     int retry(UUID id);
+    int recognizeAgain(@Param("id") UUID id,@Param("version") int version);
     int expire(int maxAttempts);
     OcrRow claim(@Param("token") UUID token,@Param("seconds") int seconds,@Param("maxAttempts") int maxAttempts,@Param("provider") String provider);
     int finish(@Param("id") UUID id,@Param("token") UUID token,@Param("candidate") String candidate,@Param("error") String error);

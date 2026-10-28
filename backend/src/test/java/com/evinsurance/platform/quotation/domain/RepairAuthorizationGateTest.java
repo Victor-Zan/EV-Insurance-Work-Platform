@@ -7,10 +7,10 @@ import com.evinsurance.platform.quotation.domain.RepairAuthorizationGate.Evidenc
 import com.evinsurance.platform.quotation.domain.RepairAuthorizationGate.MissingCondition;
 
 class RepairAuthorizationGateTest {
-    @Test void onlyTheAllSatisfiedCombinationAuthorizesRepair() {
+    @Test void amountAndBothConfirmationsAuthorizeWithOrWithoutAttachment() {
         for (int combination=0; combination<16; combination++) {
             var evidence=new Evidence((combination&1)!=0,(combination&2)!=0,(combination&4)!=0,(combination&8)!=0);
-            assertThat(RepairAuthorizationGate.allowed(evidence)).as("three-condition combination with optional legacy file %s",combination).isEqualTo((combination&14)==14);
+            assertThat(RepairAuthorizationGate.allowed(evidence)).as("amount and confirmation combination %s",combination).isEqualTo((combination&14)==14);
         }
     }
     @Test void eachMissingPrerequisiteIsReportedWithoutInventingPaymentOrShopConfirmation() {

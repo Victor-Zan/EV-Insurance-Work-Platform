@@ -448,9 +448,10 @@ public class WorkOrderService {
         var actor=CurrentUser.require();
         requireVisible(id,actor,false);
         int offset=PageResponse.offset(page,size);
-        var rows=mapper.history(id,offset,size);
+        boolean staff=actor.roles().contains(Role.ADMIN)||actor.roles().contains(Role.CUSTOMER_SERVICE);
+        var rows=mapper.history(id,offset,size,staff);
         if(actor.roles().contains(Role.OWNER)) rows.forEach(r -> {r.setReason(null);r.setActorId(null);r.setActorRoles(null);});
-        return new PageResponse<>(page,size,mapper.historyCount(id),rows);
+        return new PageResponse<>(page,size,mapper.historyCount(id,staff),rows);
     }
 
     private WorkOrderEntity dispatchInternal(UUID id,long shopId,CurrentUser actor,String action,String reason,

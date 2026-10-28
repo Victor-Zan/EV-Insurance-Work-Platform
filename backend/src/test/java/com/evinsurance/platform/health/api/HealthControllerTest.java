@@ -76,11 +76,13 @@ class HealthControllerTest {
 
     @Test
     void allowsCurrentLocalH5OriginWithoutOpeningCorsToOtherOrigins() throws Exception {
-        mockMvc.perform(options("/api/v1/auth/login")
-                .header("Origin", "http://localhost:5175")
-                .header("Access-Control-Request-Method", "POST"))
-            .andExpect(status().isOk())
-            .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:5175"));
+        for (var origin : new String[]{"http://127.0.0.1:5174", "http://localhost:5175"}) {
+            mockMvc.perform(options("/api/v1/auth/login")
+                    .header("Origin", origin)
+                    .header("Access-Control-Request-Method", "POST"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", origin));
+        }
 
         mockMvc.perform(options("/api/v1/auth/login")
                 .header("Origin", "http://localhost:5199")

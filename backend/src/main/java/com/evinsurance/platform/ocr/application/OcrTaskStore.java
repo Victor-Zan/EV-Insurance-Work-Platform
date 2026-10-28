@@ -10,7 +10,7 @@ public class OcrTaskStore {
     private final OcrMapper jobs;private final AuditService audit;private final org.springframework.jdbc.core.JdbcTemplate db;private final OcrSources sources;private final com.evinsurance.platform.integration.ocr.OcrProvider provider;
     public OcrTaskStore(OcrMapper jobs,AuditService audit,org.springframework.jdbc.core.JdbcTemplate db,OcrSources sources,com.evinsurance.platform.integration.ocr.OcrProvider provider){this.jobs=jobs;this.audit=audit;this.db=db;this.sources=sources;this.provider=provider;}
     @Transactional public OcrRow claim(int maxAttempts,int seconds){
-        var expired=db.queryForList("WITH expired AS (SELECT id FROM ocr_job WHERE provider<>'MOCK_V1' AND state='RUNNING' AND lease_until<now() ORDER BY lease_until,id FOR UPDATE SKIP LOCKED LIMIT 50) UPDATE ocr_job j SET state='FAILED',error_code='BAIDU_LEASE_POSSIBLY_CHARGED',lease_token=NULL,lease_until=NULL,updated_at=now() FROM expired e WHERE j.id=e.id RETURNING j.id");
+        var expired=db.queryForList("WITH expired AS (SELECT id FROM ocr_job WHERE (provider<>'MOCK_V1' OR EXISTS(SELECT 1 FROM shop_quote_ocr_scope s WHERE s.job_id=ocr_job.id)) AND state='RUNNING' AND lease_until<now() ORDER BY lease_until,id FOR UPDATE SKIP LOCKED LIMIT 50) UPDATE ocr_job j SET state='FAILED',error_code='BAIDU_LEASE_POSSIBLY_CHARGED',lease_token=NULL,lease_until=NULL,updated_at=now() FROM expired e WHERE j.id=e.id RETURNING j.id");
         for(var r:expired)audit.record(null,Action.OCR_FAILED,"OCR_JOB",(UUID)r.get("id"),"Lease expired; no automatic provider retry; possibly charged");
         jobs.expire(maxAttempts);return jobs.claim(UUID.randomUUID(),seconds,maxAttempts,provider.id());
     }
@@ -22,7 +22,7 @@ public class OcrTaskStore {
             candidate=null;error="SOURCE_ACCESS_CHANGED";rawKey=null;
         }
         if(jobs.finish(r.id(),r.leaseToken(),candidate,error)!=1)return false;
-        if(error==null){jobs.appendReview(r.id(),0,candidate,r.createdBy(),"SYSTEM-"+r.provider()+"-CANDIDATE");if(rawKey!=null)db.update("INSERT INTO ocr_raw_result(job_id,attempt,object_key,sha256,byte_size,log_id) VALUES(?,?,?,?,?,?)",r.id(),r.attempts(),rawKey,hash,size,logId);}
+        if(error==null){jobs.appendReview(r.id(),r.reviewVersion(),candidate,r.createdBy(),"SYSTEM-"+r.provider()+"-CANDIDATE-"+r.attempts());if(rawKey!=null)db.update("INSERT INTO ocr_raw_result(job_id,attempt,object_key,sha256,byte_size,log_id) VALUES(?,?,?,?,?,?)",r.id(),r.attempts(),rawKey,hash,size,logId);}
         audit.record(null,error==null?Action.OCR_SUCCEEDED:Action.OCR_FAILED,"OCR_JOB",r.id(),"Provider="+r.provider()+"; attempt="+r.attempts()+"; result="+(error==null?"CANDIDATE_ONLY":error));return error==null;
     }
 }

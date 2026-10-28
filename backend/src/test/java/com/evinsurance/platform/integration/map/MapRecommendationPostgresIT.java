@@ -43,7 +43,7 @@ class MapRecommendationPostgresIT {
     @BeforeEach void setup() throws Exception {
         simulationEnabled=false;
         db.update("update repair_shop set name='开发模拟维修网点' where code='DEV-SHOP'");
-        db.update("update repair_shop set name='历史合成模拟目的地',enabled=false where code like 'DEV-SIM-%'");
+        db.update("update repair_shop set code='HIST-SIM-'||id,name='历史合成模拟目的地',enabled=false where code like 'DEV-SIM-%'");
         db.update("delete from shop_service_region where shop_id=(select id from repair_shop where code='DEV-SHOP') and region_id in(select id from region where code like '44%')");
         ((Map<?,?>)ReflectionTestUtils.getField(mapLocations,"sessions")).clear();
         reset(provider);when(provider.providerId()).thenReturn("AMAP_WEB_V1");routes=new AtomicInteger();

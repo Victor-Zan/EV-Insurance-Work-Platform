@@ -20,9 +20,9 @@ function fixture(){
  let code=ts.transpileModule(compileScript(descriptor,{id:'review-test'}).content,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText
  code=code.replace(/import\s*\{([^}]+)\}\s*from\s*['"]vue['"];?/g,(_,names)=>'const {'+names.replace(/\s+as\s+/g,':')+'}=__vue;').replace(/import .*from ['"].*['"];?/g,'').replace('export default','return')
  code='const {reviewCalculation}=__helpers;const httpClient=__client;const URL=__urls;'+code
- const props=Vue.reactive({originals:[],lines:[{description:'合成配件',quantity:'1',unitPrice:'20.00'}],rate:'10',readonly:false}),calls=[],revoked=[],urls=[];let unmount,resolve
+ const props=Vue.reactive({originals:[],lines:[{description:'合成配件',quantity:'1',unitPrice:'20.00'}],value:'10',mode:'PERCENTAGE',readonly:false}),calls=[],revoked=[],urls=[];let unmount,resolve
  const component=new Function('__vue','__helpers','__client','__urls',code)({...Vue,watch(){},onUnmounted(fn){unmount=fn}},helpers,{async get(path){calls.push(path);return resolve?await resolve():{data:{type:'image/png'}}}},{createObjectURL(){const url='blob:synthetic-'+urls.length;urls.push(url);return url},revokeObjectURL(url){revoked.push(url)}})
- const context=component.setup(props,{expose(){},emit(name,value){if(name==='lines')props.lines=value;if(name==='rate')props.rate=value}})
+ const context=component.setup(props,{expose(){},emit(name,value){if(name==='lines')props.lines=value;if(name==='value')props.value=value;if(name==='mode'){props.mode=value;props.value='0.00'}}})
  return {props,context,calls,revoked,urls,unmount(){unmount()},defer(fn){resolve=fn}}
 }
 test('editing rows retains original input snapshots and updates total; multi-image preview releases old URLs',async()=>{
@@ -65,4 +65,27 @@ test('completed navigation has only case details and records, highlights selecti
  const renderAside=new Function('Vue',compile(opening+'</aside>',{mode:'function',prefixIdentifiers:true}).code)(Vue)
  assert.notEqual(renderAside({order:{status:'COMPLETED'}},[]).type,'aside')
  assert.equal(renderAside({order:{status:'REPAIRING'}},[]).type,'aside')
+})
+
+test('fixed markup adds exact cents while percentage applies only to the reviewed total',()=>{
+ const lines=[{description:'合成核对清单',quantity:'1',unitPrice:'460.00'}]
+ assert.deepEqual(helpers.reviewCalculation(lines,'69.00','FIXED_AMOUNT'),{amounts:['460.00'],base:'460.00',markup:'69.00',total:'529.00'})
+ assert.equal(helpers.reviewCalculation(lines,'15','PERCENTAGE').total,'529.00')
+ assert.equal(helpers.reviewCalculation(lines,'150.25','FIXED_AMOUNT').total,'610.25')
+ assert.equal(helpers.reviewCalculation(lines,'0','FIXED_AMOUNT').total,'460.00')
+ assert.equal(helpers.reviewCalculation(lines,'9007199254740993.01','FIXED_AMOUNT').total,'9007199254741453.01')
+ for(const value of ['-1','1.001','1x00',''])assert.throws(()=>helpers.reviewCalculation(lines,value,'FIXED_AMOUNT'))
+ assert.throws(()=>helpers.reviewCalculation(lines,'100.01','PERCENTAGE'))
+})
+test('markup selector switches units, resets the input and respects read-only state',()=>{
+ const f=fixture(),{code}=compile(descriptor.template.content,{mode:'function',prefixIdentifiers:true,expressionPlugins:['typescript']})
+ const render=new Function('Vue',ts.transpileModule(code,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText)(Vue)
+ function nodes(){const found=[];function visit(v){if(!v||typeof v!=='object')return;if(v.type==='select'||v.type==='input')found.push(v);if(Array.isArray(v.children))v.children.forEach(visit)}visit(render(Vue.proxyRefs({...f.context,...f.props}),[]));return found}
+ const selector=nodes().find(v=>v.type==='select')
+ selector.props.onChange({target:{value:'FIXED_AMOUNT'}})
+ assert.equal(f.props.mode,'FIXED_AMOUNT');assert.equal(f.props.value,'0.00')
+ const fixed=nodes().find(v=>v.props['aria-label']==='加价金额（元）')
+ fixed.props.onInput({target:{value:'69.00'}})
+ assert.equal(f.context.calculation.value.value.total,'89.00')
+ f.props.readonly=true;assert.equal(nodes().every(v=>v.props.disabled),true)
 })

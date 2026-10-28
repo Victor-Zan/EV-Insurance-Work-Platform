@@ -3,7 +3,7 @@ package com.evinsurance.platform.quotation.domain;
 import java.util.ArrayList;
 import java.util.List;
 
-/** The three current business prerequisites; the legacy file flag is informational; role/assignment/state checks remain in the application layer. */
+/** The current amount and two confirmations are required; loss documents are optional; role/assignment/state checks remain in the application layer. */
 public final class RepairAuthorizationGate {
     private RepairAuthorizationGate() {}
 
