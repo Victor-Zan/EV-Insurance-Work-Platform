@@ -21,7 +21,7 @@ test('final price confirms on submission with loaded documents and exact adopted
  const f=fixture();assert.throws(()=>f.context.confirmation(),/加载并核对/)
  await f.context.load();assert.deepEqual(f.calls,['/quotations/cases/synthetic-authorization/formal-quotes/formal-1/preview?page=1','/materials/loss-1/download'])
  assert.throws(()=>f.context.confirmation(),/有效确认金额/)
- f.context.amount.value='30.00';assert.throws(()=>f.context.confirmation(),/必须与最终核损单/)
+ f.context.amount.value='30.00';assert.throws(()=>f.context.confirmation(),/必须与最终核损金额/)
  f.context.amount.value='18.001';assert.throws(()=>f.context.confirmation(),/有效确认金额/)
  f.context.amount.value='18';assert.deepEqual(f.context.confirmation(),{assessmentId:'assessment-1',lossFileId:'loss-1',amount:'18.00',originalReviewed:true})
  f.props.quote.assessment.sourceCurrent=false;assert.throws(()=>f.context.confirmation(),/加载并核对/)
@@ -33,7 +33,7 @@ test('failed or stale document downloads cannot enable confirmation and object U
  const deferred=[];f.respond(()=>new Promise(resolve=>deferred.push(resolve)));const pending=f.context.load();f.unmount();deferred.forEach(resolve=>resolve({data:{type:'image/png'}}));await pending
  assert.equal(f.context.pdf.value,'');assert.equal(f.context.loss.value,'');assert.equal(f.revoked.length,2)
 })
-test('authorization review displays both originals and retains only the required amount input for read-only accounts',async()=>{
+test('authorization review displays available originals and retains only the required amount input for read-only accounts',async()=>{
  const f=fixture();await f.context.load()
  const {code}=compile(descriptor.template.content,{mode:'function',prefixIdentifiers:true}),render=new Function('Vue',code)(Vue)
  function nodes(){const out=[];function visit(v){if(!v||typeof v!=='object')return;if(typeof v.type==='string')out.push(v);if(Array.isArray(v.children))v.children.forEach(visit)}visit(render(Vue.proxyRefs({...f.context,...f.props}),[]));return out}
@@ -47,4 +47,12 @@ test('PDF loss documents use real rendered pages with pagination while retaining
  assert.equal(f.calls.includes('/materials/loss-1/preview?page=1'),true);assert.notEqual(f.context.lossImage.value,f.context.loss.value)
  f.context.page.value=2;f.context.lossPage.value=2;f.context.amount.value='18';await f.context.load()
  assert.ok(f.calls.includes('/quotations/cases/synthetic-authorization/formal-quotes/formal-1/preview?page=2'));assert.ok(f.calls.includes('/materials/loss-1/preview?page=2'));assert.equal(f.context.amount.value,'')
+})
+
+
+test('manual assessment needs no loss document, retains exact amount verification and downloads only the formal quote',async()=>{
+ const f=fixture();delete f.props.quote.assessment.lossFileId;await f.context.load()
+ assert.deepEqual(f.calls,['/quotations/cases/synthetic-authorization/formal-quotes/formal-1/preview?page=1'])
+ assert.equal(f.context.error.value,'');f.context.amount.value='18';assert.deepEqual(f.context.confirmation(),{assessmentId:'assessment-1',amount:'18.00',originalReviewed:true})
+ f.context.amount.value='30';assert.throws(()=>f.context.confirmation(),/必须与最终核损金额/)
 })

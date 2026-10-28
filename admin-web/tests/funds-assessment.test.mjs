@@ -24,7 +24,13 @@ test('PDF pages use the protected preview, retain original download and clean up
  f.context.page.value=2;await f.context.load();assert.equal(f.calls.at(-1),'/materials/loss-one/preview?page=2');assert.deepEqual(f.revoked,['blob:funds-0','blob:funds-1']);f.unmount();assert.equal(f.revoked.length,4)
 })
 test('missing sources, unconfirmed amounts and failed downloads are explicit; older responses cannot replace newer data',async()=>{
- const f=fixture();f.setQuote({assessment:{amount:'620.00',sourceCurrent:false},gate:{customerServiceConfirmationRecorded:false}});await f.context.load();assert.equal(f.context.confirmed.value,false);assert.match(f.context.error.value,/未关联核损单/)
+ const f=fixture();f.setQuote({assessment:{amount:'620.00',sourceCurrent:false},gate:{customerServiceConfirmationRecorded:false}});await f.context.load();assert.equal(f.context.confirmed.value,false);assert.equal(f.context.error.value,'')
  f.respond(async()=>{throw Error('合成网络错误')});await f.context.load();assert.equal(f.context.error.value,'合成网络错误');assert.equal(f.context.preview.value,'')
  let resolve;f.respond(()=>new Promise(r=>{resolve=r}));const old=f.context.load();f.respond(async()=>({data:{data:{assessment:{lossFileId:undefined,amount:'800.00',sourceCurrent:false},gate:{customerServiceConfirmationRecorded:false}}}}));await f.context.load();resolve({data:{data:{assessment:{lossFileId:'old-file',amount:'1.00',sourceCurrent:true},gate:{customerServiceConfirmationRecorded:true}}}});await old;assert.equal(f.context.quote.value.assessment.amount,'800.00');assert.equal(f.context.preview.value,'')
+})
+
+
+test('confirmed manually recorded assessment is valid without an original and makes no material request',async()=>{
+ const f=fixture();f.setQuote({assessment:{id:'manual',amount:'620.00',sourceCurrent:true},gate:{customerServiceConfirmationRecorded:true}});await f.context.load()
+ assert.equal(f.context.confirmed.value,true);assert.equal(f.context.error.value,'');assert.equal(f.context.preview.value,'');assert.deepEqual(f.calls,['/quotations/cases/synthetic-funds-assessment'])
 })

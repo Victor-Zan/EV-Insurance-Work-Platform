@@ -225,7 +225,7 @@ class QuotationPostgresIT {
     }
     private JsonNode confirm(String id,String kind) throws Exception {
         var c=context(customerService,id);var body=new HashMap<String,Object>();body.put("expectedVersion",c.path("version").asInt());
-        if("CUSTOMER_SERVICE".equals(kind)){body.put("assessmentId",c.path("assessment").path("id").asText());body.put("lossFileId",c.path("assessment").path("lossFileId").asText());body.put("amount",c.path("assessment").path("amount").asText());body.put("originalReviewed",true);}
+        if("CUSTOMER_SERVICE".equals(kind)){body.put("assessmentId",c.path("assessment").path("id").asText());if(c.path("assessment").hasNonNull("lossFileId"))body.put("lossFileId",c.path("assessment").path("lossFileId").asText());body.put("amount",c.path("assessment").path("amount").asText());body.put("originalReviewed",true);}
         return request(customerService,path(id,"confirmations/"+kind),body,200);
     }
     private JsonNode start(String id,int expected) throws Exception {var c=context(shop,id);return request(shop,path(id,"start-repair"),Map.of("expectedVersion",c.path("version").asInt(),"assignmentVersion",c.path("assignmentVersion").asInt()),expected);}
@@ -337,13 +337,29 @@ class QuotationPostgresIT {
         confirm(id,"INSURER");body.put("expectedVersion",context(customerService,id).path("version").asInt());request(customerService,path(id,"confirmations/CUSTOMER_SERVICE"),body,409);
         assess(id,"19.00",200);confirm(id,"INSURER");confirm(id,"CUSTOMER_SERVICE");start(id,200);
     }
-    @Test void unlinkedAssessmentCannotAuthorizeEvenWithAnActiveFileAndMatchingEnteredPrice() throws Exception {
-        String id=arrived();prepareFormal(id);upload(id,"LOSS_ASSESSMENT",null,200);
-        var c=context(customerService,id);var recorded=request(customerService,path(id,"assessments"),Map.of("expectedVersion",c.path("version").asInt(),"amount","12.00"),200);
-        assertThat(recorded.path("assessment").path("sourceCurrent").asBoolean()).isFalse();confirm(id,"INSURER");c=context(customerService,id);
-        String file=db.queryForObject("select id::text from case_file where work_order_id=?::uuid and category='LOSS_ASSESSMENT' and state='ACTIVE' order by created_at desc,id desc limit 1",String.class,id);
-        request(customerService,path(id,"confirmations/CUSTOMER_SERVICE"),Map.of("expectedVersion",c.path("version").asInt(),"assessmentId",c.path("assessment").path("id").asText(),"lossFileId",file,"amount","12.00","originalReviewed",true),409);
-        assertThat(context(customerService,id).path("authorized").asBoolean()).isFalse();
+    @Test void manualAssessmentWithoutAnyFileAuthorizesWithVersionedAmountAndBothConfirmations() throws Exception {
+        String id=arrived();prepareFormal(id);var c=context(customerService,id);
+        var body=Map.of("expectedVersion",c.path("version").asInt(),"amount","12.50");String key=UUID.randomUUID().toString();
+        for(String token:List.of(shop,owner,admin))request(token,path(id,"assessments"),body,403);
+        var outsider=createUser("REPAIR_SHOP",createEligibleShop());String other=login(outsider.path("username").asText(),"H5");request(other,path(id,"assessments"),body,403);
+        for(String amount:List.of("-1.00","1.001","1e2","9".repeat(37)))request(customerService,path(id,"assessments"),Map.of("expectedVersion",c.path("version").asInt(),"amount",amount),400);
+        var recorded=request(customerService,path(id,"assessments"),body,key,200);
+        assertThat(request(customerService,path(id,"assessments"),body,key,200)).isEqualTo(recorded);
+        assertThat(recorded.path("assessment").path("sourceCurrent").asBoolean()).isTrue();assertThat(recorded.path("gate").path("lossAssessmentFileUploaded").asBoolean()).isFalse();
+        assertThat(recorded.path("gate").path("missing").toString()).doesNotContain("LOSS_ASSESSMENT_FILE");assertThat(recorded.path("authorized").asBoolean()).isFalse();
+        request(customerService,path(id,"assessments"),body,409);
+        mvc.perform(get("/api/v1/work-orders/{id}/workflow",id).header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andExpect(jsonPath("$.data.currentNode").value("REPAIR")).andExpect(jsonPath("$.data.legacyNeedsReview").value(false));
+        var shopView=context(shop,id);assertThat(shopView.has("assessment")).isFalse();assertThat(shopView.has("formalQuote")).isFalse();start(id,409);
+        confirm(id,"INSURER");start(id,409);confirm(id,"CUSTOMER_SERVICE");
+        mvc.perform(get("/api/v1/work-orders/{id}",id).header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andExpect(jsonPath("$.data.workflowNode").value("REPAIR")).andExpect(jsonPath("$.data.workflowActor").value("网点"));
+        start(id,200);
+        assertThat(db.queryForObject("select count(*) from case_file where work_order_id=?::uuid and category='LOSS_ASSESSMENT'",Long.class,id)).isZero();
+        assertThat(db.queryForObject("select count(*) from quote_assessment where work_order_id=?::uuid",Long.class,id)).isEqualTo(1);
+        assertThat(db.queryForObject("select count(*) from audit_log where object_id=? and action='QUOTE_ASSESSMENT_RECORD'",Long.class,id)).isEqualTo(1);
+        var stored=json.readTree(db.queryForObject("select file_snapshot from quotation_confirmation where work_order_id=?::uuid and kind='CUSTOMER_SERVICE' order by created_at desc limit 1",String.class,id));
+        assertThat(stored.path("amount").asText()).isEqualTo("12.50");assertThat(stored.path("assessmentId").asText()).isEqualTo(recorded.path("assessment").path("id").asText());assertThat(stored.has("lossFileId")).isFalse();
+        int assignment=context(shop,id).path("assignmentVersion").asInt();request(shop,"repairs/cases/"+id+"/progress",Map.of("expectedVersion",0,"assignmentVersion",assignment,"note","无核损单维修进度","photoIds",List.of()),200);
+        assess(id,"13.00",409);flyway.validate();
     }
     @Test void documentPreviewsRenderTheAuthorizedPdfAndKeepRoleAndCaseScope() throws Exception {
         String id=arrived();prepareFormal(id);String quote=context(customerService,id).path("formalQuote").path("id").asText();
@@ -359,12 +375,10 @@ class QuotationPostgresIT {
         mvc.perform(get("/api/v1/materials/{id}/preview",file).header("Authorization","Bearer "+admin)).andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("X-Page-Count","1"));
         for(String token:List.of(shop,owner))mvc.perform(get("/api/v1/materials/{id}/preview",file).header("Authorization","Bearer "+token)).andExpect(status().isForbidden());
     }
-    @Test void confirmationRequiresAmountFileAndInsurerInOrder() throws Exception {
+    @Test void confirmationRequiresCurrentAmountAndInsurerInOrderWithoutFile() throws Exception {
         String id=arrived();prepareFormal(id);
         request(customerService,path(id,"confirmations/INSURER"),Map.of("expectedVersion",context(customerService,id).path("version").asInt()),409);
         assess(id,"0.00",200);
-        request(customerService,path(id,"confirmations/INSURER"),Map.of("expectedVersion",context(customerService,id).path("version").asInt()),409);
-        upload(id,"LOSS_ASSESSMENT",null,200);
         request(customerService,path(id,"confirmations/CUSTOMER_SERVICE"),Map.of("expectedVersion",context(customerService,id).path("version").asInt()),409);
         assertThat(db.queryForObject("select count(*) from quotation_confirmation where work_order_id=?::uuid",Long.class,id)).isZero();
         assess(id,"0.00",200);confirm(id,"INSURER");confirm(id,"CUSTOMER_SERVICE");
@@ -372,7 +386,7 @@ class QuotationPostgresIT {
         raw(id,"1.00");
         assertThat(context(customerService,id).hasNonNull("assessment")).isFalse();
         assertThat(db.queryForObject("select assessment_id from quotation_context where work_order_id=?::uuid",UUID.class,id)).isNull();
-        // Original unlinked amount and the subsequent document-reviewed revision are both retained.
+        // Both manual amount versions are retained.
         assertThat(db.queryForObject("select count(*) from quote_assessment where work_order_id=?::uuid",Long.class,id)).isEqualTo(2);
         assertThat(context(customerService,id).path("authorized").asBoolean()).isFalse();
         request(customerService,path(id,"confirmations/INSURER"),Map.of("expectedVersion",context(customerService,id).path("version").asInt()),409);
@@ -481,7 +495,7 @@ class QuotationPostgresIT {
         mvc.perform(get("/api/v1/historical-cases").header("Authorization","Bearer "+admin).param("query","HIST-100"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(2));
     }
-    @Test void allFourConditionsAndCurrentDocumentAmountBindingAreRevalidated() throws Exception {
+    @Test void threeConditionsAndHistoricalDocumentAmountBindingAreRevalidated() throws Exception {
         for(int omitted=0;omitted<4;omitted++) {
             String id=arrived();authorized(id);
             // Simulate a single missing condition in legacy evidence; authorized=true must never bypass revalidation.
@@ -492,7 +506,7 @@ class QuotationPostgresIT {
                 case 3 -> db.update("update quotation_context set service_confirmed=false where work_order_id=?::uuid",id);
                 default -> throw new AssertionError();
             }
-            var view=context(shop,id);assertThat(view.path("gate").path("allowed").asBoolean()).isFalse();assertThat(view.path("gate").path("missing").size()).isEqualTo(omitted==0?2:1);start(id,409);
+            var view=context(shop,id);assertThat(view.path("gate").path("allowed").asBoolean()).isFalse();assertThat(view.path("gate").path("missing").size()).isEqualTo(1);start(id,409);
         }
         String valid=arrived();authorized(valid);String key=UUID.randomUUID().toString();var c=context(shop,valid);var body=Map.of("expectedVersion",c.path("version").asInt(),"assignmentVersion",c.path("assignmentVersion").asInt());
         var first=request(shop,path(valid,"start-repair"),body,key,200);var retry=request(shop,path(valid,"start-repair"),body,key,200);assertThat(retry).isEqualTo(first);assertThat(first.path("status").asText()).isEqualTo("REPAIRING");

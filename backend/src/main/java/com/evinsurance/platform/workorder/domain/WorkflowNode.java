@@ -7,14 +7,14 @@ public enum WorkflowNode {
 
     public final String label;
     WorkflowNode(String label) { this.label=label; }
-    public static WorkflowNode current(String status,boolean amountPresent,boolean lossFilePresent) {
+    public static WorkflowNode current(String status,boolean amountPresent) {
         return switch(status) {
             case "DRAFT" -> CREATE;
             case "PENDING_DISPATCH","PENDING_ACCEPTANCE","PENDING_ARRIVAL","ARRIVAL_EXCEPTION" -> DISPATCH_ARRIVAL;
             case "ARRIVED","WAITING_QUOTE" -> SHOP_QUOTE;
             case "QUOTE_REVIEWING" -> QUOTE_REVIEW;
             case "WAITING_INSURER_ASSESSMENT" -> INSURER_ASSESSMENT;
-            case "WAITING_REPAIR_AUTHORIZATION" -> amountPresent&&lossFilePresent?REPAIR:INSURER_ASSESSMENT;
+            case "WAITING_REPAIR_AUTHORIZATION" -> amountPresent?REPAIR:INSURER_ASSESSMENT;
             case "REPAIRING" -> REPAIR;
             case "WAITING_OWNER_CONFIRMATION" -> RECEIPT;
             case "WAITING_INSURER_PAYMENT","WAITING_SHOP_SETTLEMENT" -> FUNDS;

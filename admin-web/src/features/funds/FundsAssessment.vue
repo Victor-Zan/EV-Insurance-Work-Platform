@@ -15,7 +15,7 @@ async function load(){
   if(epoch!==generation)return
   if(priorFile!==next.assessment?.lossFileId)page.value=1
   quote.value=next
-  if(!next.assessment?.lossFileId){error.value='未关联核损单原件，请从案件记录核对。';return}
+  if(!next.assessment?.lossFileId)return
   const file=await httpClient.get<Blob>(`/materials/${next.assessment.lossFileId}/download`,{responseType:'blob'})
   const image=file.data.type==='application/pdf'?await httpClient.get<Blob>(`/materials/${next.assessment.lossFileId}/preview?page=${page.value}`,{responseType:'blob'}):undefined
   if(epoch!==generation)return
@@ -27,11 +27,11 @@ watch(()=>[props.caseId,props.refreshToken],()=>void load(),{immediate:true})
 onUnmounted(()=>{generation++;release()})
 </script>
 <template>
- <section class="funds-assessment" data-reading="核损单与确认金额">
-  <header><h3>保险公司核损单</h3><button v-if="preview&&!error" @click="enlarged=true">放大查看</button></header>
+ <section class="funds-assessment" data-reading="核损确认金额">
+  <header><h3>保险核损金额</h3><button v-if="preview&&!error" @click="enlarged=true">放大查看</button></header>
   <div class="confirmed-price"><span>最终确认金额</span><strong>{{ confirmed?quote?.assessment?.amount:'未确认' }}<small v-if="confirmed"> 元</small></strong></div>
   <p v-if="quote&&!confirmed" class="source-note">当前记录缺少有效的客服最终确认。</p>
-  <div v-if="loading" class="document-loading" aria-busy="true" aria-label="正在加载核损单"/>
+  <div v-if="loading" class="document-loading" aria-busy="true" aria-label="正在加载核损金额"/>
   <p v-else-if="error" role="alert" class="document-error">{{ error }} <button @click="load">重新加载</button></p>
   <div v-else-if="preview" class="document-viewport"><img :src="preview" alt="保险公司核损单原件" @error="error='核损单原件无法预览，可下载核对或重新加载。'"/></div>
   <nav v-if="pages>1" aria-label="核损单翻页"><button :disabled="loading||page===1" @click="page--;load()">上一页</button><span>{{ page }} / {{ pages }}</span><button :disabled="loading||page===pages" @click="page++;load()">下一页</button></nav>

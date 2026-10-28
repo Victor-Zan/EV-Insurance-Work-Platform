@@ -53,7 +53,7 @@ public class RepairService {
         var c=quotations.context(order.getId());
         if(c==null || !mapper.started(order.getId()) || !RepairAuthorizationGate.allowed(new RepairAuthorizationGate.Evidence(
             files.activeCount(order.getId(),"LOSS_ASSESSMENT")>0,c.assessmentId!=null,c.insurerConfirmed,c.serviceConfirmed)))
-            throw ApiException.conflict("REPAIR_GATE_INCOMPLETE","A valid recorded repair start and all four prerequisites are required");
+            throw ApiException.conflict("REPAIR_GATE_INCOMPLETE","A valid recorded repair start and all three prerequisites are required");
         if(expected==null||expected!=version(order.getId()))throw ApiException.conflict("REPAIR_VERSION_CONFLICT","Refresh the repair version before submitting");
     }
     private List<FileRow> photos(UUID id,WorkOrderRows.Assignment a,List<UUID> ids,String category,boolean required){

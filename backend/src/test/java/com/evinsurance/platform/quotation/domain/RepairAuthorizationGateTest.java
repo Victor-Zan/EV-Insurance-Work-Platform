@@ -10,11 +10,11 @@ class RepairAuthorizationGateTest {
     @Test void onlyTheAllSatisfiedCombinationAuthorizesRepair() {
         for (int combination=0; combination<16; combination++) {
             var evidence=new Evidence((combination&1)!=0,(combination&2)!=0,(combination&4)!=0,(combination&8)!=0);
-            assertThat(RepairAuthorizationGate.allowed(evidence)).as("four-condition combination %s",combination).isEqualTo(combination==15);
+            assertThat(RepairAuthorizationGate.allowed(evidence)).as("three-condition combination with optional legacy file %s",combination).isEqualTo((combination&14)==14);
         }
     }
     @Test void eachMissingPrerequisiteIsReportedWithoutInventingPaymentOrShopConfirmation() {
-        assertThat(RepairAuthorizationGate.missing(new Evidence(false,true,true,true))).containsExactly(MissingCondition.LOSS_ASSESSMENT_FILE);
+        assertThat(RepairAuthorizationGate.missing(new Evidence(false,true,true,true))).isEmpty();
         assertThat(RepairAuthorizationGate.missing(new Evidence(true,false,true,true))).containsExactly(MissingCondition.FINAL_ASSESSMENT_AMOUNT);
         assertThat(RepairAuthorizationGate.missing(new Evidence(true,true,false,true))).containsExactly(MissingCondition.INSURER_CONFIRMATION);
         assertThat(RepairAuthorizationGate.missing(new Evidence(true,true,true,false))).containsExactly(MissingCondition.CUSTOMER_SERVICE_CONFIRMATION);

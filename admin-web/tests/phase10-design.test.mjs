@@ -22,9 +22,9 @@ test('workbench uses live paginated APIs and avoids invented metrics', () => {
   assert.doesNotMatch(view, /今日回款额|平均处理时长|维修完成率/)
 })
 
-test('case summary has exactly the confirmed four repair authorization conditions', () => {
+test('case summary has exactly the confirmed three repair authorization conditions', () => {
   const view = source('../src/features/workorders/CaseSummaryPanel.vue')
-  for (const key of ['lossAssessmentFileUploaded', 'finalAssessmentAmountRecorded', 'insurerConfirmationRecorded', 'customerServiceConfirmationRecorded']) assert.match(view, new RegExp(key))
+  for (const key of ['finalAssessmentAmountRecorded', 'insurerConfirmationRecorded', 'customerServiceConfirmationRecorded']) assert.match(view, new RegExp(key))
   assert.doesNotMatch(view, /回款已到账|网点二次确认|报价已审核/)
   assert.match(view, /quotationApi\(httpClient, props\.caseId\)\.get\(\)/)
   assert.match(view, /api\.history\(props\.caseId\)/)

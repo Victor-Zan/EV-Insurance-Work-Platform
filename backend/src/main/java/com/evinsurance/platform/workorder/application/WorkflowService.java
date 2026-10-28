@@ -47,7 +47,6 @@ public class WorkflowService {
         var assessment=c==null||c.assessmentId==null?null:quotes.assessment(c.assessmentId);
         boolean currentFormal=lifecycle.hasCurrentFormal(row);
         boolean currentAmount=assessment!=null&&(Objects.equals(assessment.sourceFormalId(),c.formalQuoteId)||c.formalQuoteId==null);
-        boolean loss=present(counts,FileCategory.LOSS_ASSESSMENT);
         boolean terminal=Set.of("CANCELLED","CLOSED").contains(order.status());
         String displayStatus=order.status();
         if(!terminal&&Set.of("WAITING_INSURER_ASSESSMENT","WAITING_REPAIR_AUTHORIZATION").contains(displayStatus)&&!currentFormal){
@@ -56,7 +55,7 @@ public class WorkflowService {
             displayStatus=currentRaw?"QUOTE_REVIEWING":"WAITING_QUOTE";
         }
         if(terminal) { var last=orders.latestHistory(id); displayStatus=last!=null&&order.status().equals(last.getToStatus())?last.getFromStatus():"UNKNOWN"; }
-        var current=WorkflowNode.current(displayStatus,currentAmount,loss);
+        var current=WorkflowNode.current(displayStatus,currentAmount);
         String role="NONE",action="NONE";
         var missing=new ArrayList<String>();
         if(current!=null&&!terminal&&current!=WorkflowNode.COMPLETE) {
@@ -77,7 +76,6 @@ public class WorkflowService {
                     role="CUSTOMER_SERVICE";action="RECORD_ASSESSMENT";
                     if(!currentFormal)missing.add("请先完成当前报价审核");
                     if(!currentAmount)missing.add("最终核损金额未录入");
-                    if(!loss)missing.add("缺少有效核损单");
                 }
                 case REPAIR -> {
                     if("REPAIRING".equals(displayStatus)){
@@ -90,7 +88,7 @@ public class WorkflowService {
                     else action=c!=null&&c.insurerConfirmed?"CONFIRM_CUSTOMER_SERVICE":"CONFIRM_INSURER";
                     // Keep already authorized legacy evidence valid; new confirmations require current formal context.
                     if(!"START_REPAIR".equals(action)&&!currentFormal)missing.add("请先完成当前报价审核");
-                    if(!lifecycle.hasCurrentAssessment(c))missing.add("请核对当前最终核损单及采用金额");
+                    if(!lifecycle.hasCurrentAssessment(c))missing.add("请核对当前最终核损金额");
                 }
                 case RECEIPT -> {role="OWNER_OR_CUSTOMER_SERVICE";action="CONFIRM_RECEIPT";}
                 case FUNDS -> {
@@ -114,7 +112,7 @@ public class WorkflowService {
         for(var node:WorkflowNode.values()) {
             String state="UNRECORDED";
             if(current!=null)state=node.ordinal()<current.ordinal()?"DONE":node==current?(terminal?"STOPPED":node==WorkflowNode.COMPLETE?"DONE":canAct?"CURRENT":"WAITING"):(terminal?"TERMINATED":"LOCKED");
-            if("DONE".equals(state)&&((node==WorkflowNode.SHOP_QUOTE&&raw==null)||(node==WorkflowNode.QUOTE_REVIEW&&formal==null)||(node==WorkflowNode.INSURER_ASSESSMENT&&(assessment==null||!loss))))state="UNRECORDED";
+            if("DONE".equals(state)&&((node==WorkflowNode.SHOP_QUOTE&&raw==null)||(node==WorkflowNode.QUOTE_REVIEW&&formal==null)||(node==WorkflowNode.INSURER_ASSESSMENT&&assessment==null)))state="UNRECORDED";
             if(node==WorkflowNode.FUNDS&&"DONE".equals(state)&&!stagedFunds)state="UNRECORDED";
             Instant time=null;
             if("DONE".equals(state))time=switch(node) {
@@ -122,7 +120,7 @@ public class WorkflowService {
                 case DISPATCH_ARRIVAL -> times.get("ARRIVED");
                 case SHOP_QUOTE -> raw==null?null:raw.createdAt();
                 case QUOTE_REVIEW -> formal==null?null:formal.createdAt();
-                case INSURER_ASSESSMENT -> assessment==null?null:later(assessment.createdAt(),counts.containsKey(FileCategory.LOSS_ASSESSMENT)?counts.get(FileCategory.LOSS_ASSESSMENT).lastUploadedAt():null);
+                case INSURER_ASSESSMENT -> assessment==null?null:assessment.createdAt();
                 case REPAIR -> times.get("WAITING_OWNER_CONFIRMATION");
                 case RECEIPT -> times.getOrDefault("WAITING_INSURER_PAYMENT",times.get("COMPLETED"));
                 case FUNDS,COMPLETE -> times.get("COMPLETED");
@@ -131,21 +129,19 @@ public class WorkflowService {
         }
         var materials=new ArrayList<Material>();
         for(var category:FileCategory.values()) {
-            boolean allowed=category!=FileCategory.NOTICE&&FileStagePolicy.allowed(order.status(),category,currentFormal);
+            boolean allowed=category!=FileCategory.NOTICE&&category!=FileCategory.LOSS_ASSESSMENT&&FileStagePolicy.allowed(order.status(),category,currentFormal);
             boolean present=present(counts,category);
             if(!allowed&&!present)continue;
             boolean required=(category==FileCategory.SCENE_PHOTO&&(current==WorkflowNode.CREATE||current==WorkflowNode.QUOTE_REVIEW))
-                ||(category==FileCategory.LOSS_ASSESSMENT&&(current==WorkflowNode.INSURER_ASSESSMENT||(current==WorkflowNode.REPAIR&&"WAITING_REPAIR_AUTHORIZATION".equals(displayStatus))))
                 ||(category==FileCategory.COMPLETION_PHOTO&&current==WorkflowNode.REPAIR&&"REPAIRING".equals(displayStatus));
             boolean exception=category==FileCategory.NOTICE&&!present&&!blank(files.missingReason(id));
             materials.add(new Material(category.name(),required,present,eligible(counts,category)||exception,exception,allowed&&(actor.roles().contains(Role.CUSTOMER_SERVICE)||(category==FileCategory.SCENE_PHOTO&&actor.roles().contains(Role.ADMIN))),counts.containsKey(category)&&counts.get(category).shopUploadedCount()>0));
         }
         boolean legacy=current==null||(assessment!=null&&!currentFormal&&!terminal)
-            ||(current.ordinal()>=WorkflowNode.REPAIR.ordinal()&&(!currentFormal||!currentAmount||!loss));
+            ||(current.ordinal()>=WorkflowNode.REPAIR.ordinal()&&(!currentFormal||!currentAmount));
         return new View(id,order.status(),order.version(),c==null?0:c.version,c==null?0:c.basisVersion,current==null?"UNKNOWN":current.name(),role,action,canAct,canAct&&missing.isEmpty(),List.copyOf(missing),List.copyOf(nodes),List.copyOf(materials),legacy);
     }
     private static boolean present(Map<FileCategory,FileMapper.Summary> counts,FileCategory category){return counts.containsKey(category)&&counts.get(category).count()>0;}
     private static boolean eligible(Map<FileCategory,FileMapper.Summary> counts,FileCategory category){return counts.containsKey(category)&&counts.get(category).eligibleCount()>0;}
     private static boolean blank(String text){return text==null||text.isBlank();}
-    private static Instant later(Instant left,Instant right){return right!=null&&right.isAfter(left)?right:left;}
 }

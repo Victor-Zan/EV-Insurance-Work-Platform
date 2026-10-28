@@ -22,7 +22,9 @@ public class QuotationLifecycle {
     public boolean hasCurrentAssessment(Context c) {
         if(c==null||c.assessmentId==null||c.formalQuoteId==null)return false;
         var amount=mapper.assessment(c.assessmentId);var proof=mapper.assessmentProof(c.assessmentId);
-        if(amount==null||!java.util.Objects.equals(amount.sourceFormalId(),c.formalQuoteId)||proof==null||!proof.currentFile())return false;
+        if(amount==null||!java.util.Objects.equals(amount.sourceFormalId(),c.formalQuoteId))return false;
+        if(proof==null)return true;
+        if(!proof.currentFile())return false;
         var adopted=json.readTree(proof.candidateJson());var value=adopted.path("adopted");
         return adopted.path("originalReviewed").asBoolean(false)&&value.isTextual()
             &&value.asText().matches("[0-9]{1,36}(\\.[0-9]{1,2})?")

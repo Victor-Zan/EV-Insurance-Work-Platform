@@ -30,7 +30,6 @@ async function load() {
 }
 watch(() => props.caseId, () => { void load() }, {immediate:true})
 const gateItems: {key:keyof QuoteCase['gate'];label:string}[] = [
-  {key:'lossAssessmentFileUploaded',label:'核损单已上传'},
   {key:'finalAssessmentAmountRecorded',label:'最终核损金额已录入'},
   {key:'insurerConfirmationRecorded',label:'保险公司已确认'},
   {key:'customerServiceConfirmationRecorded',label:'客服确认'},
@@ -45,7 +44,7 @@ const historyActions:Record<string,string>={SUBMIT:'提交正式案件',DISPATCH
     <template v-else-if="order"><header class="summary-head"><p class="eyebrow">SELECTED CASE / 选中案件</p><h2>{{ order.businessNo || '案件草稿' }}</h2><ElTag effect="plain">{{ statusLabels[order.status] }}</ElTag></header>
       <WorkflowTimeline v-if="workflow" :workflow="workflow"/><dl class="summary-facts"><div><dt>车辆</dt><dd>{{ order.vehicleBrand || '未填写' }} {{ order.vehicleModel }}</dd></div><div><dt>车主</dt><dd>{{ order.ownerName || '未填写' }} · {{ order.ownerPhone || '未填写' }}</dd></div><div><dt>保险公司</dt><dd>{{ order.insuranceCompany || '未填写' }}</dd></div><div><dt>报案号</dt><dd class="mono">{{ order.claimNo || '未填写' }}</dd></div></dl>
       <section class="summary-block"><h3>当前阶段</h3><p class="phase-label">{{ statusLabels[order.status] }}</p><p class="summary-muted">当前派单版本：{{ order.currentAssignment?.assignmentVersion ?? '无当前派单' }}</p></section>
-      <section v-if="quote" class="summary-block"><h3>维修授权 · 四项条件</h3><ul class="gate-list"><li v-for="item in gateItems" :key="item.key"><span :class="quote.gate[item.key] ? 'gate-yes' : 'gate-no'">{{ quote.gate[item.key] ? '✓' : '—' }}</span>{{ item.label }}<strong>{{ quote.gate[item.key] ? '已满足' : '未满足' }}</strong></li></ul><p v-if="!quote.gate.allowed" class="gate-note">条件未齐，网点不能开始维修。请在完整详情中处理可执行项；最终由服务端复核。</p><p v-else class="gate-note success">四项条件均已满足；开修动作仍由当前网点执行。</p></section>
+      <section v-if="quote" class="summary-block"><h3>维修授权 · 三项条件</h3><ul class="gate-list"><li v-for="item in gateItems" :key="item.key"><span :class="quote.gate[item.key] ? 'gate-yes' : 'gate-no'">{{ quote.gate[item.key] ? '✓' : '—' }}</span>{{ item.label }}<strong>{{ quote.gate[item.key] ? '已满足' : '未满足' }}</strong></li></ul><p v-if="!quote.gate.allowed" class="gate-note">条件未齐，网点不能开始维修。请在完整详情中处理可执行项；最终由服务端复核。</p><p v-else class="gate-note success">三项条件均已满足；开修动作仍由当前网点执行。</p></section>
       <section class="summary-block"><h3>最近处理历史</h3><p v-if="!history.length" class="summary-muted">暂无状态记录。</p><ol v-else class="history-list"><li v-for="entry in history" :key="entry.id"><strong>{{ historyActions[entry.action] ?? entry.action }}</strong><span>{{ localTime(entry.occurredAt) }}</span><small v-if="entry.reason">{{ entry.reason }}</small></li></ol></section>
       <div class="summary-actions"><ElButton type="primary" @click="router.push(`/work-orders/${order.id}`)">打开完整详情</ElButton><ElButton v-if="currentUser?.roles.includes('CUSTOMER_SERVICE') && quote && !quote.gate.allowed" @click="router.push(`/work-orders/${order.id}?section=quotation`)">查看报价核损</ElButton></div>
     </template><div v-else class="summary-state">选择左侧案件，查看摘要和下一步。</div>

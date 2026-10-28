@@ -3,7 +3,6 @@
 <mapper namespace="com.evinsurance.platform.workorder.infrastructure.WorkOrderMapper">
   <select id="phases" resultType="com.evinsurance.platform.workorder.infrastructure.WorkOrderRows$Phase">
     SELECT w.id AS case_id, (q.assessment_id IS NOT NULL AND (a.source_formal_id=q.formal_quote_id OR q.formal_quote_id IS NULL)) AS amount_present,
-      EXISTS(SELECT 1 FROM case_file f WHERE f.work_order_id=w.id AND f.category='LOSS_ASSESSMENT' AND f.state='ACTIVE') AS loss_present,
       COALESCE(q.insurer_confirmed AND q.service_confirmed,FALSE) AS confirmed,
       COALESCE(r.work_order_id=w.id AND r.shop_id=w.shop_id AND r.shop_id=wa.shop_id AND r.assignment_version=wa.assignment_version,FALSE) AS raw_current,
       COALESCE(r.work_order_id=w.id AND r.shop_id=w.shop_id AND r.shop_id=wa.shop_id AND r.assignment_version=wa.assignment_version AND fq.work_order_id=w.id AND fq.raw_quote_id=r.id,FALSE) AS formal_current

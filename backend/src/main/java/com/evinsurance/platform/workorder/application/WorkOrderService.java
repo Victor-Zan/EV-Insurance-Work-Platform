@@ -744,12 +744,12 @@ public class WorkOrderService {
             actor.roles().contains(Role.ADMIN)||actor.roles().contains(Role.CUSTOMER_SERVICE)?row.getParkingAddress():null);
     }
 
-    private String node(WorkOrderEntity row,WorkOrderRows.Phase phase){if(java.util.Set.of("WAITING_INSURER_ASSESSMENT","WAITING_REPAIR_AUTHORIZATION").contains(row.getStatus())&&(phase==null||!phase.formalCurrent()))return phase!=null&&phase.rawCurrent()?"QUOTE_REVIEW":"SHOP_QUOTE";var n=com.evinsurance.platform.workorder.domain.WorkflowNode.current(row.getStatus(),phase!=null&&phase.amountPresent(),phase!=null&&phase.lossPresent());return n==null?"UNKNOWN":n.name();}
+    private String node(WorkOrderEntity row,WorkOrderRows.Phase phase){if(java.util.Set.of("WAITING_INSURER_ASSESSMENT","WAITING_REPAIR_AUTHORIZATION").contains(row.getStatus())&&(phase==null||!phase.formalCurrent()))return phase!=null&&phase.rawCurrent()?"QUOTE_REVIEW":"SHOP_QUOTE";var n=com.evinsurance.platform.workorder.domain.WorkflowNode.current(row.getStatus(),phase!=null&&phase.amountPresent());return n==null?"UNKNOWN":n.name();}
     private String nodeActor(WorkOrderEntity row,WorkOrderRows.Phase phase){if(java.util.Set.of("WAITING_INSURER_ASSESSMENT","WAITING_REPAIR_AUTHORIZATION").contains(row.getStatus())&&(phase==null||!phase.formalCurrent()))return phase!=null&&phase.rawCurrent()?"客服":"网点";return switch(row.getStatus()){
         case "DRAFT","PENDING_DISPATCH","ARRIVAL_EXCEPTION" -> "管理员或客服";
         case "PENDING_ACCEPTANCE","PENDING_ARRIVAL","ARRIVED","WAITING_QUOTE" -> "网点";
         case "QUOTE_REVIEWING","WAITING_INSURER_ASSESSMENT","WAITING_INSURER_PAYMENT","WAITING_SHOP_SETTLEMENT" -> "客服";
-        case "WAITING_REPAIR_AUTHORIZATION" -> phase!=null&&phase.confirmed()&&phase.amountPresent()&&phase.lossPresent()?"网点":"客服";
+        case "WAITING_REPAIR_AUTHORIZATION" -> phase!=null&&phase.confirmed()&&phase.amountPresent()?"网点":"客服";
         case "REPAIRING" -> "网点或客服";
         case "WAITING_OWNER_CONFIRMATION" -> "车主或客服";
         default -> "无需办理";

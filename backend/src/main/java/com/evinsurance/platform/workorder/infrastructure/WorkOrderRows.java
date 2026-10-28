@@ -5,7 +5,7 @@ import java.util.UUID;
 
 public final class WorkOrderRows {
     public record CityOption(long id,String code,String name) {}
-    public record Phase(UUID caseId,boolean amountPresent,boolean lossPresent,boolean confirmed,boolean rawCurrent,boolean formalCurrent) {}
+    public record Phase(UUID caseId,boolean amountPresent,boolean confirmed,boolean rawCurrent,boolean formalCurrent) {}
     public record Milestone(String status,Instant occurredAt) {}
     private WorkOrderRows() {}
 

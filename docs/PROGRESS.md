@@ -2338,3 +2338,39 @@ API用providerManaged=true和remaining=null表达本地不设累计上限、供�
 - 后端执行 powershell -NoProfile -ExecutionPolicy Bypass -File tmp/publish-main-20261026/verify-backend.ps1，沿用现有Java21、显式Mockito agent、离线Maven verify -Ppostgres-it及独立测试schema设置；94项单元、57项相关集成全部通过，失败/错误/跳过均0，BUILD SUCCESS并完成JAR打包。集成包括地图31项、工单20项、预算4项、主线与旧V25迁移各1项。首轮沙箱禁止本机回环连接导致41项环境错误，在允许本机测试连接的环境重跑通过，未修改代码或放宽断言。日志与构建报告在 tmp/publish-main-20261026/。
 - git diff --check、Manage-LocalWebsite.ps1的PowerShell Parser、docker compose --env-file .env -f infra/docker-compose.yml config --quiet均通过。对改动文件进行本机环境密钥值精确匹配：仅既有.env.example默认示例匹配，新增示例行及其他改动文件无匹配；未纳入.env、运行目录或测试日志。
 - 本轮未重新执行浏览器或真实供应商验收，沿用前述阶段证据，不冒充新验收；未安装新运行包、重启业务服务或部署生产。Git提交、main合并及远端推送的最终结果以本轮Git回执为准。
+
+## 2026-10-28：保险核损页面查看用测试工单（完成）
+
+- 用户要求先准备一张客服/管理端测试工单并停在保险核损页面，后续再确认无核损单场景的界面与逻辑。本轮只创建本地合成业务数据，不修改现有核损单要求、页面、接口或状态规则。
+- 通过本机8080现有客服及开发网点API创建 `EVR-20261028-000002`（`333e6008-f64f-4b1e-8540-6bce5cd844d5`），正常完成草稿、合成现场材料、提交、人工事故区域/接车地址确认、派单、接单、合成到店材料、到店、网点报价及客服正式报价。使用原开发测试网点ID1，合成资料有模拟标识，未修改旧演示单或其他既有工单。
+- 实际验证：执行 bundled Python `tmp/assessment-demo-20261028/create.py`，退出码0。客服与网点回读均为 `WAITING_INSURER_ASSESSMENT`，原始/正式报价均400.00元（固定加价0.00元），assessment为空、authorized=false、gate.allowed=false，网点可见且状态历史6条。未上传核损单、未录入核损金额、未进行保险/客服确认、开修或资金操作。回执 `tmp/assessment-demo-20261028/receipt.json` 不含密码或Token。
+- 首次执行被沙箱禁止回环连接（WinError 10013），经执行权限审核后同一脚本成功；此前未产生业务数据。Manage-LocalWebsite只读状态脚本因沙箱无法访问CIM未完成，不记作健康检查通过；上述实际业务API已成功返回。
+- 本轮无业务源码、数据库结构或运行配置改动，未执行测试套件、lint、类型检查、构建、Flyway、Compose、浏览器专项或真实地图/OCR调用，不冒称通过。保留工作区已有地图改动与PROGRESS历史，在核损入口停止，等待用户确认后续修改范围。
+
+## 2026-10-28：保险核损主页面与无核损单流程（完成）
+
+- 用户明确确认实际无核损单，要求移除核损单上传按钮及抽屉内容，图一案件信息自动带入并显示于新主页面，图二报价依据置于金额输入上方、默认展开且合计数字加大加粗，继续后弹窗确认金额，取消保留输入，确认后进入下一步。先更新REQUIREMENTS及DECISIONS，并同步AGENTS对应三项开修门禁。
+- 核损主页面直接只读显示建单已保存的报案号、保险公司、单行“车牌号/车架号”（沿用建单车牌优先/车架号回退规则）；顺序为案件信息、展开报价依据、核损金额。报价合计26px/700字重，金额输入24px，弹窗金额36px，沿用现有暖白、石墨色与Element Plus弹窗。移除该页核损上传/OCR/原件字段校对，保留网点报价原件与历史核损识别记录查看。
+- 点击继续只打开金额确认弹窗，使用BigInt格式化为两位小数，无写请求；取消/关闭保留输入。确认才调用现有assessments接口，以弹窗显示的金额及版本提交；失败留在弹窗，保留输入和同一请求的幂等键。服务器继续执行角色、当前正式报价、版本、事务、BigDecimal精度、金额新版本、确认失效和审计；金额审计补充版本ID、正式报价ID及金额。
+- 服务端开修改为当前有效最终核损金额、保险确认、客服确认三项，不再要求新增核损原件；进度条、案件列表办理人、材料要求、案件摘要、H5授权说明同步。后续客服授权页只需加载正式报价并核对人工核损金额，保留输入一致的授权金额校验。资金页没有核损附件时正常显示确认金额；历史已关联原件仍保留下载和版本核对，没有删除历史附件、金额版本、识别或审计记录。
+
+| 实际验证/命令 | 结果 |
+| --- | --- |
+| 管理端 node eslint、vue-tsc、node --test tests/*.test.mjs、vite build | 全部PASS，238项测试，失败/取消/跳过0；最终仅调整DOM顺序及局部字号后再次lint、类型检查、23项相关测试及build全部PASS。日志tmp/assessment-redesign-20261028/admin-*.log |
+| H5 node eslint、vue-tsc、node --test tests/*.test.mjs、vite build | 全部PASS，43项测试，失败/取消/跳过0。仅同步三项门禁说明 |
+| verify-backend-final.ps1：当前源码Java21、离线Maven verify -Ppostgres-it、显式Mockito agent | BUILD SUCCESS；95单元+61集成全部PASS（QuotationPostgresIT 41、WorkOrderPostgresIT 20），失败/错误/跳过0；随机隔离schema，Flyway V31完整迁移/校验，不写业务public。覆盖无文件金额录入、权限/跨店/车主隔离、非法精度、过期版本、幂等、双确认顺序、金额审计、历史原件失效、开修、维修进度/完工、资金及历史回归 |
+| 与本机V30一致的最终运行包verify-runtime-final.ps1 | 基于现用5db6322归档，只覆盖13个本次后端文件；95单元+61集成全部PASS，BUILD SUCCESS，Flyway V30主线迁移在随机测试schema验证。前一广泛运行包回归含额外37项地图/兼容迁移测试通过；其98项集成有1条旧四条件断言失败，未将该轮写成全通过 |
+| 首轮失败及修复 | 前端21/23通过，2项新测试因离线渲染未传props、未等待Vue异步watch而失败，修正夹具后全部通过；后端首轮61项1条失败，因旧断言把核损文件缺失和历史金额依据失效计为2项，新规则只剩金额依据失效，按新规则修正断言并保留拒绝开修及历史文件绑定验证。未删除/跳过测试或放宽类型检查。首次npm在仓库根目录执行因无package.json失败，随后在admin-web正确执行通过 |
+| 浏览器及API验收 | 原演示单EVR-20261028-000002显示三项自动带入信息、两份默认展开报价和金额输入；实测金额弹窗388.50元、取消后保留输入。独立合成EVR-20261028-000003确认388.50后进入WAITING_REPAIR_AUTHORIZATION/REPAIR，下一动作为CONFIRM_INSURER，sourceCurrent=true、核损附件0、authorized=false；刷新仍一致，未自动保险/客服确认或开修。原000002仍WAITING_INSURER_ASSESSMENT且assessment为空，供用户查看。回执browser-api-acceptance.json、amount-confirmation.png、next-step.png在本轮tmp目录 |
+| 本机同步 | 备份tmp/assessment-redesign-20261028/before-install-20261028-141441含旧JAR、数据库dump、私密配置和进程记录；逐份核对兼容迁移内容不变，public仍V30，32份历史校验，无新迁移、repair或清库。仅按PID/命令行/创建时间核实后重启本项目后端与隐藏守护，原Vite/Docker保持；私密.env字节哈希不变 |
+| 运行健康与完整性 | Backend/Admin/AdminApi/LoginApi/WatchRunning/AutoRecoveryEnabled均True，未启用PreviewApi。已安装JAR与最终验证候选一致，SHA256=BAF292A61856DA79D293B987E0DE597B97D69B94783B36FB93207BCEFBDE19D3；13文件覆盖与工作区一致，改动文件私密值精确扫描无匹配，git diff --check通过 |
+
+- 本轮无数据库结构/Compose/供应商配置改动，未重新执行Compose配置检查或真实地图/OCR调用；测试显式Mock、Worker关闭和真实调用预算0。浏览器当前831px宽度内容无横向溢出，金额/报价字号与展开状态由DOM样式回读核对；未声称已完成所有设备尺寸专项。仅合成工单、本地运行环境，未发送外部消息或执行真实资金操作。
+- 保留本轮开始已有地图修改及PROGRESS历史，没有提交、推送、合并main或部署生产。本阶段完成并停止，不继续改造下一业务阶段。
+
+## 2026-10-28：保险核损变更提交上传检查
+
+- 用户确认将本次保险核损改动提交并上传。发布范围为27个核损相关文件；本轮开始已有的5个地图文件（组件、SDK、两份地图测试及地图说明）及2026-10-26/27的本地进度记录保留在工作区，不混入此次提交。docs/PROGRESS.md仅暂存本次2026-10-28测试单、核损改造及本发布记录。
+- 提交前执行git fetch origin --prune，远端main新增cdce397与8705396两条H5提交；五个上游文件与本地改动不重叠，git merge --ff-only origin/main成功，无冲突、强制覆盖或历史改写。当前提交基线为8705396，正常提交及推送main，最终结果以Git回执及远端回读为准。
+- 同步后重新执行管理端23项核损/授权/资金/摘要相关测试，全PASS；H5重新执行eslint、vue-tsc、43项测试及vite build，全部PASS，失败/取消/跳过0。日志在tmp/publish-assessment-20261028/。管理端全量238项与完整前端门禁、后端95单元及61集成结果沿用上一阶段；本次已逐份核对13个后端变更与已验证源码一致，未重复执行未变化的后端测试或迁移。
+- 已对选定文件执行本机配置私密值精确扫描，无匹配；Git暂存白名单、暂存diff检查和原地图文件哈希保护用于提交检查，不纳入.env、测试工单/数据库、tmp、日志、截图或运行包。仅上传源码与文档，不重新安装运行包或部署生产。
