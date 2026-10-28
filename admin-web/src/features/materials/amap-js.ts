@@ -11,17 +11,19 @@ export function loadAmapJs(config:JsBootstrap,browser:BrowserMapWindow=window as
  if(!/^[A-Za-z0-9_-]{16,128}$/.test(config.publicKey)||config.servicePath!=='/_AMapService')return Promise.reject(new Error('地图加载配置无效'))
  const requested=origin+config.servicePath+'|'+config.publicKey
  if(loading)return identity===requested?loading:Promise.reject(new Error('本页地图配置已改变，请重新打开页面'))
- if(browser.AMap||browser._AMapSecurityConfig)return Promise.reject(new Error('本页已有不同地图配置，请重新打开页面'))
+ if(identity&&identity!==requested)return Promise.reject(new Error('本页地图配置已改变，请重新打开页面'))
+ if(!identity&&(browser.AMap||browser._AMapSecurityConfig))return Promise.reject(new Error('本页已有不同地图配置，请重新打开页面'))
+ if(browser.AMap)return Promise.resolve(browser.AMap)
  identity=requested
- loading=new Promise((resolve,reject)=>{
+ loading=new Promise<AmapNamespace>((resolve,reject)=>{
   const script=doc.createElement('script');let settled=false
-  const finish=(api?:AmapNamespace)=>{if(settled)return;settled=true;clearTimeout(timer);delete browser.__evAmapReady;script.onerror=null;if(api)resolve(api);else{script.remove();reject(new Error('高德地图加载失败或超时；未自动重试，地址输入保留，请核对配置后重新打开页面'))}}
+  const finish=(api?:AmapNamespace)=>{if(settled)return;settled=true;clearTimeout(timer);delete browser.__evAmapReady;script.onerror=null;if(api)resolve(api);else{script.remove();reject(new Error('高德地图脚本加载失败或超时；未自动重试，地址输入保留，可点击重新加载地图'))}}
   const timer=setTimeout(()=>finish(),15000)
   browser._AMapSecurityConfig={serviceHost:origin+config.servicePath}
   browser.__evAmapReady=()=>finish(browser.AMap)
   script.src='https://webapi.amap.com/maps?v=2.0&key='+encodeURIComponent(config.publicKey)+'&callback=__evAmapReady'
   script.async=true;script.referrerPolicy='no-referrer';script.onerror=()=>finish();doc.head.appendChild(script)
- })
+ }).catch(error=>{loading=undefined;throw error})
  return loading
 }
 export function pointFromEvent(event:JsEvent):MapPoint|undefined {const longitude=event.lnglat?.getLng(),latitude=event.lnglat?.getLat();return typeof longitude==='number'&&Number.isFinite(longitude)&&longitude>=-180&&longitude<=180&&typeof latitude==='number'&&Number.isFinite(latitude)&&latitude>=-90&&latitude<=90?{longitude,latitude}:undefined}

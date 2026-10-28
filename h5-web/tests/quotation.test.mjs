@@ -18,3 +18,36 @@ test('historical external quote export uses the authenticated API client and exa
   const result=await quotationApi(client,'case-1').export('historical-quote-1')
   assert.equal(result,payload);assert.equal(calls[0].url,'/quotations/cases/case-1/formal-quotes/historical-quote-1/export');assert.equal(calls[0].config.responseType,'blob')
 })
+
+test('legacy quotation responses recover saved arrival photos beyond the first material page',async()=>{
+  const calls=[],client={get:async(url,config)=>{
+    calls.push({url,config})
+    if(url==='/quotations/cases/case-1')return {data:{data:{caseId:'case-1',assignmentVersion:3}}}
+    return {data:{data:{total:101,records:config.params.page===1?Array.from({length:100},()=>({category:'SHOP_QUOTE',state:'ACTIVE',contentType:'image/png'})):[{category:'ARRIVAL_PHOTO',state:'ACTIVE',contentType:'image/jpeg'}]}}}
+  }}
+  assert.equal((await quotationApi(client,'case-1').get()).arrivalPhotoUploaded,true)
+  assert.deepEqual(calls.slice(1).map(call=>call.config.params),[{page:1,size:100},{page:2,size:100}])
+  assert.equal(calls.slice(1).every(call=>call.url==='/materials/cases/case-1'),true)
+})
+
+test('an explicit server arrival decision is authoritative and never falls back to attachments',async()=>{
+  for(const arrivalPhotoUploaded of [false,true]){
+    const calls=[],client={get:async url=>{calls.push(url);return {data:{data:{arrivalPhotoUploaded,assignmentVersion:3}}}}}
+    assert.equal((await quotationApi(client,'case-1').get()).arrivalPhotoUploaded,arrivalPhotoUploaded)
+    assert.deepEqual(calls,['/quotations/cases/case-1'])
+  }
+})
+
+test('legacy arrival recovery rejects wrong categories, inactive files, PDFs and missing assignments',async()=>{
+  const records=[{category:'ARRIVAL_PHOTO',state:'SUPERSEDED',contentType:'image/png'},{category:'ARRIVAL_PHOTO',state:'ACTIVE',contentType:'application/pdf'},{category:'PROGRESS_PHOTO',state:'ACTIVE',contentType:'image/jpeg'}]
+  for(const assignmentVersion of [undefined,3]){
+    const calls=[],client={get:async url=>{calls.push(url);return {data:{data:url.startsWith('/quotations/')?{assignmentVersion}:{records,total:records.length}}}}}
+    assert.equal((await quotationApi(client,'case-1').get()).arrivalPhotoUploaded,false)
+    assert.equal(calls.length,assignmentVersion===undefined?1:2)
+  }
+})
+
+test('failed material reads cannot report a legacy arrival photo as ready',async()=>{
+  const client={get:async url=>{if(url.startsWith('/quotations/'))return {data:{data:{assignmentVersion:3}}};throw Error('材料状态读取失败')}}
+  await assert.rejects(quotationApi(client,'case-1').get(),/材料状态读取失败/)
+})

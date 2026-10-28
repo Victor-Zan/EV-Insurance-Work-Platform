@@ -3,9 +3,10 @@ import {label,localTime} from '@/shared/ui/presentation'
 import {computed,onMounted,ref,watch} from 'vue'
 import {ElDialog} from 'element-plus'
 import FundsAssessment from './FundsAssessment.vue'
-import {chinaBusinessTime,fundsDirection,fundsConfirmationIssue,fundsAmount} from './funds-flow'
+import {chinaBusinessTime,fundsDirection,fundsConfirmationIssue,fundsAmount,fundsFailureMessage} from './funds-flow'
 import {currentUser,httpClient} from '@/shared/http/client'
 import FundsImportPanel from './FundsImportPanel.vue'
+import type {QuoteCase} from '../quotation/quotation'
 interface Direction {target:string|null;net:string;status:string}
 interface Funds {stagedFlow:boolean;flowStage:string;receiveConfirmed:boolean;payConfirmed:boolean;canConfirmReceive:boolean;canConfirmPay:boolean;canRecordReceive:boolean;canRecordPay:boolean;canSetPayTarget:boolean;caseId:string;version:number;currency:string;receivable?:Direction;payable:Direction}
 interface Target {id:number;direction:string;amount:string|null;reason:string;createdAt:string;actorId:number}
@@ -13,18 +14,20 @@ interface Entry {id:string;direction:string;amount:string;occurredAt:string;reve
 const emit=defineEmits<{changed:[]}>()
 const props=defineProps<{caseId:string;refreshToken?:number}>(),base=`/funds/cases/${props.caseId}`
 const data=ref<Funds>(),entries=ref<Entry[]>([]),total=ref(0),page=ref(1),busy=ref(false),message=ref(''),amount=ref(''),number=ref(''),time=ref(chinaBusinessTime()),note=ref(''),pending=ref<{body:string;key:string}>()
-const targetAmount=ref(''),targetDirty=ref(false),noteOpen=ref(false),targetInput=ref<HTMLInputElement>()
+const noteOpen=ref(false)
+const confirmedAmount=ref<string|null>(null)
 const targets=ref<Target[]>([]),targetPage=ref(1),targetTotal=ref(0),reversal=ref<Entry>(),reversalReason=ref('')
 const confirmationError=ref(''),messageError=ref(false),amountInput=ref<HTMLInputElement>(),numberInput=ref<HTMLInputElement>()
 const direction=computed(()=>fundsDirection(data.value))
 const balance=computed(()=>direction.value==='PAY'?data.value?.payable:data.value?.receivable)
+const entrySettled=computed(()=>confirmedAmount.value!==null&&balance.value?.net===confirmedAmount.value)
 const stepName=computed(()=>direction.value==='PAY'?'平台 → 维修网点':'保险公司 → 平台')
 const amountName=computed(()=>direction.value==='PAY'?'结算金额':'到账金额')
 const staff=computed(()=>currentUser.value?.roles.some(role=>role==='ADMIN'||role==='CUSTOMER_SERVICE'))
 async function loadTargets(){if(!staff.value)return;const result=(await httpClient.get<{data:{records:Target[];total:number}}>(`${base}/targets`,{params:{page:targetPage.value,size:20}})).data.data;targets.value=result.records;targetTotal.value=result.total}
 const cs=computed(()=>currentUser.value?.roles.includes('CUSTOMER_SERVICE'))
-async function load(){const previous=data.value?.flowStage;data.value=(await httpClient.get<{data:Funds}>(base)).data.data;if(previous!==data.value.flowStage){time.value=chinaBusinessTime();targetDirty.value=false;noteOpen.value=false;if(previous!==undefined){amount.value='';number.value='';note.value=''}}if(!targetDirty.value)targetAmount.value=balance.value?.target??'';const result=(await httpClient.get<{data:{records:Entry[];total:number}}>(`${base}/entries`,{params:{page:page.value,size:20}})).data.data;entries.value=result.records;total.value=result.total;await loadTargets()}
-async function run(action:()=>Promise<void>){if(busy.value)return;busy.value=true;message.value='';confirmationError.value='';messageError.value=false;try{await action()}catch(error){messageError.value=true;message.value=error instanceof Error?error.message:'操作失败'}finally{busy.value=false}}
+async function load(){const previous=data.value?.flowStage;data.value=(await httpClient.get<{data:Funds}>(base)).data.data;if(previous!==data.value.flowStage){time.value=chinaBusinessTime();noteOpen.value=false;if(previous!==undefined){amount.value='';number.value='';note.value=''}}confirmedAmount.value=null;if(cs.value&&direction.value){const quote=(await httpClient.get<{data:QuoteCase}>(`/quotations/cases/${props.caseId}`)).data.data;if(quote.gate.customerServiceConfirmationRecorded&&quote.assessment?.sourceCurrent)confirmedAmount.value=fundsAmount(quote.assessment.amount)}const result=(await httpClient.get<{data:{records:Entry[];total:number}}>(`${base}/entries`,{params:{page:page.value,size:20}})).data.data;entries.value=result.records;total.value=result.total;await loadTargets()}
+async function run(action:()=>Promise<void>){if(busy.value)return;busy.value=true;message.value='';confirmationError.value='';messageError.value=false;try{await action()}catch(error){messageError.value=true;message.value=fundsFailureMessage(error);if(error&&typeof error==='object'&&'code' in error&&error.code==='FUNDS_VERSION_CONFLICT'){try{await load();emit('changed')}catch{message.value+='；状态刷新失败，请点击刷新后重试。'}}}finally{busy.value=false}}
 async function post<T=unknown>(path:string,body:unknown){const serialized=JSON.stringify({path,body});if(pending.value?.body!==serialized)pending.value={body:serialized,key:crypto.randomUUID()};const response=await httpClient.post<{data:T}>(path,body,{headers:{'Idempotency-Key':pending.value.key}});pending.value=undefined;confirmationError.value='';message.value='记录已保存，历史保留';await load();emit('changed');return response.data.data}
 async function confirmStep(){
  if(!data.value||!direction.value)return
@@ -33,23 +36,32 @@ async function confirmStep(){
   await load()
   if(data.value.version!==version||data.value.flowStage!==stage||direction.value!==intended){confirmationError.value='资金记录已有更新，请核对当前金额和步骤后再次确认。';emit('changed');return}
   const issue=fundsConfirmationIssue(data.value)
-  if(issue){confirmationError.value=issue.message;if(issue.field==='amount')targetInput.value?.focus();else if(issue.field==='number')amountInput.value?.focus();return}
+  if(issue){confirmationError.value=issue.message;if(issue.field==='number')amountInput.value?.focus();return}
   await post(`${base}/confirmations`,{expectedVersion:version,direction:intended})
  }catch(error){confirmationError.value=error instanceof Error?error.message:'确认失败，请重试';throw error}
 }
-async function target(){if(data.value&&direction.value){const value=direction.value==='PAY'&&!targetAmount.value.trim()?null:fundsAmount(targetAmount.value);await post(`${base}/targets`,{expectedVersion:data.value.version,direction:direction.value,amount:value,reason:direction.value==='PAY'?'客服在网点结算步骤确认人工应付金额':'客服在保险到账步骤确认人工应收金额'});targetDirty.value=false;targetAmount.value=balance.value?.target??value??''}}
 async function entry(){if(data.value&&direction.value){if(!time.value)time.value=chinaBusinessTime();const result=await post<{funds:Funds}>(`${base}/entries`,{expectedVersion:data.value.version,direction:direction.value,transactionNo:number.value.trim(),amount:fundsAmount(amount.value,true),occurredAt:new Date(time.value+'+08:00').toISOString(),note:note.value});return result.funds}}
 async function confirmEntry(){
  if(!data.value||!direction.value)return
- const version=data.value.version,stage=data.value.flowStage,intended=direction.value
+ const version=data.value.version,stage=data.value.flowStage,intended=direction.value,source=confirmedAmount.value
  await load()
- if(data.value.version!==version||data.value.flowStage!==stage||direction.value!==intended){confirmationError.value='资金记录已有更新，请核对当前金额和步骤后再次确认。';emit('changed');return}
- if(balance.value?.target==null){confirmationError.value=`请先填写并确认${intended==='PAY'?'应付':'应收'}金额。`;targetInput.value?.focus();return}
- if(fundsAmount(targetAmount.value)!==fundsAmount(balance.value.target)){confirmationError.value='目标金额已修改，请先确认该金额。';targetInput.value?.focus();return}
- if(balance.value.status==='SETTLED'){if(data.value.stagedFlow)await confirmStep();else message.value='当前流水已结清';return}
- const actual=fundsAmount(amount.value,true)
- if(!number.value.trim()){confirmationError.value='请填写流水号 / 凭证编号';numberInput.value?.focus();return}
- if(BigInt(actual.replace('.',''))+BigInt(fundsAmount(balance.value.net).replace('.',''))>BigInt(fundsAmount(balance.value.target).replace('.',''))){confirmationError.value='本次金额加已记录金额不能超过目标金额';amountInput.value?.focus();return}
+ if(data.value.version!==version||data.value.flowStage!==stage||direction.value!==intended||source!==confirmedAmount.value){confirmationError.value='资金记录或最终确认金额已有更新，请核对当前金额和步骤后再次确认。';emit('changed');return}
+ const expectedTarget=confirmedAmount.value
+ if(expectedTarget==null){confirmationError.value='缺少有效的最终确认金额，请先核对核损及客服确认。';return}
+ if(intended==='PAY'&&data.value.stagedFlow&&!data.value.receiveConfirmed){confirmationError.value='请先完成保险公司到账确认，再办理网点结算。';return}
+ if(intended==='PAY'&&!data.value.canSetPayTarget){confirmationError.value='当前维修网点或派单已变化，请刷新并核对后结算。';return}
+ if(BigInt(fundsAmount(balance.value!.net).replace('.',''))>BigInt(fundsAmount(expectedTarget).replace('.',''))){confirmationError.value=`已记录${intended==='PAY'?'结算':'到账'}金额超过当前目标，请先核对或冲销历史流水。`;return}
+ const settled=fundsAmount(balance.value!.net)===fundsAmount(expectedTarget)
+ if(!settled){
+  const actual=fundsAmount(amount.value,true)
+  if(!number.value.trim()){confirmationError.value='请填写流水号 / 凭证编号';numberInput.value?.focus();return}
+  if(BigInt(actual.replace('.',''))+BigInt(fundsAmount(balance.value!.net).replace('.',''))>BigInt(fundsAmount(expectedTarget).replace('.',''))){confirmationError.value='本次金额加已记录金额不能超过目标金额';amountInput.value?.focus();return}
+ }
+ if(balance.value?.target==null||fundsAmount(balance.value.target)!==expectedTarget){
+  const saved=await post<Funds>(`${base}/targets`,{expectedVersion:data.value.version,direction:intended,amount:expectedTarget,reason:`确认${intended==='PAY'?'结算':'到账'}时自动沿用客服最终确认金额`})
+  if(data.value.version!==saved.version||data.value.flowStage!==saved.flowStage||direction.value!==intended||confirmedAmount.value!==expectedTarget||balance.value?.target==null||fundsAmount(balance.value.target)!==expectedTarget){confirmationError.value='资金记录或最终确认金额已有更新，请核对后再次确认。';return}
+ }
+ if(settled){if(data.value.stagedFlow)await confirmStep();else message.value='当前流水已结清';return}
  const recorded=await entry()
  amount.value='';number.value='';note.value='';noteOpen.value=false
  if(!recorded||data.value.version!==recorded.version||data.value.flowStage!==recorded.flowStage||(data.value.stagedFlow&&direction.value!==intended)){confirmationError.value='本次流水已保存，资金记录另有更新，请核对后再次确认。';emit('changed');return}
@@ -76,13 +88,12 @@ onMounted(()=>run(load));watch(()=>props.refreshToken,()=>run(load))
     <section class="current-transfer" data-reading="当前资金步骤">
      <template v-if="cs&&direction">
       <h3>{{ stepName }}</h3>
-      <div class="balance-line"><span>{{ direction==='RECEIVE'?'已确认应收':'已确认应付' }} <strong>{{ balance?.target??'未定' }}</strong> 元</span><span>{{ direction==='RECEIVE'?'累计到账':'累计结算' }} <strong>{{ balance?.net??'0.00' }}</strong> 元</span></div>
-      <label>流水号 / 凭证编号<input ref="numberInput" v-model="number" maxlength="128" :disabled="busy||balance?.status==='SETTLED'"/></label>
-      <label>{{ direction==='RECEIVE'?'到账时间':'结算时间' }}（中国时间）<input v-model="time" type="datetime-local" :disabled="busy||balance?.status==='SETTLED'"/></label>
-      <div class="amount-row"><label>{{ direction==='RECEIVE'?'应收金额':'应付金额' }}（元）<input ref="targetInput" v-model="targetAmount" inputmode="decimal" :disabled="busy" @input="targetDirty=true"/></label><button class="target-action" :disabled="busy||(direction==='PAY'&&!data.canSetPayTarget)" @click="run(target)">{{ direction==='RECEIVE'?'确认应收金额':'确认应付金额' }}</button></div>
-      <div class="amount-row"><label>本次{{ amountName }}（元）<input ref="amountInput" v-model="amount" inputmode="decimal" :disabled="busy||balance?.status==='SETTLED'"/></label><button class="primary" :disabled="busy" @click="run(confirmEntry)">{{ direction==='RECEIVE'?'确认到账':'确认结算' }}</button></div>
+      <div class="balance-line"><span>{{ direction==='RECEIVE'?'应收':'应付' }}（同最终确认金额） <strong>{{ confirmedAmount??'未确认' }}</strong> 元</span><span>{{ direction==='RECEIVE'?'累计到账':'累计结算' }} <strong>{{ balance?.net??'0.00' }}</strong> 元</span></div>
+      <label>流水号 / 凭证编号<input ref="numberInput" v-model="number" maxlength="128" :disabled="busy||entrySettled"/></label>
+      <label>{{ direction==='RECEIVE'?'到账时间':'结算时间' }}（中国时间）<input v-model="time" type="datetime-local" :disabled="busy||entrySettled"/></label>
+      <div class="amount-row"><label>本次{{ amountName }}（元）<input ref="amountInput" v-model="amount" inputmode="decimal" :disabled="busy||entrySettled"/></label><button class="primary" :disabled="busy" @click="run(confirmEntry)">{{ direction==='RECEIVE'?'确认到账':'确认结算' }}</button></div>
       <p v-if="confirmationError||message" class="confirmation-error" :class="{success:!confirmationError&&!messageError}" :role="confirmationError||messageError?'alert':'status'">{{ confirmationError||message }}</p>
-      <details class="optional-note" :open="noteOpen" @toggle="noteOpen=($event.target as HTMLDetailsElement).open"><summary>备注（选填）</summary><textarea v-model="note" aria-label="备注（选填）" maxlength="2000" rows="2" :disabled="busy||balance?.status==='SETTLED'"/></details>
+      <details class="optional-note" :open="noteOpen" @toggle="noteOpen=($event.target as HTMLDetailsElement).open"><summary>备注（选填）</summary><textarea v-model="note" aria-label="备注（选填）" maxlength="2000" rows="2" :disabled="busy||entrySettled"/></details>
      </template>
      <template v-else><h3>资金记录</h3><p v-if="data.receivable">应收 {{ data.receivable.target??'未定' }} 元 · 已到账 {{ data.receivable.net }} 元</p><p>应付 {{ data.payable.target??'未定' }} 元 · 已结算 {{ data.payable.net }} 元</p></template>
     </section>

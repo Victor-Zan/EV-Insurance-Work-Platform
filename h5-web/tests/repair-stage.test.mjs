@@ -6,6 +6,7 @@ import {compile} from '@vue/compiler-dom'
 import ts from 'typescript'
 import * as Vue from 'vue'
 import {actionFor,caseStatusLabel} from '../src/features/workorders/work-orders.ts'
+import {quotationApi} from '../src/features/quotation/quotation.ts'
 
 function component(file,deps,props){
  const {descriptor}=parse(readFileSync(new URL('../src/features/'+file,import.meta.url),'utf8'))
@@ -38,6 +39,25 @@ function repair(status='REPAIRING',authorized=true,role='REPAIR_SHOP',review=nul
  },props)
  return {...ui,calls,fail(value){fail=value}}
 }
+
+test('saved arrival photos from a legacy backend unlock the quote step after upload and on reopening',async()=>{
+ let uploaded=false
+ const client={get:async url=>({data:{data:url.startsWith('/quotations/')?{caseId:'case-stage',status:'ARRIVED',assignmentVersion:3,version:1,rawQuote:null,gate:{}}:{total:uploaded?1:0,records:uploaded?[{category:'ARRIVAL_PHOTO',state:'ACTIVE',contentType:'image/png'}]:[]}}})}
+ const deps={MaterialsPanel:'MaterialsPanel',QuoteOcrPanel:'QuoteOcrPanel',ArrivalPhotoPanel:'ArrivalPhotoPanel',QuoteLines:'QuoteLines',RecordList:'RecordList',candidateTotal:()=>'',decimalProduct:()=>'',quotePayload:()=>[],label:value=>value,currentUser:Vue.ref({roles:['REPAIR_SHOP']}),httpClient:client,formalPayload(){},quotationApi}
+ const props=Vue.reactive({caseId:'case-stage',refreshToken:0,recordsOnly:false}),ui=component('quotation/QuotationPanel.vue',deps,props)
+ await ui.state.load()
+ assert.equal(ui.nodes().find(node=>node.type==='ArrivalPhotoPanel').props.uploaded,false)
+ uploaded=true;await ui.nodes().find(node=>node.type==='ArrivalPhotoPanel').props.onChanged()
+ await Vue.nextTick();await Vue.nextTick()
+ const photo=ui.nodes().find(node=>node.type==='ArrivalPhotoPanel')
+ assert.equal(photo.props.uploaded,true)
+ photo.props.onNext()
+ assert.equal(ui.state.showQuote.value,true)
+ assert.equal(ui.nodes().some(node=>node.type==='ArrivalPhotoPanel'),false)
+ assert.equal(ui.nodes().some(node=>node.type==='QuoteOcrPanel'),true)
+ const reopened=component('quotation/QuotationPanel.vue',deps,props);await reopened.state.load()
+ assert.equal(reopened.nodes().find(node=>node.type==='ArrivalPhotoPanel').props.uploaded,true)
+})
 test('repair task has only the completion action, then requires completion photos and keeps failed-submit idempotency',async()=>{
  const ui=repair();await ui.state.load()
  assert.equal(ui.nodes().filter(n=>n.type==='button').map(n=>n.children).join('|'),'维修完成')

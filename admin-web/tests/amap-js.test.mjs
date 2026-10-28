@@ -37,9 +37,12 @@ test('local SDK proxy matches only the two resources and explicit session endpoi
  assert.equal(proxies[aliases[0]].changeOrigin,false)
  assert.equal('rewrite' in proxies[aliases[0]],false)
 })
-test('loader failure does not silently become mock or automatically request again',async()=>{
- const {loadAmapJs}=await module();let calls=0;const doc=documentMock(s=>{calls++;queueMicrotask(()=>s.onerror())}),browser={},config=configuration()
- await assert.rejects(loadAmapJs(config,browser,doc,'http://localhost'),/未自动重试/);await assert.rejects(loadAmapJs(config,browser,doc,'http://localhost'),/未自动重试/);assert.equal(calls,1)
+test('SDK failure stays idle until an explicit retry, which can recover without reloading the page',async()=>{
+ const {loadAmapJs}=await module();let calls=0;const browser={},config=configuration(),api={Map:class{},Marker:class{}}
+ const doc=documentMock(s=>{calls++;queueMicrotask(()=>{if(calls===1)s.onerror();else{browser.AMap=api;browser.__evAmapReady()}})})
+ await assert.rejects(loadAmapJs(config,browser,doc,'http://localhost'),/未自动重试/);assert.equal(calls,1)
+ assert.equal(await loadAmapJs(config,browser,doc,'http://localhost'),api);assert.equal(calls,2)
+ await loadAmapJs(config,browser,doc,'http://localhost');assert.equal(calls,2)
 })
 test('map events preserve longitude latitude order and reject missing or invalid coordinates',()=>{
  assert.deepEqual(pointFromEvent({lnglat:{getLng:()=>113.1,getLat:()=>23.1}}),{longitude:113.1,latitude:23.1})

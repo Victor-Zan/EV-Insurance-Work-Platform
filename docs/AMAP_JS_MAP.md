@@ -34,6 +34,8 @@ POST /api/v1/maps/js/bootstrap：客服明确加载后，返回浏览器所需�
 
 Vite的/api代理使用配置的VITE_API_BASE_URL对应后端；`/_AMapService` 仅精确转发上述三个路径到同一后端，保留原请求来源，确保SDK资源Cookie同源，不提供任意路径转发。生产须使用HTTPS、正确的受信反向代理，以及/api和上述地图路径的同源转发；本轮不部署或认可生产配置。此路径调整后须重启后端和Vite，并重新打开页面显式加载地图，旧页面的SDK配置不会自动替换。
 
+加载失败后保留地址与坐标，提供“重新加载地图”按钮，仅由人工点击重试；先释放本组件旧资源会话，再重新签发。SDK失败不会永久缓存拒绝结果，已销毁地图的迟到事件不能影响新地图。bootstrap返回旧`/api/v1/maps/js-proxy`时，在下载SDK前提示检查前后端版本，须同步后端运行包，不放宽代理路径校验。
+
 ## 新增协议
 
 POST /api/v1/maps/locations/point：{districtId,longitude,latitude}；只有客服可调用。通过原Provider.locate及REVERSE持久台账，返回原位置候选协议，仍须明确confirm，调用本身不修改案件。点击/拖动不自动调用此接口。
