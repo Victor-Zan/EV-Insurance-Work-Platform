@@ -2521,3 +2521,11 @@ API用providerManaged=true和remaining=null表达本地不设累计上限、供�
 - 冲突处理没有强制覆盖远端历史。保留双方测试；原OCR抽屉字段测试按远端取消该抽屉的已确认需求更新为只读案件字段自动带入断言。正式迁移到V32，追加三个明确标注测试地点的dev迁移，不改已应用迁移。
 - 合并后管理端lint、typecheck、build通过；33项相关测试首轮32通过，旧抽屉测试按新流程更新后所属10项全部通过，已通过部分不重复运行。H5 lint、typecheck、build及19项相关测试通过。后端离线Maven verify -Ppostgres-it完成编译/打包，95项单元、8项核损/授权/维修/权限/评价集成通过，失败/错误/跳过均0，独立schema完成Flyway验证；OCR使用Mock。日志在第二阶段local-validation/github-push-*.log。
 - 仅暂存审核清单内的源码、测试、示例配置与文档；本机AGENTS修改、私密.env、运行日志、截图、测试数据库及构建目录保留在本地。新增忽略仓库内local-validation目录。已对候选文件执行本机私密值及凭据格式扫描，无匹配；git diff --check通过。没有重置账号、修改真实案件或重启服务。最终提交号、推送和远端一致性以Git回执为准。
+
+## 2026-10-28：创建工单弹窗恢复左右两栏（完成）
+
+- 用户确认恢复左侧资料导入、右侧填写工单和预览照片的布局及原有大小。现有创建弹窗在视口宽度不超过1023px时切成单栏，桌面窄窗口也会触发；本轮仅将该弹窗单栏阈值缩至767px，保留原两栏比例、间距、字号、上传入口和建单逻辑，未调整其他页面的响应式规则。无法仅凭附件确认用户浏览器的缩放值，未更改浏览器或系统缩放设置。
+- 管理端实际执行 `npm.cmd run lint`、`npm.cmd run typecheck`、`npm.cmd test`、`npm.cmd run build`，全部PASS；238项测试，失败/取消/跳过0。日志在 `tmp/intake-layout-20261028/{lint,typecheck,test,build}.log`；`git diff --check`通过。
+- 浏览器使用真实WorkOrdersView及其子组件、Mock业务接口的本地预览验证：976px及768px视口为左右两栏、无横向溢出；390px为单栏、无横向溢出。回读基础字号14px、导入标题20px；恢复截图 `tmp/intake-layout-20261028/restored.png`。预览不创建或提交工单，不上传真实资料；未声称已验证真实整包导入或后端保存。
+- 无后端、H5、数据库或基础设施改动，未重复对应门禁。保留已有地图改动及本地进度历史；未提交、推送或部署生产。本阶段完成并停止。
+- 后续用户授权提交上传：先fetch并快进同步远端main至abb076b，保留已有地图文件及本地历史进度；同步后管理端 `npm.cmd run lint`、`npm.cmd run typecheck`、`npm.cmd test`、`npm.cmd run build`全部PASS，243项测试失败/取消/跳过0，日志 `tmp/publish-intake-layout-20261028/`。本次提交仅包含WorkOrdersView的布局阈值及本节进度，历史地图/模拟单记录不暂存；未安装后端运行包、执行数据库迁移或部署生产。提交与推送最终结果以Git回执及远端回读为准。
