@@ -5,7 +5,7 @@ import {httpClient} from '@/shared/http/client'
 import type {QuoteCase} from '../quotation/quotation'
 const props=defineProps<{caseId:string;refreshToken?:number}>()
 const quote=ref<QuoteCase>(),original=ref(''),preview=ref(''),contentType=ref(''),loading=ref(false),error=ref(''),page=ref(1),pages=ref(1),enlarged=ref(false)
-const confirmed=computed(()=>quote.value?.gate.customerServiceConfirmationRecorded&&quote.value?.assessment?.sourceCurrent)
+const confirmed=computed(()=>quote.value?.gate.customerServiceConfirmationRecorded&&quote.value?.assessment?.sourceCurrent&&quote.value?.confirmedAmount!==undefined)
 let generation=0
 function release(){for(const url of new Set([original.value,preview.value]))if(url)URL.revokeObjectURL(url);original.value='';preview.value=''}
 async function load(){
@@ -28,8 +28,8 @@ onUnmounted(()=>{generation++;release()})
 </script>
 <template>
  <section class="funds-assessment" data-reading="核损确认金额">
-  <header><h3>保险核损金额</h3><button v-if="preview&&!error" @click="enlarged=true">放大查看</button></header>
-  <div class="confirmed-price"><span>最终确认金额</span><strong>{{ confirmed?quote?.assessment?.amount:'未确认' }}<small v-if="confirmed"> 元</small></strong></div>
+  <header><h3>最终确认价格</h3><button v-if="preview&&!error" @click="enlarged=true">放大查看</button></header>
+  <div class="confirmed-price"><span>最终确认金额</span><strong>{{ confirmed?quote?.confirmedAmount:'未确认' }}<small v-if="confirmed"> 元</small></strong></div>
   <p v-if="quote&&!confirmed" class="source-note">当前记录缺少有效的客服最终确认。</p>
   <div v-if="loading" class="document-loading" aria-busy="true" aria-label="正在加载核损金额"/>
   <p v-else-if="error" role="alert" class="document-error">{{ error }} <button @click="load">重新加载</button></p>

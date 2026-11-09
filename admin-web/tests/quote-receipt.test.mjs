@@ -43,41 +43,66 @@ test('waiting task shows shop provenance receipts, no upload controls; preview c
 test('production and non-customer-service accounts cannot open development preview',()=>{
  for(const f of [fixture(false),fixture(true,['ADMIN'])]){f.context.openReviewPreview();assert.equal(f.context.reviewPreview.value,false)}
 })
-test('assessment uses saved case facts, expands both quotes and opens a cancellable amount confirmation without a write',async()=>{
- const f=fixture();Object.assign(f.props,{claimNo:'SYNTH-CLAIM',insuranceCompany:'测试保险',vehicleVin:'SYNTH-VIN'});Object.assign(f.props.workflow,{currentNode:'INSURER_ASSESSMENT',status:'WAITING_INSURER_ASSESSMENT',canAct:true})
- f.setQuote({version:2,status:'WAITING_INSURER_ASSESSMENT',rawQuote:{id:'raw',total:'400.00',lines:[]},formalQuote:{total:'560.60',lines:[]},gate:{}});await f.context.load();await new Promise(resolve=>setImmediate(resolve))
- f.context.assessment.value='560.6';f.context.dirty.value=true
- assert.equal(f.context.assessmentIssue.value,'');assert.equal(f.context.vehicleIdentity.value,'SYNTH-VIN')
+function assessmentFixture(node='INSURER_ASSESSMENT'){
+ const f=fixture();Object.assign(f.props,{claimNo:'SYNTH-CLAIM',insuranceCompany:'测试保险',vehicleVin:'SYNTH-VIN'})
+ Object.assign(f.props.workflow,{currentNode:node,status:node==='REPAIR'?'WAITING_REPAIR_AUTHORIZATION':'WAITING_INSURER_ASSESSMENT',canAct:true})
+ f.setQuote({version:2,status:f.props.workflow.status,rawQuote:{id:'raw',total:'400.00',lines:[]},formalQuote:{id:'formal',total:'560.60',lines:[]},gate:{}})
+ return f
+}
+test('assessment shows exactly two decimal inputs, no confirmation dialog, and one final confirmation',async()=>{
+ const f=assessmentFixture();await f.context.load();await Vue.nextTick()
  const nodes=elements(f),inputs=nodes.filter(n=>n.type==='input'&&n.props.readonly!==undefined)
  assert.deepEqual(inputs.map(n=>n.props.value),['SYNTH-CLAIM','测试保险','SYNTH-VIN'])
  assert.equal(nodes.filter(n=>n.type==='details'&&n.props.open).length,2)
- assert.equal(nodes.some(n=>n.type==='button'&&String(n.children).includes('上传')),false)
+ assert.equal(nodes.filter(n=>n.type==='input'&&n.props.inputmode==='decimal').length,2)
+ assert.equal(source.includes('<ElDialog'),false);assert.equal(source.includes('记录保险确认'),false)
+ assert.equal(nodes.find(n=>n.type==='button'&&n.props.class==='primary').children,'确认并进入维修')
+ assert.equal(f.calls.some(c=>c[0]==='post'),false);assert.equal(f.context.confirmedAmount.value,'')
+ f.context.assessment.value='560.6';f.context.confirmedAmount.value='500.00';f.context.dirty.value=true
+ f.respondPost(async()=>({version:5,status:'REPAIRING',gate:{allowed:true},authorized:true}))
  await f.context.run(f.context.proceed)
- assert.equal(f.context.assessmentDialog.value,true);assert.deepEqual(f.context.pendingAssessment.value,{amount:'560.60',version:2})
+ const posts=f.calls.filter(c=>c[0]==='post');assert.equal(posts.length,1);assert.equal(posts[0][1],'assessment-confirmation')
+ assert.deepEqual(posts[0][2],{expectedVersion:2,amount:'560.60',confirmedAmount:'500.00',originalReviewed:true})
+ assert.equal(f.context.data.value.status,'REPAIRING');assert.equal(f.context.dirty.value,false)
+ assert.ok(f.events.some(e=>e[0]==='changed'))
+})
+test('assessment rejects invalid prices and preserves independent prices and key after failure',async()=>{
+ const f=assessmentFixture();await f.context.load();await Vue.nextTick()
+ for(const invalid of ['','-1','1.001','1e2','9'.repeat(37)]){
+  f.context.assessment.value=invalid;f.context.confirmedAmount.value='560.60';await f.context.run(f.context.proceed)
+  assert.ok(f.context.assessmentIssue.value)
+  f.context.assessment.value='560.60';f.context.confirmedAmount.value=invalid;await f.context.run(f.context.proceed)
+  assert.ok(f.context.assessmentIssue.value)
+ }
+ f.context.confirmedAmount.value='560.61';assert.equal(f.context.assessmentIssue.value,'')
  assert.equal(f.calls.some(c=>c[0]==='post'),false)
- f.context.cancelAssessment();assert.equal(f.context.assessmentDialog.value,false);assert.equal(f.context.assessment.value,'560.6');assert.equal(f.context.dirty.value,true)
- await f.context.confirmAssessment();assert.equal(f.calls.some(c=>c[0]==='post'),false)
- f.props.vehiclePlate='粤B测试';assert.equal(f.context.vehicleIdentity.value,'粤B测试')
+ f.context.assessment.value=' 560.60 ';f.context.confirmedAmount.value='560.6';f.context.dirty.value=true
+ f.respondPost(async()=>{throw Error('保存失败，请重试')});await f.context.run(f.context.proceed)
+ assert.equal(f.context.assessment.value,' 560.60 ');assert.equal(f.context.confirmedAmount.value,'560.6');assert.equal(f.context.dirty.value,true)
+ f.respondPost(async()=>({version:5,status:'REPAIRING',gate:{}}));await f.context.run(f.context.proceed)
+ const posts=f.calls.filter(c=>c[0]==='post');assert.equal(posts.length,2);assert.equal(posts[0][3],posts[1][3])
 })
-
-test('assessment rejects invalid amounts and keeps the exact confirmed amount, version and retry key on failure',async()=>{
- const f=fixture();Object.assign(f.props.workflow,{currentNode:'INSURER_ASSESSMENT',status:'WAITING_INSURER_ASSESSMENT',canAct:true})
- f.setQuote({version:2,status:'WAITING_INSURER_ASSESSMENT',gate:{}});await f.context.load();await new Promise(resolve=>setImmediate(resolve))
- for(const amount of ['','-1','1.001','1e2','9'.repeat(37)]){f.context.assessment.value=amount;assert.ok(f.context.assessmentIssue.value);await f.context.run(f.context.proceed);assert.equal(f.context.assessmentDialog.value,false)}
- f.context.assessment.value=' 560.60 ';f.context.dirty.value=true;await f.context.run(f.context.proceed)
- f.respondPost(async()=>{throw Error('核损保存失败，请重试')});await f.context.run(f.context.confirmAssessment)
- assert.equal(f.context.assessmentDialog.value,true);assert.equal(f.context.assessment.value,' 560.60 ');assert.equal(f.context.dirty.value,true);assert.equal(f.context.message.value,'核损保存失败，请重试')
- f.respondPost(async()=>({version:3,status:'WAITING_REPAIR_AUTHORIZATION',assessment:{amount:'560.60'},gate:{}}));await f.context.run(f.context.confirmAssessment)
- const posts=f.calls.filter(call=>call[0]==='post');assert.equal(posts.length,2);assert.equal(posts[0][1],'assessments');assert.deepEqual(posts[0][2],{expectedVersion:2,amount:'560.60'});assert.equal(posts[0][3],posts[1][3])
- assert.equal(f.context.dirty.value,false);assert.equal(f.context.assessmentDialog.value,false);assert.equal(f.context.message.value,'已保存');assert.ok(f.events.some(e=>e[0]==='changed'))
+test('assessment refuses workflow and quote version changes, supports zero and pending legacy authorizations',async()=>{
+ const f=assessmentFixture('REPAIR');f.setQuote({version:2,status:'WAITING_REPAIR_AUTHORIZATION',assessment:{amount:'0.00'},gate:{insurerConfirmationRecorded:true}})
+ await f.context.load();await Vue.nextTick();assert.equal(f.context.assessment.value,'0.00');assert.equal(f.context.confirmedAmount.value,'')
+ f.context.confirmedAmount.value='0';f.context.dirty.value=true
+ f.setFlow({...f.props.workflow,currentNode:'REPAIR',canAct:false});await f.context.run(f.context.proceed)
+ assert.match(f.context.message.value,/任务已变化/);assert.equal(f.calls.some(c=>c[0]==='post'),false)
+ f.setFlow(f.props.workflow);f.setQuote({version:3,status:'WAITING_REPAIR_AUTHORIZATION',assessment:{amount:'5.00'},gate:{}});await f.context.load()
+ await f.context.run(f.context.proceed);assert.match(f.context.message.value,/依据已变化/);assert.equal(f.context.assessment.value,'0.00')
+ f.context.dirty.value=false;await f.context.load();assert.equal(f.context.assessment.value,'5.00');assert.equal(f.context.confirmedAmount.value,'')
+ f.context.assessment.value='0';f.context.confirmedAmount.value='0.00'
+ f.respondPost(async(_path,body)=>{assert.equal(body.amount,'0.00');assert.equal(body.expectedVersion,3);return {version:6,gate:{},status:'REPAIRING'}})
+ await f.context.run(f.context.proceed);assert.equal(f.context.data.value.status,'REPAIRING')
 })
-
-test('confirmation refuses changed workflow and uses the version shown when the dialog opened',async()=>{
- const f=fixture();Object.assign(f.props.workflow,{currentNode:'INSURER_ASSESSMENT',canAct:true})
- f.setQuote({version:2,status:'WAITING_INSURER_ASSESSMENT',gate:{}});await f.context.load();await new Promise(resolve=>setImmediate(resolve));f.context.assessment.value='0';await f.context.run(f.context.proceed)
- f.setFlow({...f.props.workflow,currentNode:'REPAIR'});await f.context.run(f.context.confirmAssessment);assert.match(f.context.message.value,/任务已变化/);assert.equal(f.calls.some(c=>c[0]==='post'),false)
- f.setFlow(f.props.workflow);f.setQuote({version:3,status:'WAITING_INSURER_ASSESSMENT',gate:{}});await f.context.load()
- f.respondPost(async(_path,body)=>{assert.equal(body.expectedVersion,2);assert.equal(body.amount,'0.00');throw Error('版本已变化')});await f.context.run(f.context.confirmAssessment);assert.match(f.context.message.value,/版本已变化/)
+test('busy assessment suppresses duplicate clicks and read-only accounts have no final confirmation',async()=>{
+ const f=assessmentFixture();await f.context.load();await new Promise(r=>setImmediate(r));f.context.assessment.value='1';f.context.confirmedAmount.value='1.00'
+ let resolve;f.respondPost(()=>new Promise(r=>{resolve=r}));const pending=f.context.run(f.context.proceed)
+ await new Promise(r=>setImmediate(r));await f.context.run(f.context.proceed)
+ assert.equal(f.calls.filter(c=>c[0]==='post').length,1);resolve({version:5,gate:{},status:'REPAIRING'});await pending
+ const reader=fixture(true,['ADMIN']);Object.assign(reader.props.workflow,{currentNode:'INSURER_ASSESSMENT',canAct:false});await reader.context.load()
+ assert.equal(elements(reader).some(n=>n.type==='button'&&n.props?.class==='primary'),false)
+ assert.equal(elements(reader).filter(n=>n.type==='input'&&n.props.inputmode==='decimal').every(n=>n.props.disabled),true)
 })
 
 test('unsaved review edits cannot be silently submitted against a newer raw quotation',async()=>{

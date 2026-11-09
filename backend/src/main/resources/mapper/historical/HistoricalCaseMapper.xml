@@ -6,6 +6,9 @@
   <foreach collection="rows" item="r" separator=",">(#{id},#{r.rowNumber},#{r.rawJson},#{r.rowHash},#{r.status},#{r.errorCode},#{r.warningCode})</foreach>
  </insert>
  <select id="batch" resultType="map">SELECT * FROM historical_case_import WHERE id=#{id}</select>
+ <update id="markFullBatch">UPDATE historical_case_import SET format='FULL_WORKBOOK' WHERE id=#{id}</update>
+ <select id="importedArchiveIds" resultType="java.util.UUID">SELECT DISTINCT archive_id FROM historical_case_import_row
+ WHERE import_id=#{id} AND status IN ('IMPORTED','DUPLICATE') AND archive_id IS NOT NULL ORDER BY archive_id LIMIT 2000</select>
  <select id="batchStatus" resultType="map">SELECT count(*) FILTER(WHERE status='READY') ready_count,count(*) FILTER(WHERE status='INVALID') invalid_count,count(*) FILTER(WHERE status='DUPLICATE') duplicate_count,count(*) FILTER(WHERE status='IMPORTED') imported_count,count(*) FILTER(WHERE status='FAILED') failed_count FROM historical_case_import_row WHERE import_id=#{id}</select>
  <select id="batchCount" resultType="long">SELECT count(*) FROM historical_case_import</select>
  <select id="batches" resultType="map">SELECT * FROM historical_case_import ORDER BY created_at DESC,id DESC LIMIT #{size} OFFSET #{offset}</select>
@@ -18,8 +21,13 @@
  <insert id="insertArchive">INSERT INTO historical_case(id,import_id,source_row,row_hash,claim_no,owner_name,owner_phone,vehicle_plate,brand,model,accident_address,fault_description,latitude,longitude,assessment_amount,repair_date,shop_name,legacy_status,fault_type,source_name,note)
   VALUES(#{id},#{batch},#{number},#{hash},#{item.claimNo},#{item.ownerName},#{item.ownerPhone},#{item.vehiclePlate},#{item.brand},#{item.model},#{item.accidentAddress},#{item.faultDescription},#{item.latitude},#{item.longitude},#{item.assessmentAmount},#{item.repairDate},#{item.shopName},#{item.legacyStatus},#{item.faultType},#{item.sourceName},#{item.note}) ON CONFLICT(row_hash) DO NOTHING</insert>
  <select id="archiveByHash" resultType="map">SELECT id FROM historical_case WHERE row_hash=#{hash}</select>
- <sql id="archiveFilter"><if test="query != null and query != ''">WHERE lower(coalesce(claim_no,'')||' '||owner_name||' '||owner_phone||' '||coalesce(vehicle_plate,'')) LIKE lower('%'||#{query}||'%')</if></sql>
+ <insert id="insertFullArchive">INSERT INTO historical_case(id,import_id,source_row,row_hash,claim_no,owner_name,owner_phone,vehicle_plate,brand,model,
+  assessment_amount,repair_date,shop_name,legacy_status,source_name,note,platform_order_no,full_record)
+ VALUES(#{id},#{batch},#{number},#{hash},#{item.claimNo},#{item.ownerName},#{item.ownerPhone},#{item.vehiclePlate},#{item.brand},#{item.model},
+  #{item.assessmentAmount},#{item.repairDate},#{item.shopName},#{item.legacyStatus},#{item.sourceName},#{item.note},#{orderNo},CAST(#{record} AS jsonb))
+ ON CONFLICT(row_hash) DO NOTHING</insert>
+ <sql id="archiveFilter"><if test="query != null and query != ''">WHERE lower(coalesce(claim_no,'')||' '||coalesce(platform_order_no,'')||' '||owner_name||' '||owner_phone||' '||coalesce(vehicle_plate,'')) LIKE lower('%'||#{query}||'%')</if></sql>
  <select id="archiveCount" resultType="long">SELECT count(*) FROM historical_case <include refid="archiveFilter"/></select>
- <select id="archives" resultType="map">SELECT id,claim_no,owner_name,owner_phone,vehicle_plate,brand,model,assessment_amount,repair_date,shop_name,legacy_status,source_name,created_at FROM historical_case <include refid="archiveFilter"/> ORDER BY created_at DESC,id DESC LIMIT #{size} OFFSET #{offset}</select>
- <select id="archive" resultType="map">SELECT id,claim_no,owner_name,owner_phone,vehicle_plate,brand,model,accident_address,fault_description,latitude,longitude,assessment_amount,repair_date,shop_name,legacy_status,fault_type,source_name,note,created_at FROM historical_case WHERE id=#{id}</select>
+ <select id="archives" resultType="map">SELECT id,claim_no,owner_name,owner_phone,vehicle_plate,brand,model,assessment_amount,repair_date,shop_name,legacy_status,source_name,created_at,platform_order_no,full_record IS NOT NULL AS formal_history FROM historical_case <include refid="archiveFilter"/> ORDER BY created_at DESC,id DESC LIMIT #{size} OFFSET #{offset}</select>
+ <select id="archive" resultType="map">SELECT id,import_id,claim_no,owner_name,owner_phone,vehicle_plate,brand,model,accident_address,fault_description,latitude,longitude,assessment_amount,repair_date,shop_name,legacy_status,fault_type,source_name,note,created_at,platform_order_no,full_record::text AS full_record FROM historical_case WHERE id=#{id}</select>
 </mapper>

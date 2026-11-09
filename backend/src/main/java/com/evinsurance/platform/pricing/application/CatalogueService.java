@@ -49,7 +49,9 @@ public class CatalogueService {
   var e=new ModelEntity();e.setBrandId(r.brandId());e.setCode(r.code().trim());e.setName(r.name().trim());e.setEnabled(r.enabled());return save(models,e,id,"PRICE_MODEL");}
  @Transactional public void deleteModel(long id){delete(models,id,"PRICE_MODEL");}
  public PageResponse<PartEntity> parts(int page,int size,String internalCode,String name){var q=text(new QueryWrapper<PartEntity>(),"name",name);if(internalCode!=null)q.eq("internal_code",internalCode);return page(parts,q,page,size);}
- @Transactional public PartEntity savePart(Long id,CatalogueRequests.Part r){var e=new PartEntity();e.setInternalCode(r.internalCode().trim());e.setName(r.name().trim());e.setEnabled(r.enabled());return save(parts,e,id,"PRICE_PART");}
+ @Transactional public PartEntity savePart(Long id,CatalogueRequests.Part r){var e=new PartEntity();e.setInternalCode(r.internalCode().trim());e.setName(r.name().trim());e.setEnabled(r.enabled());
+  e.setUnit(r.unit()==null?null:r.unit().trim());e.setOeCode(r.oeCode()==null?null:r.oeCode().trim());e.setManufacturerCode(r.manufacturerCode()==null?null:r.manufacturerCode().trim());
+  return save(parts,e,id,"PRICE_PART");}
  @Transactional public void deletePart(long id){delete(parts,id,"PRICE_PART");}
  public PageResponse<AliasEntity> aliases(int page,int size,Long partId,String name){var q=text(new QueryWrapper<AliasEntity>(),"name",name);if(partId!=null)q.eq("part_id",partId);return page(aliases,q,page,size);}
  @Transactional public AliasEntity saveAlias(Long id,CatalogueRequests.Alias r){PricingAccess.write();if(parts.selectById(r.partId())==null)throw ApiException.missing("Part");

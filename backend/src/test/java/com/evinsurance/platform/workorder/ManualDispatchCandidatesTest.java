@@ -8,6 +8,7 @@ import com.evinsurance.platform.foundation.api.ApiException;
 import com.evinsurance.platform.identity.domain.*;
 import com.evinsurance.platform.integration.map.MapProvider;
 import com.evinsurance.platform.workorder.application.WorkOrderService;
+import com.evinsurance.platform.workorder.application.DevelopmentOwnerResolver;
 import com.evinsurance.platform.workorder.infrastructure.*;
 import java.util.*;
 import org.junit.jupiter.api.AfterEach;
@@ -21,7 +22,7 @@ class ManualDispatchCandidatesTest {
     private void role(Role role){var user=new CurrentUser(1,"synthetic","合成测试",Set.of(role),null,0);SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(user,null,List.of()));}
     @Test void manualCandidatesNeverTouchProviderEvenWhenMockGeocodingWouldFail() {
         var mapper=mock(WorkOrderMapper.class);var maps=mock(MapProvider.class);
-        var service=new WorkOrderService(mapper,mock(AuditService.class),new ObjectMapper(),mock(FileMapper.class),maps);
+        var service=new WorkOrderService(mapper,mock(AuditService.class),new ObjectMapper(),mock(FileMapper.class),maps,mock(DevelopmentOwnerResolver.class));
         var id=UUID.randomUUID();var row=new WorkOrderEntity();row.setId(id);row.setStatus("PENDING_DISPATCH");row.setAccidentRegionId(3L);row.setDispatchAddressConfirmed(true);row.setParkingAddress("合成停车地址");
         when(mapper.find(id)).thenReturn(row);when(mapper.eligibleShopCount(3L)).thenReturn(1L);
         var shop=new WorkOrderRows.ShopOption();shop.setId(7L);shop.setName("合成测试网点");when(mapper.eligibleShops(3L,20,20)).thenReturn(List.of(shop));
@@ -32,7 +33,7 @@ class ManualDispatchCandidatesTest {
     }
     @Test void missingAccidentDistrictDoesNotUseParkingRegionOrInvokeMap() {
         role(Role.CUSTOMER_SERVICE);var mapper=mock(WorkOrderMapper.class);var maps=mock(MapProvider.class);
-        var service=new WorkOrderService(mapper,mock(AuditService.class),new ObjectMapper(),mock(FileMapper.class),maps);
+        var service=new WorkOrderService(mapper,mock(AuditService.class),new ObjectMapper(),mock(FileMapper.class),maps,mock(DevelopmentOwnerResolver.class));
         var id=UUID.randomUUID();var row=new WorkOrderEntity();row.setStatus("PENDING_DISPATCH");row.setParkingRegionId(3L);when(mapper.find(id)).thenReturn(row);
         assertThat(service.eligibleShops(id,1,20,false).records()).isEmpty();verifyNoInteractions(maps);verify(mapper,never()).eligibleShopCount(anyLong());
     }

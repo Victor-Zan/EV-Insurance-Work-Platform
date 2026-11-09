@@ -354,16 +354,94 @@ class QuotationPostgresIT {
         request(customerService,"materials/cases/"+id+"/missing-notice",Map.of("reason","合成流程测试缺失说明"),200);
         review(id,"FIXED_AMOUNT","0.00",200);
     }
+    private Map<String,Object> completionBody(String id,String amount,String confirmed) throws Exception {
+        return Map.of("expectedVersion",context(customerService,id).path("version").asInt(),"amount",amount,"confirmedAmount",confirmed,"originalReviewed",true);
+    }
+    @Test void oneAssessmentConfirmationRecordsBothConfirmationsAndEntersRepairIdempotently() throws Exception {
+        String id=arrived();prepareFormal(id);var body=completionBody(id,"388.50","388.5");String key=UUID.randomUUID().toString();
+        var result=request(customerService,path(id,"assessment-confirmation"),body,key,200);
+        assertThat(result.path("status").asText()).isEqualTo("REPAIRING");
+        assertThat(result.path("assessment").path("amount").asText()).isEqualTo("388.50");
+        assertThat(result.path("authorized").asBoolean()).isTrue();
+        assertThat(result.path("gate").path("insurerConfirmationRecorded").asBoolean()).isTrue();
+        assertThat(result.path("gate").path("customerServiceConfirmationRecorded").asBoolean()).isTrue();
+        assertThat(request(customerService,path(id,"assessment-confirmation"),body,key,200)).isEqualTo(result);
+        assertThat(db.queryForObject("select count(*) from quote_assessment where work_order_id=?::uuid",Long.class,id)).isEqualTo(1);
+        assertThat(db.queryForObject("select count(*) from quotation_confirmation where work_order_id=?::uuid",Long.class,id)).isEqualTo(2);
+        assertThat(db.queryForObject("select count(*) from audit_log where object_id=? and action in ('QUOTE_ASSESSMENT_RECORD','QUOTE_INSURER_CONFIRM','QUOTE_SERVICE_CONFIRM','REPAIR_AUTHORIZATION_GRANTED','REPAIR_START')",Long.class,id)).isEqualTo(5);
+        var changed=new HashMap<>(body);changed.put("confirmedAmount","1.00");request(customerService,path(id,"assessment-confirmation"),changed,key,409);
+        assertThat(context(shop,id).has("assessment")).isFalse();
+        assertThat(context(shop,id).has("formalQuote")).isFalse();flyway.validate();
+    }
+    @Test void oneAssessmentConfirmationChecksPricesVersionsRolesAndEarlierSteps() throws Exception {
+        String id=arrived();request(customerService,path(id,"assessment-confirmation"),completionBody(id,"1.00","1.00"),409);prepareFormal(id);
+        var original=context(customerService,id);var body=completionBody(id,"1.00","2.00");
+        var invalidVersion=new HashMap<>(body);invalidVersion.put("expectedVersion",-1);request(customerService,path(id,"assessment-confirmation"),invalidVersion,409);
+        for(var token:List.of(admin,shop,owner))request(token,path(id,"assessment-confirmation"),body,403);
+        for(String invalid:List.of("-1","1.001","1e2",""))request(customerService,path(id,"assessment-confirmation"),completionBody(id,invalid,invalid),400);
+        var missing=new HashMap<>(completionBody(id,"1.00","1.00"));missing.remove("confirmedAmount");request(customerService,path(id,"assessment-confirmation"),missing,400);
+        missing.put("confirmedAmount","1.00");missing.put("originalReviewed",false);request(customerService,path(id,"assessment-confirmation"),missing,400);
+        var stale=new HashMap<>(completionBody(id,"1.00","1.00"));stale.put("expectedVersion",-1);request(customerService,path(id,"assessment-confirmation"),stale,409);
+        assertThat(context(customerService,id)).isEqualTo(original);
+        assertThat(db.queryForObject("select count(*) from quotation_confirmation where work_order_id=?::uuid",Long.class,id)).isZero();
+        assertThat(db.queryForObject("select count(*) from quote_assessment where work_order_id=?::uuid",Long.class,id)).isZero();
+    }
+    @Test void oneAssessmentConfirmationResumesExistingEvidenceAndKeepsHistoricalAmounts() throws Exception {
+        String id=arrived();prepareFormal(id);assess(id,"0.00",200);confirm(id,"INSURER");
+        String assessment=context(customerService,id).path("assessment").path("id").asText();
+        var result=request(customerService,path(id,"assessment-confirmation"),completionBody(id,"0.00","0"),200);
+        assertThat(result.path("assessment").path("id").asText()).isEqualTo(assessment);assertThat(result.path("authorized").asBoolean()).isTrue();
+        String revised=arrived();prepareFormal(revised);assess(revised,"1.00",200);confirm(revised,"INSURER");
+        var updated=request(customerService,path(revised,"assessment-confirmation"),completionBody(revised,"2.00","2.00"),200);
+        assertThat(updated.path("assessment").path("amount").asText()).isEqualTo("2.00");
+        assertThat(db.queryForObject("select count(*) from quote_assessment where work_order_id=?::uuid",Long.class,revised)).isEqualTo(2);
+        assertThat(db.queryForObject("select count(*) from quotation_confirmation where work_order_id=?::uuid",Long.class,revised)).isEqualTo(3);
+    }
+    @Test void oneAssessmentConfirmationRollsBackEarlierWritesWhenFinalConfirmationFails() throws Exception {
+        String id=arrived();prepareFormal(id);var original=context(customerService,id);var body=completionBody(id,"1.00","1.00");String key=UUID.randomUUID().toString();
+        long audits=db.queryForObject("select count(*) from audit_log where object_id=?",Long.class,id);
+        db.execute("CREATE FUNCTION fail_combined_confirmation() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.kind='CUSTOMER_SERVICE' AND NEW.work_order_id='"+id+"'::uuid THEN RAISE EXCEPTION 'Synthetic final confirmation failure'; END IF; RETURN NEW; END $$");
+        db.execute("CREATE TRIGGER fail_combined_confirmation BEFORE INSERT ON quotation_confirmation FOR EACH ROW EXECUTE FUNCTION fail_combined_confirmation()");
+        try{request(customerService,path(id,"assessment-confirmation"),body,key,500);}
+        finally{db.execute("DROP TRIGGER fail_combined_confirmation ON quotation_confirmation");db.execute("DROP FUNCTION fail_combined_confirmation()");}
+        assertThat(context(customerService,id)).isEqualTo(original);
+        assertThat(db.queryForObject("select count(*) from audit_log where object_id=?",Long.class,id)).isEqualTo(audits);
+        assertThat(db.queryForObject("select count(*) from quote_assessment where work_order_id=?::uuid",Long.class,id)).isZero();
+        assertThat(db.queryForObject("select count(*) from quotation_confirmation where work_order_id=?::uuid",Long.class,id)).isZero();
+        assertThat(db.queryForObject("select count(*) from quotation_command where command_key=?",Long.class,key)).isZero();
+        assertThat(request(customerService,path(id,"assessment-confirmation"),body,key,200).path("authorized").asBoolean()).isTrue();
+    }
+    @Test void oneAssessmentConfirmationUsesIndependentFinalPriceForBothFundsDirections() throws Exception {
+        for(String finalPrice:List.of("180.00","220.00","0.00")){
+            String id=arrived();prepareFormal(id);assertThat(context(customerService,id).has("confirmedAmount")).isFalse();
+            var result=request(customerService,path(id,"assessment-confirmation"),completionBody(id,"200.00",finalPrice),200);
+            assertThat(result.path("assessment").path("amount").asText()).isEqualTo("200.00");
+            assertThat(result.path("confirmedAmount").asText()).isEqualTo(finalPrice);
+            assertThat(context(shop,id).has("confirmedAmount")).isFalse();
+            assertThat(db.queryForObject("select count(*) from audit_log where object_id=? and action='QUOTE_SERVICE_CONFIRM' and summary like ?",Long.class,id,"%amount="+finalPrice)).isEqualTo(1);
+            String photo=repairPhoto(shop,id,"COMPLETION_PHOTO");
+            request(shop,"repairs/cases/"+id+"/completion",Map.of("expectedVersion",0,"assignmentVersion",context(shop,id).path("assignmentVersion").asInt(),"photoIds",List.of(photo)),200);
+            request(owner,"repairs/cases/"+id+"/receipt",Map.of("expectedVersion",1),200);
+            fundsTarget(id,"RECEIVE",result.path("confirmedAmount").asText(),200);
+            if(!finalPrice.equals("0.00"))request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"RECEIVE","FINAL-RECEIVE-"+UUID.randomUUID(),finalPrice),200);
+            fundsConfirm(id,"RECEIVE",200);
+            fundsTarget(id,"PAY",result.path("confirmedAmount").asText(),200);
+            if(!finalPrice.equals("0.00"))request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"PAY","FINAL-PAY-"+UUID.randomUUID(),finalPrice),200);
+            fundsConfirm(id,"PAY",200);
+            assertThat(funds(customerService,id).path("receivable").path("target").asText()).isEqualTo(finalPrice);
+            assertThat(funds(customerService,id).path("payable").path("target").asText()).isEqualTo(finalPrice);
+            assertThat(context(customerService,id).path("assessment").path("amount").asText()).isEqualTo("200.00");
+        }
+    }
     private void authorized(String id) throws Exception {prepareFormal(id);upload(id,"LOSS_ASSESSMENT",null,200);assess(id,"0.00",200);confirm(id,"INSURER");confirm(id,"CUSTOMER_SERVICE");assertThat(context(shop,id).path("authorized").asBoolean()).isTrue();}
-    @Test void finalAuthorizationChecksPriceAndLatestConfirmedLossDocumentInsteadOfFormalQuoteTotal() throws Exception {
+    @Test void finalAuthorizationKeepsIndependentPriceAndChecksLatestConfirmedLossDocument() throws Exception {
         String id=arrived();raw(id,"10.00");review(id,"FIXED_AMOUNT","0.00",200);
         upload(id,"LOSS_ASSESSMENT",null,200);assess(id,"18.00",200);confirm(id,"INSURER");
         var c=context(customerService,id);var a=c.path("assessment");
         assertThat(a.path("sourceCurrent").asBoolean()).isTrue();
         assertThat(c.path("formalQuote").path("total").asText()).isEqualTo("30.00");
         var body=new HashMap<String,Object>(Map.of("expectedVersion",c.path("version").asInt(),"assessmentId",a.path("id").asText(),"lossFileId",a.path("lossFileId").asText(),"amount","30.00","originalReviewed",true));
-        request(customerService,path(id,"confirmations/CUSTOMER_SERVICE"),body,409);
-        body.put("amount","18.00");body.put("originalReviewed",false);request(customerService,path(id,"confirmations/CUSTOMER_SERVICE"),body,400);
+        body.put("originalReviewed",false);request(customerService,path(id,"confirmations/CUSTOMER_SERVICE"),body,400);
         body.put("originalReviewed",true);body.put("lossFileId",UUID.randomUUID().toString());request(customerService,path(id,"confirmations/CUSTOMER_SERVICE"),body,409);
         body.put("lossFileId",a.path("lossFileId").asText());body.put("assessmentId",UUID.randomUUID().toString());request(customerService,path(id,"confirmations/CUSTOMER_SERVICE"),body,409);
         body.put("assessmentId",a.path("id").asText());
@@ -373,7 +451,8 @@ class QuotationPostgresIT {
         assertThat(accepted.path("authorized").asBoolean()).isTrue();
         assertThat(request(customerService,path(id,"confirmations/CUSTOMER_SERVICE"),body,key,200)).isEqualTo(accepted);
         var stored=json.readTree(db.queryForObject("select file_snapshot from quotation_confirmation where work_order_id=?::uuid and kind='CUSTOMER_SERVICE' order by created_at desc limit 1",String.class,id));
-        assertThat(stored.path("amount").asText()).isEqualTo("18.00");assertThat(stored.path("lossFileId").asText()).isEqualTo(a.path("lossFileId").asText());
+        assertThat(stored.path("amount").asText()).isEqualTo("30.00");assertThat(stored.path("lossFileId").asText()).isEqualTo(a.path("lossFileId").asText());
+        assertThat(accepted.path("assessment").path("amount").asText()).isEqualTo("18.00");assertThat(accepted.path("confirmedAmount").asText()).isEqualTo("30.00");
         assertThat(accepted.path("status").asText()).isEqualTo("REPAIRING");
         upload(id,"LOSS_ASSESSMENT",null,409);
         assess(id,"19.00",409);start(id,200);

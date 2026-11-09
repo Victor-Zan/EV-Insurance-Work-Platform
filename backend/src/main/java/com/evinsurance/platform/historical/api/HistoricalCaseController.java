@@ -6,6 +6,7 @@ import com.evinsurance.platform.historical.application.HistoricalCaseService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import java.util.UUID;
+import java.util.List;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -29,6 +30,13 @@ public class HistoricalCaseController {
     @GetMapping("/{id}") public ApiResponse<JsonNode> detail(@PathVariable UUID id){return ApiResponse.success(service.archive(id));}
     @PostMapping("/imports") @Operation(summary="按历史订单双工作表模板上传并预览，源文件私有保存，不立即归档")
     public ApiResponse<JsonNode> preview(@RequestParam MultipartFile file){return ApiResponse.success(service.preview(file));}
+    @PostMapping("/imports/full") @Operation(summary="预览多级表头历史工作簿，可指定排除行与一条配件商价格修正")
+    public ApiResponse<JsonNode> previewFull(@RequestParam MultipartFile file,@RequestParam(required=false) List<Integer> excludeRows,
+        @RequestParam(required=false) Integer supplierCorrectionRow,@RequestParam(required=false) String supplierCorrectionAmount) {
+        return ApiResponse.success(service.previewFull(file,excludeRows,supplierCorrectionRow,supplierCorrectionAmount));
+    }
+    @PostMapping("/imports/{id}/prices") @Operation(summary="从正式历史归档批次幂等导入配件商及 CP 单价")
+    public ApiResponse<JsonNode> prices(@PathVariable UUID id){return ApiResponse.success(service.importPrices(id));}
     @GetMapping("/imports") public ApiResponse<PageResponse<JsonNode>> batches(@RequestParam(defaultValue="1") int page,
         @RequestParam(defaultValue="20") int size){return ApiResponse.success(service.batches(page,size));}
     @GetMapping("/imports/{id}") public ApiResponse<JsonNode> batch(@PathVariable UUID id){return ApiResponse.success(service.getBatch(id));}

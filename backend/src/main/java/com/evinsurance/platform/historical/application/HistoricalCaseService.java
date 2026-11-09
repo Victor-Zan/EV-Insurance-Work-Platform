@@ -11,6 +11,7 @@ import com.evinsurance.platform.historical.infrastructure.HistoricalCaseMapper.P
 import com.evinsurance.platform.identity.domain.CurrentUser;
 import com.evinsurance.platform.identity.domain.Role;
 import com.evinsurance.platform.integration.storage.ObjectStorageService;
+import com.evinsurance.platform.pricing.application.HistoricalPriceImportService;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -37,14 +38,16 @@ import tools.jackson.databind.ObjectMapper;
 public class HistoricalCaseService {
     private final HistoricalCaseMapper mapper;
     private final HistoricalCaseFileParser parser;
+    private final FullHistoricalCaseFileParser fullParser;
+    private final HistoricalPriceImportService priceImport;
     private final ObjectStorageService storage;
     private final AuditService audit;
     private final ObjectMapper json;
     private final TransactionTemplate tx;
 
-    public HistoricalCaseService(HistoricalCaseMapper mapper,HistoricalCaseFileParser parser,ObjectStorageService storage,
-        AuditService audit,ObjectMapper json,PlatformTransactionManager manager) {
-        this.mapper=mapper;this.parser=parser;this.storage=storage;this.audit=audit;this.json=json;this.tx=new TransactionTemplate(manager);
+    public HistoricalCaseService(HistoricalCaseMapper mapper,HistoricalCaseFileParser parser,FullHistoricalCaseFileParser fullParser,
+        HistoricalPriceImportService priceImport,ObjectStorageService storage,AuditService audit,ObjectMapper json,PlatformTransactionManager manager) {
+        this.mapper=mapper;this.parser=parser;this.fullParser=fullParser;this.priceImport=priceImport;this.storage=storage;this.audit=audit;this.json=json;this.tx=new TransactionTemplate(manager);
     }
 
     private void staff() {
@@ -86,6 +89,7 @@ public class HistoricalCaseService {
     private JsonNode summary(Map<String,Object> batch) {
         UUID id=(UUID)batch.get("id");var counts=mapper.batchStatus(id);var out=json.createObjectNode()
             .put("id",id.toString()).put("fileName",(String)batch.get("file_name"))
+            .put("format",(String)batch.get("format"))
             .put("totalRows",((Number)batch.get("total_rows")).intValue())
             .put("createdAt",batch.get("created_at").toString());
         for(String key:List.of("ready_count","invalid_count","duplicate_count","imported_count","failed_count"))
@@ -96,12 +100,7 @@ public class HistoricalCaseService {
     @Transactional
     public JsonNode preview(MultipartFile file) {
         staff();var parsed=parser.parse(file);UUID id=UUID.randomUUID();
-        String key="historical-import/"+id+"/source.xlsx";
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization(){
-            @Override public void afterCompletion(int status){if(status!=STATUS_COMMITTED)storage.compensate(key);}
-        });
-        storage.put(key,new ByteArrayInputStream(parsed.bytes()),parsed.bytes().length,
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        String key=storeSource(id,parsed.bytes());
         mapper.insertBatch(id,CurrentUser.require().id(),parsed.name(),parsed.hash(),key,parsed.rows().size());
         var hashes=parsed.rows().stream().map(row->hash(row.values())).distinct().toList();
         var priorHashes=new HashSet<>(mapper.existingHashes(hashes));
@@ -123,18 +122,64 @@ public class HistoricalCaseService {
         audit.record(CurrentUser.require(),Action.HISTORICAL_IMPORT_PREVIEW,"HISTORICAL_IMPORT",id,"Private source previewed; rows="+previews.size());
         return summary(mapper.batch(id));
     }
+    private String storeSource(UUID id,byte[] bytes) {
+        String key="historical-import/"+id+"/source.xlsx";
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization(){
+            @Override public void afterCompletion(int status){if(status!=STATUS_COMMITTED)storage.compensate(key);}
+        });
+        storage.put(key,new ByteArrayInputStream(bytes),bytes.length,"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        return key;
+    }
+    @Transactional
+    public JsonNode previewFull(MultipartFile file,List<Integer> excluded,Integer correctionRow,String correctionAmount) {
+        staff();var parsed=fullParser.parse(file,excluded,correctionRow,correctionAmount);
+        var id=UUID.randomUUID();
+        var previews=new ArrayList<PreviewRow>();
+        for(var item:parsed.cases()) {
+            fullData(item);
+            var fingerprint=FileService.hash(json.writeValueAsBytes(List.of("FULL_WORKBOOK",item.repairShop(),item.details().stream()
+                .map(row->List.of(row.original(),row.correctedSupplierAmount()==null?"":row.correctedSupplierAmount())).toList())));
+            previews.add(new PreviewRow(item.details().getFirst().rowNumber(),json.writeValueAsString(item),fingerprint,"READY",null,null));
+        }
+        String key=storeSource(id,parsed.bytes());
+        mapper.insertBatch(id,CurrentUser.require().id(),parsed.name(),parsed.hash(),key,previews.size());
+        mapper.markFullBatch(id);
+        for(int offset=0;offset<previews.size();offset+=200)mapper.insertRows(id,previews.subList(offset,Math.min(offset+200,previews.size())));
+        audit.record(CurrentUser.require(),Action.HISTORICAL_IMPORT_PREVIEW,"HISTORICAL_IMPORT",id,
+            "Full workbook; cases="+previews.size()+"; excluded rows="+(excluded==null?0:excluded.size())+"; corrected row="+correctionRow);
+        return summary(mapper.batch(id));
+    }
+    private Data fullData(FullHistoricalCaseFileParser.CaseData item) {
+        var fields=item.fields();
+        text(fields,"序号",128,true);
+        String amount=text(fields,"最终定损金额",80,false),date=text(fields,"施工完成日期",30,false);
+        LocalDate completed=null;
+        if(date!=null)try {completed=LocalDate.parse(date.split("T",2)[0]);}
+        catch(RuntimeException error){throw ApiException.invalid("施工完成日期格式无效");}
+        var assessed=amount==null?null:decimal(amount,"最终定损金额",BigDecimal.ZERO,new BigDecimal("999999999999999999999999999999999999.99"),2);
+        var status=text(fields,"施工是否完成",10,false);
+        return new Data(text(fields,"案件号",128,true),text(fields,"车主姓名",120,true),text(fields,"车主电话",20,true),
+            text(fields,"电动车车牌号",100,false),text(fields,"电动车品牌",120,true),text(fields,"电动车车型",120,false),
+            null,null,null,null,assessed,completed,text(Map.of("网点",item.repairShop()),"网点",120,false),
+            status==null?null:"施工完成："+status,null,"正式历史导入",text(fields,"备注",2000,false));
+    }
     public JsonNode getBatch(UUID id){return summary(batch(id));}
     public PageResponse<JsonNode> batches(int page,int size){staff();int offset=PageResponse.offset(page,size);return new PageResponse<>(page,size,mapper.batchCount(),mapper.batches(offset,size).stream().map(this::summary).toList());}
     public PageResponse<JsonNode> rows(UUID id,int page,int size){var batch=batch(id);int offset=PageResponse.offset(page,size);
         return new PageResponse<>(page,size,((Number)batch.get("total_rows")).longValue(),mapper.rows(id,offset,size).stream().map(row->{var out=json.createObjectNode()
             .put("rowNumber",((Number)row.get("row_number")).intValue()).put("status",(String)row.get("status"));
-            out.set("values",json.readTree((String)row.get("raw_json")));
+            var values=json.readTree((String)row.get("raw_json"));
+            if("FULL_WORKBOOK".equals(batch.get("format"))) {
+                out.set("values",values.path("fields"));
+                out.set("fullRecord",values);
+            } else out.set("values",values);
             out.set("error",json.valueToTree(row.get("error_code")));
             out.set("warning",json.valueToTree(row.get("warning_code")));
             out.set("archiveId",json.valueToTree(row.get("archive_id")));
             return (JsonNode)out;}).toList());
     }
-    public JsonNode confirm(UUID id){batch(id);
+    public JsonNode confirm(UUID id){var batch=batch(id);
+        if("FULL_WORKBOOK".equals(batch.get("format")))return tx.execute(status->confirmFull(id));
         for(int number:mapper.pending(id)){
             try {tx.execute(ignored->{batch(id);var row=mapper.lockRow(id,number);
                 if(row==null||!"READY".equals(row.get("status")))return null;
@@ -147,6 +192,46 @@ public class HistoricalCaseService {
         }
         return getBatch(id);
     }
+    private JsonNode confirmFull(UUID id) {
+        for(int number:mapper.pending(id)) {
+            var row=mapper.lockRow(id,number);
+            if(!"READY".equals(row.get("status")))continue;
+            String raw=(String)row.get("raw_json"),fingerprint=(String)row.get("row_hash");
+            var full=json.readValue(raw,FullHistoricalCaseFileParser.CaseData.class);
+            UUID archiveId=UUID.randomUUID();
+            int added=mapper.insertFullArchive(archiveId,id,number,fingerprint,fullData(full),full.fields().get("序号").strip(),raw);
+            if(added==0)archiveId=(UUID)mapper.archiveByHash(fingerprint).get("id");
+            mapper.setResult(id,number,added==0?"DUPLICATE":"IMPORTED",null,archiveId);
+            if(added!=0)audit.record(CurrentUser.require(),Action.HISTORICAL_IMPORT_CONFIRM,"HISTORICAL_CASE",archiveId,
+                "Formal historical archive; import="+id+"; first row="+number+"; detail count="+full.details().size());
+        }
+        return getBatch(id);
+    }
+    @Transactional
+    public JsonNode importPrices(UUID id) {
+        var batch=batch(id);
+        if(!"FULL_WORKBOOK".equals(batch.get("format"))||!mapper.pending(id).isEmpty())throw ApiException.invalid("请先确认全量工作簿归档");
+        int rows=0,prices=0,existing=0;
+        for(UUID archiveId:mapper.importedArchiveIds(id)) {
+            var archived=mapper.archive(archiveId);
+            var full=json.readValue((String)archived.get("full_record"),FullHistoricalCaseFileParser.CaseData.class);
+            var quotes=new ArrayList<HistoricalPriceImportService.Quote>();
+            for(var detail:full.details()) {
+                var original=detail.original();
+                String unit=original.get("单位").strip(),part=original.get("受损部位").strip();
+                if(unit.isEmpty()||unit.equals("/")||part.equals("全车")||part.contains("工时费")||part.endsWith("服务费")||part.endsWith("拖车费"))continue;
+                if(part.isEmpty())throw ApiException.invalid("Excel 第 "+detail.rowNumber()+" 行缺少配件名");
+                String supplier=original.get("配件商明细报价"),cp=original.get("CP明细报价");
+                var supplierAmount=FullHistoricalCaseFileParser.positiveAmount(detail.correctedSupplierAmount()==null?supplier:detail.correctedSupplierAmount());
+                quotes.add(new HistoricalPriceImportService.Quote(detail.rowNumber(),part,unit,"SUPPLIER_QUOTED",supplier,supplierAmount));
+                quotes.add(new HistoricalPriceImportService.Quote(detail.rowNumber(),part,unit,"CP_QUOTED",cp,FullHistoricalCaseFileParser.positiveAmount(cp)));
+                rows++;
+            }
+            int added=priceImport.importQuotes(archiveId,full.fields().get("电动车品牌").strip(),quotes);
+            prices+=added;existing+=quotes.size()-added;
+        }
+        return json.createObjectNode().put("detailRows",rows).put("importedPrices",prices).put("existingPrices",existing);
+    }
     public byte[] source(UUID id){var batch=batch(id);try(var input=storage.read((String)batch.get("object_key"))){
         byte[] bytes=input.readNBytes(10485761);if(!FileService.hash(bytes).equals(batch.get("sha256")))throw new IllegalStateException("Historical import source hash mismatch");
         audit.record(CurrentUser.require(),Action.HISTORICAL_IMPORT_DOWNLOAD,"HISTORICAL_IMPORT",id,"Private historical source downloaded");return bytes;
@@ -155,5 +240,8 @@ public class HistoricalCaseService {
         String filter=query==null?null:query.trim();if(filter!=null&&filter.length()>100)throw ApiException.invalid("Search is too long");
         return new PageResponse<>(page,size,mapper.archiveCount(filter),mapper.archives(filter,offset,size).stream().map(row->(JsonNode)json.valueToTree(row)).toList());
     }
-    public JsonNode archive(UUID id){staff();var found=mapper.archive(id);if(found==null)throw ApiException.missing("Historical case");return json.valueToTree(found);}
+    public JsonNode archive(UUID id){staff();var found=mapper.archive(id);if(found==null)throw ApiException.missing("Historical case");
+        var result=json.createObjectNode();found.forEach((key,value)->result.set(key,key.equals("full_record")&&value instanceof String source?json.readTree(source):json.valueToTree(value)));
+        return result;
+    }
 }

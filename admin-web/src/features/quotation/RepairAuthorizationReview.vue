@@ -38,7 +38,7 @@ function confirmation(){
  if(loading.value||error.value||!pdf.value||!assessment?.sourceCurrent)throw Error('请先加载并核对当前正式报价单和最终核损金额')
 
  let value:bigint;try{value=moneyCents(amount.value)}catch{throw Error('请填写有效确认金额，最多2位小数')}
- if(value!==moneyCents(assessment.amount))throw Error('确认金额必须与最终核损金额一致')
+
  return {assessmentId:assessment.id,...(assessment.lossFileId?{lossFileId:assessment.lossFileId}:{}),amount:yuan(value),originalReviewed:true}
 }
 defineExpose({confirmation})

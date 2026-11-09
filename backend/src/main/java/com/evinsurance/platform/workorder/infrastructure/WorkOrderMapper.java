@@ -50,6 +50,8 @@ public interface WorkOrderMapper {
     @org.apache.ibatis.annotations.Select("SELECT request_hash FROM work_order_command WHERE actor_id=#{actor} AND operation='OWNER_BIND' AND idempotency_key=#{key}") String bindingCommandHash(@Param("actor") long actor,@Param("key") String key);
     @org.apache.ibatis.annotations.Update("UPDATE work_order_command SET request_hash=#{hash} WHERE actor_id=#{actor} AND operation='OWNER_BIND' AND idempotency_key=#{key}") void bindingCommandHashSave(@Param("actor") long actor,@Param("key") String key,@Param("hash") String hash);
     List<Long> ownersByPhone(@Param("phone") String phone);
+    @org.apache.ibatis.annotations.Select("SELECT u.id FROM app_user u JOIN user_role ur ON ur.user_id=u.id JOIN app_role r ON r.id=ur.role_id AND r.code='OWNER' JOIN owner_profile op ON op.user_id=u.id WHERE u.username='dev_owner' AND u.enabled AND u.activated AND NOT op.invitation_managed")
+    Long developmentOwner();
     long regionEnabled(@Param("id") long id);
     @org.apache.ibatis.annotations.Select("SELECT count(*) FROM region d JOIN region c ON c.id=d.parent_id AND c.level=2 AND c.enabled JOIN region p ON p.id=c.parent_id AND p.level=1 AND p.enabled WHERE d.id=#{id} AND d.level=3 AND d.enabled")
     long enabledDistrict(@Param("id") long id);

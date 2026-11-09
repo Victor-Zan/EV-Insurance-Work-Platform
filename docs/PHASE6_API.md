@@ -1,5 +1,7 @@
 # 第6阶段 API：报价、核损与开修授权
 
+2026-10-29：客服核损页改用 `POST /api/v1/quotations/cases/{id}/assessment-confirmation`，请求头仍需 `Idempotency-Key`，请求体为 `{expectedVersion, amount, confirmedAmount, originalReviewed:true}`；两个金额均为CNY元十进制字符串，最多2位小数，允许两个金额不同，分别保留核损金额与最终确认价格。此按钮同时声明保险公司已确认和客服已核对当前报价。在同一事务内复用核损版本、保险确认、客服确认和授权/进入维修逻辑；失败整体回滚。内部当前报价响应仅向工作人员提供有效客服确认快照中的`confirmedAmount`，资金应收/应付默认采用该最终价格，不回退核损金额。已有同额有效核损沿用原版本与来源，否则新增核损版本并使旧确认失效。`CUSTOMER_SERVICE`独占写权限，ADMIN/网点/车主拒绝；版本冲突409，缺失/非法金额或未核对400。旧分步接口保留供兼容，正常页面不再分别点击；核损单及OCR可选，维修仍须核损金额及两项确认。
+
 2026-10-14 D-046补充：核损/确认按当前正式报价→核损金额及有效文件→保险确认→客服确认顺序办理；报价新版本使旧核损依据退出当前生效版本。新增流程快照及材料时机门禁见 [工作流重构第一批API](WORKFLOW_REDESIGN_API.md)。原四项开修条件、权限、金额精度及历史保留规则不放宽。
 
 2026-10-10；规则依据 D-032。继续使用 `/api/v1`、JWT、统一 ApiResponse/错误协议和 Trace ID。OpenAPI 同步由 QuotationController 提供。

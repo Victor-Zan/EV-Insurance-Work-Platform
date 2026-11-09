@@ -79,7 +79,8 @@ watch(kind, () => { clearForm(); page.value = 1; rows.value = []; total.value = 
     <ElCard v-if="writable"><h2>{{ editing === null ? '新增' : '编辑 ID ' + editing }}</h2>
       <form @submit.prevent="save"><label v-for="field in definition.fields" :key="field.key">{{ field.label }}
         <ElSelect v-if="field.key === 'kind'" v-model="form[field.key]"><ElOption v-for="source in ['MANUAL','CSV','EXCEL','HISTORICAL_CASE']" :key="source" :label="source" :value="source" /></ElSelect>
-        <ElInput v-else v-model="form[field.key]" :maxlength="field.key === 'name' ? 120 : 64" />
+        <ElInput v-else v-model="form[field.key]" :maxlength="field.maxLength ?? (field.key === 'name' ? 120 : 64)" />
+        <small v-if="field.key === 'unit'">新参考样本确认前须补齐单位</small>
       </label><ElCheckbox v-if="definition.enabled" v-model="enabled">启用</ElCheckbox>
         <ElButton native-type="submit" :disabled="busy">保存</ElButton><ElButton :disabled="busy" @click="clearForm">取消编辑</ElButton>
       </form>

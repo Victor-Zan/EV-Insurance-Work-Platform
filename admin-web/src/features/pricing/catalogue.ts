@@ -10,12 +10,15 @@ export interface CatalogueItem {
   partId?: number
   kind?: string
   enabled?: boolean
+  unit?: string
+  oeCode?: string
+  manufacturerCode?: string
 }
-export interface CatalogueField { key: 'name' | 'code' | 'internalCode' | 'brandId' | 'partId' | 'kind'; label: string; numeric?: boolean }
+export interface CatalogueField { key: 'name' | 'code' | 'internalCode' | 'brandId' | 'partId' | 'kind' | 'unit' | 'oeCode' | 'manufacturerCode'; label: string; numeric?: boolean; optional?: boolean; maxLength?: number }
 export const catalogueDefinitions: Record<CatalogueKind, { title: string; fields: CatalogueField[]; enabled: boolean }> = {
   brands: { title: '车辆品牌', fields: [{ key: 'code', label: '品牌编码' }, { key: 'name', label: '品牌名称' }], enabled: true },
   models: { title: '车型', fields: [{ key: 'brandId', label: '品牌 ID', numeric: true }, { key: 'code', label: '车型编码' }, { key: 'name', label: '车型名称' }], enabled: true },
-  parts: { title: '标准配件', fields: [{ key: 'internalCode', label: '内部配件编号' }, { key: 'name', label: '标准名称' }], enabled: true },
+  parts: { title: '标准配件', fields: [{ key: 'internalCode', label: '内部配件编号' }, { key: 'name', label: '标准名称' }, { key: 'unit', label: '计量单位', optional: true, maxLength: 24 }, { key: 'oeCode', label: 'OE码（选填）', optional: true, maxLength: 120 }, { key: 'manufacturerCode', label: '厂家编码（选填）', optional: true, maxLength: 120 }], enabled: true },
   aliases: { title: '配件别名', fields: [{ key: 'partId', label: '标准配件 ID', numeric: true }, { key: 'name', label: '别名' }], enabled: false },
   sources: { title: '数据来源', fields: [{ key: 'code', label: '来源编码' }, { key: 'name', label: '来源名称' }, { key: 'kind', label: '来源类型' }], enabled: true },
 }
@@ -31,8 +34,9 @@ export function cataloguePayload(kind: CatalogueKind, values: Record<string, str
   const result: Record<string, string | number | boolean> = {}
   for (const field of definition.fields) {
     const raw = values[field.key]?.trim() ?? ''
-    if (!raw) throw new Error(field.label + '必填')
-    if (raw.length > (field.key === 'name' ? 120 : 64)) throw new Error(field.label + '过长')
+    if (!raw && !field.optional) throw new Error(field.label + '必填')
+    if (field.optional && values[field.key] === undefined) continue
+    if (raw.length > (field.maxLength ?? (field.key === 'name' ? 120 : 64))) throw new Error(field.label + '过长')
     if (field.numeric) {
       const id = Number(raw)
       if (!Number.isSafeInteger(id) || id < 1) throw new Error(field.label + '必须为正整数')

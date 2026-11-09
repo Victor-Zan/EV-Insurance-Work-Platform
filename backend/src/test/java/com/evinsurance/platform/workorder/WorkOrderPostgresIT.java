@@ -42,6 +42,7 @@ class WorkOrderPostgresIT {
     private static final String SECRET=secret();
     private static final String SCHEMA="work_order_it_"+UUID.randomUUID().toString().replace("-","");
     private static final String OWNER_PHONE="13800001234";
+    private static final java.util.concurrent.atomic.AtomicBoolean DEVELOPMENT_OWNER=new java.util.concurrent.atomic.AtomicBoolean(false);
 
     private static String secret() {
         byte[] key=new byte[32];
@@ -51,6 +52,16 @@ class WorkOrderPostgresIT {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
+        // This suite uses the existing account fixture, without unrelated local map demo data.
+        try {
+            var directory=java.nio.file.Files.createTempDirectory("work-order-foundation-");directory.toFile().deleteOnExit();
+            var seed=directory.resolve("V2.1__development_foundation.sql");
+            try(var input=WorkOrderPostgresIT.class.getResourceAsStream("/db/dev/V2.1__development_foundation.sql")){
+                java.nio.file.Files.copy(java.util.Objects.requireNonNull(input),seed);
+            }
+            seed.toFile().deleteOnExit();
+            registry.add("spring.flyway.locations",()->"classpath:db/migration,filesystem:"+directory);
+        }catch(java.io.IOException error){throw new java.io.UncheckedIOException(error);}
         String url=System.getenv("TEST_DB_URL");
         String username=System.getenv("TEST_DB_USERNAME");
         String password=System.getenv("TEST_DB_PASSWORD");
@@ -63,6 +74,7 @@ class WorkOrderPostgresIT {
         registry.add("spring.flyway.schemas",()->SCHEMA);
         registry.add("spring.flyway.default-schema",()->SCHEMA);
         registry.add("OCR_WORKER_ENABLED",()->"false");
+        registry.add("DEV_OWNER_BINDING_ENABLED",()->DEVELOPMENT_OWNER.get());
         for(String name:List.of("MINIO_ENDPOINT","MINIO_ACCESS_KEY","MINIO_SECRET_KEY","MINIO_BUCKET"))registry.add(name,()->{String value=System.getenv("TEST_"+name);if(value==null||value.isBlank())throw new IllegalStateException("Real MinIO test configuration required");return value;});
         registry.add("JWT_SECRET_BASE64",()->SECRET);
         registry.add("JWT_TTL_SECONDS",()->"1800");
@@ -343,6 +355,29 @@ class WorkOrderPostgresIT {
         var reviewed=api(customerService,"POST","/api/v1/quotations/cases/"+id+"/formal-quotes",Map.of("expectedVersion",raw.path("version").asInt(),"rawQuoteId",raw.path("rawQuote").path("id").asText(),"mode","FIXED_AMOUNT","fixedAmount","0.00"),"formal-"+id,200);
         assertThat(reviewed.path("formalQuote").path("total").asText()).isEqualTo("18.30");
         assertThat(db.queryForObject("SELECT count(*) FROM case_file WHERE work_order_id=?::uuid AND category='NOTICE'",Long.class,id)).isZero();
+    }
+    @Test void developmentOwnerDefaultShowsNewCasesWithoutMatchingPhoneAndKeepsFieldsPrivate() throws Exception {
+        DEVELOPMENT_OWNER.set(true);
+        try{
+            String suffix=UUID.randomUUID().toString(),phone=uniquePhone();
+            var order=formal(customerService,"DEV-OWNER-"+suffix,phone,"VIN-"+suffix,Instant.now());String id=order.path("id").asText();
+            long ownerId=db.queryForObject("select id from app_user where username='dev_owner'",Long.class);
+            assertThat(order.path("ownerBindingStatus").asText()).isEqualTo("BOUND");
+            assertThat(db.queryForObject("select owner_user_id from work_order where id=?::uuid",Long.class,id)).isEqualTo(ownerId);
+            assertThat(db.queryForObject("select owner_phone from work_order where id=?::uuid",String.class,id)).isEqualTo(phone);
+            mvc.perform(get("/api/v1/work-orders/{id}",id).header("Authorization","Bearer "+owner)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("PENDING_DISPATCH")).andExpect(jsonPath("$.data.currentAssignment").doesNotExist());
+            mvc.perform(get("/api/v1/work-orders").param("query","DEV-OWNER-"+suffix).header("Authorization","Bearer "+owner)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1));
+            mvc.perform(get("/api/v1/quotations/cases/{id}",id).header("Authorization","Bearer "+owner)).andExpect(status().isForbidden());
+            assertThat(db.queryForObject("select count(*) from audit_log where object_id=? and action='WORK_ORDER_SUBMIT' and summary like ?",Long.class,id,"%ownerUserId="+ownerId+"%")).isEqualTo(1);
+            db.update("update app_user set enabled=false where id=?",ownerId);
+            try{
+                String another=createDraft(customerService,requiredDraft("DEV-MISSING-"+suffix,uniquePhone(),"VIN-SECOND-"+suffix,Instant.now())).path("id").asText();
+                submit(customerService,another,false,null,"dev-unavailable-"+suffix,409);
+                assertThat(db.queryForObject("select status from work_order where id=?::uuid",String.class,another)).isEqualTo("DRAFT");
+            }finally{db.update("update app_user set enabled=true where id=?",ownerId);}
+        }finally{DEVELOPMENT_OWNER.set(false);}
     }
     @Test void ownerContactAndPendingBindingUseRealApisAndNeverTransferOwnership() throws Exception {
         String phone=uniquePhone(),suffix=UUID.randomUUID().toString();

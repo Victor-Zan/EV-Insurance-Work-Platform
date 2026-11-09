@@ -19,6 +19,8 @@ public interface HistoricalCaseMapper {
     void insertBatch(@Param("id") UUID id,@Param("actor") long actor,@Param("name") String name,
         @Param("hash") String hash,@Param("key") String key,@Param("total") int total);
     void insertRows(@Param("id") UUID id,@Param("rows") List<PreviewRow> rows);
+    void markFullBatch(@Param("id") UUID id);
+    List<UUID> importedArchiveIds(@Param("id") UUID id);
     Map<String,Object> batch(@Param("id") UUID id);
     Map<String,Object> batchStatus(@Param("id") UUID id);
     long batchCount();
@@ -32,6 +34,8 @@ public interface HistoricalCaseMapper {
     List<String> existingClaims(@Param("claims") List<String> claims);
     int insertArchive(@Param("id") UUID id,@Param("batch") UUID batch,@Param("number") int number,
         @Param("hash") String hash,@Param("item") Data item);
+    int insertFullArchive(@Param("id") UUID id,@Param("batch") UUID batch,@Param("number") int number,
+        @Param("hash") String hash,@Param("item") Data item,@Param("orderNo") String orderNo,@Param("record") String record);
     Map<String,Object> archiveByHash(@Param("hash") String hash);
     long archiveCount(@Param("query") String query);
     List<Map<String,Object>> archives(@Param("query") String query,@Param("offset") int offset,@Param("size") int size);

@@ -19,7 +19,7 @@ watch(()=>route.fullPath,refreshUnread)
 let previewTimer:ReturnType<typeof setTimeout>|undefined
 function cancelPreviewClose(){if(previewTimer)clearTimeout(previewTimer);previewTimer=undefined}
 function schedulePreviewClose(){cancelPreviewClose();previewTimer=setTimeout(()=>{preview.value=null},120)}
-function onResize(){const wide=window.innerWidth>=1440;if(wide!==desktopWide.value){desktopWide.value=wide;opened.value=wide?active.value:null;preview.value=null}}
+function onResize(){const wide=window.innerWidth>=1440;if(wide!==desktopWide.value){desktopWide.value=wide;opened.value=wide&&active.value!=='pricing'?active.value:null;preview.value=null}}
 onMounted(()=>{window.addEventListener('resize',onResize);window.addEventListener('focus',refreshUnread);document.addEventListener('visibilitychange',refreshUnread);unreadTimer=setInterval(refreshUnread,30000)})
 onUnmounted(()=>{cancelPreviewClose();window.removeEventListener('resize',onResize);window.removeEventListener('focus',refreshUnread);document.removeEventListener('visibilitychange',refreshUnread);if(unreadTimer)clearInterval(unreadTimer);unread.reset()})
 const isAdmin = computed(() => currentUser.value?.roles.includes('ADMIN') === true)
@@ -38,15 +38,15 @@ const links = computed(() => {
   switch (visible.value) {
     case 'home': return [{ label: '工作台', to: '/' }, { label: '我的待办', to: '/notifications?tab=todos' }]
     case 'cases': return [{ label: '全部案件', to: '/work-orders' }, { label: '历史档案', to: '/historical-cases' }, { label: '投诉跟踪', to: '/complaints' }, { label: '我的待办', to: '/notifications?tab=todos' }, { label: '案件草稿', to: '/work-orders?status=DRAFT' }]
-    case 'pricing': return [{ label: '价格候选', to: '/pricing' }, { label: '品牌资料', to: '/pricing/catalogue/brands' }, { label: '车型资料', to: '/pricing/catalogue/models' }, { label: '配件资料', to: '/pricing/catalogue/parts' }, { label: '适配关系', to: '/pricing/part-models' }, ...(isAdmin.value ? [{ label: '价格导入', to: '/pricing/import' }] : [])]
     case 'funds': return [{ label: '跨案件资金查询', to: '/funds/workbench' }, ...(isService.value ? [{ label: '资金导入', to: '/funds/imports' }] : []), { label: '案件资金记录', to: '/work-orders' }]
     case 'notices': return [{ label: '我的待办', to: '/notifications?tab=todos' }, { label: '站内通知', to: '/notifications?tab=notices' }]
     case 'admin': return [{ label: '用户与角色', to: '/admin/users' }, { label: '区域', to: '/admin/regions' }, { label: '网点', to: '/admin/shops' }, { label: '审计日志', to: '/admin/audit-logs' }, { label: '重复判断配置', to: '/admin/settings/work-orders' }]
     default: return []
   }
 })
-watch(active, value => { if(desktopWide.value)opened.value=value;else if(opened.value!==value)opened.value=null;preview.value=null }, { immediate: true })
-function activate(id: Module, path: string) { opened.value = id; preview.value = null; void router.push(path) }
+watch(active, value => { if(desktopWide.value&&value!=='pricing')opened.value=value;else if(opened.value!==value)opened.value=null;preview.value=null }, { immediate: true })
+function activate(id: Module, path: string) { opened.value = id==='pricing'?null:id; preview.value = null; void router.push(path) }
+function previewModule(id: Module) { cancelPreviewClose(); preview.value = id==='pricing'?null:id }
 function close() { preview.value = null; opened.value = null }
 function submitSearch() { if (search.value.trim()) void router.push({ path: '/work-orders', query: { query: search.value.trim() } }) }
 function logout() { authSession.clear(); void router.replace('/login') }
@@ -57,7 +57,7 @@ function logout() { authSession.clear(); void router.replace('/login') }
     <a class="skip-link" href="#main-content">跳到主内容</a>
     <nav class="command-rail" aria-label="主导航" @mouseleave="schedulePreviewClose">
       <RouterLink class="brand-mark" to="/" aria-label="工作台首页"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 28 7v9c0 8-5 12-12 14C9 28 4 24 4 16V7L16 2Z" fill="currentColor"/><path d="m9 16 5 5 9-10" fill="none" stroke="white" stroke-width="2.5"/></svg><small>e保</small></RouterLink>
-      <button v-for="item in modules" :key="item.id" class="rail-item" :class="{ 'is-active': active===item.id }" type="button" :aria-label="item.id==='notices'&&unreadCount?`通知，${unreadCount}条未读`:item.label" :aria-expanded="visible===item.id" :aria-current="active===item.id?'page':undefined" @click="activate(item.id,item.path)" @mouseenter="cancelPreviewClose();preview=item.id" @focus="preview=item.id">
+      <button v-for="item in modules" :key="item.id" class="rail-item" :class="{ 'is-active': active===item.id }" type="button" :aria-label="item.id==='notices'&&unreadCount?`通知，${unreadCount}条未读`:item.label" :aria-expanded="item.id==='pricing'?undefined:visible===item.id" :aria-current="active===item.id?'page':undefined" @click="activate(item.id,item.path)" @mouseenter="previewModule(item.id)" @focus="previewModule(item.id)">
         <svg :class="`rail-icon-${item.id}`" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <template v-if="item.glyph==='home'"><path d="m3 11 9-8 9 8v9H3z"/><path d="M9 20v-6h6v6"/></template>
           <template v-else-if="item.glyph==='case'"><path d="M5 5h14v16H5zM9 5V3h6v2M8 10h8M8 14h8"/></template>

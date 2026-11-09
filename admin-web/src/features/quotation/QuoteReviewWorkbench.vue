@@ -3,7 +3,7 @@ import {computed,onUnmounted,ref,watch} from 'vue'
 import {httpClient} from '@/shared/http/client'
 import {reviewCalculation,type ReviewLine,type MarkupMode} from './quote-review'
 export interface QuoteOriginal {id:string;name:string;contentType:string}
-const props=defineProps<{originals:QuoteOriginal[];lines:ReviewLine[];value:string;mode:MarkupMode;readonly?:boolean}>()
+const props=defineProps<{caseId?:string;originals:QuoteOriginal[];lines:ReviewLine[];value:string;mode:MarkupMode;readonly?:boolean}>()
 const emit=defineEmits<{lines:[value:ReviewLine[]];value:[value:string];mode:[value:MarkupMode]}>()
 const index=ref(0),zoom=ref(100),image=ref(''),loading=ref(false),imageError=ref('')
 const selected=computed(()=>props.originals[index.value])
@@ -37,6 +37,7 @@ onUnmounted(()=>{generation++;release()})
  <div v-if="!lines.length" class="table-empty">等待网点提交识别明细</div>
  <div v-else class="table-scroll"><table><caption class="sr-only">按报价原件行序核对</caption><thead><tr><th>配件/维修项目</th><th>数量</th><th>单价</th><th>金额</th><th v-if="!readonly" class="row-action"><span class="sr-only">行操作</span></th></tr></thead><tbody><tr v-for="(line,row) in lines" :key="row"><td><input :aria-label="`第${row+1}项 配件/维修项目`" :value="line.description" :disabled="readonly" maxlength="255" @input="edit(row,'description',$event)"/></td><td><input :aria-label="`第${row+1}项 数量`" :value="line.quantity" :disabled="readonly" inputmode="numeric" @input="edit(row,'quantity',$event)"/></td><td><input :aria-label="`第${row+1}项 单价（元）`" :value="line.unitPrice" :disabled="readonly" inputmode="decimal" @input="edit(row,'unitPrice',$event)"/></td><td class="line-amount">{{ calculation.value?.amounts[row]??'—' }}</td><td v-if="!readonly" class="row-action"><button :aria-label="`删除第${row+1}项`" @click="remove(row)">×</button></td></tr></tbody></table></div>
  <button v-if="!readonly" class="add-line" @click="emit('lines',[...lines,{description:'',quantity:'1',unitPrice:''}])">添加漏识别项目</button>
+ <RouterLink v-if="caseId" class="original-download" target="_blank" to="/pricing">查看配件参考</RouterLink>
  <div class="review-total"><span>核对合计</span><strong>{{ calculation.value?.base??'—' }} <small>元</small></strong></div><p class="table-note">修正另存版本，网点原报价保留。</p>
  </section></div>
  <section class="markup-bar" data-reading="报价加价"><div class="markup-controls"><label>加价方式<select aria-label="加价方式" :value="mode" :disabled="readonly" @change="emit('mode',($event.target as HTMLSelectElement).value as MarkupMode)"><option value="PERCENTAGE">按比例加价</option><option value="FIXED_AMOUNT">按金额加价</option></select></label><label>{{ mode==='PERCENTAGE'?'加价率':'加价金额' }}<div class="rate-input"><input :aria-label="mode==='PERCENTAGE'?'加价率（%）':'加价金额（元）'" :value="value" :disabled="readonly" inputmode="decimal" @input="emit('value',($event.target as HTMLInputElement).value)"/><span>{{ mode==='PERCENTAGE'?'%':'元' }}</span></div></label></div><dl><div><dt>核对合计</dt><dd>{{ calculation.value?.base??'—' }}<small> 元</small></dd></div><div><dt>加价金额</dt><dd>{{ calculation.value?.markup??'—' }}<small> 元</small></dd></div><div class="final-total"><dt>加价后金额</dt><dd aria-live="polite">{{ calculation.value?.total??'—' }}<small> 元</small></dd></div></dl><p v-if="calculation.error&&lines.length" role="alert" class="calculation-error">{{ calculation.error }}</p></section>

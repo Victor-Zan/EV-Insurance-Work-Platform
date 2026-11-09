@@ -11,6 +11,7 @@ public final class QuotationRequests {
     public record Raw(Integer expectedVersion,Integer assignmentVersion,List<Line> lines) {}
     public record Formal(Integer expectedVersion,UUID rawQuoteId,String mode,JsonNode fixedAmount,JsonNode percentage,List<Line> reviewedLines) {}
     public record Assessment(Integer expectedVersion,JsonNode amount) {}
+    public record CompleteAssessment(Integer expectedVersion,JsonNode amount,JsonNode confirmedAmount,Boolean originalReviewed) {}
     public record Confirm(Integer expectedVersion,UUID assessmentId,UUID lossFileId,JsonNode amount,Boolean originalReviewed) {}
     public record Start(Integer expectedVersion,Integer assignmentVersion) {}
 }

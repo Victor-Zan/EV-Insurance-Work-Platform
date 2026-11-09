@@ -2,14 +2,20 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {parse,compileScript} from '@vue/compiler-sfc'
+import {compile} from '@vue/compiler-dom'
 import ts from 'typescript'
 import * as Vue from 'vue'
 const {descriptor}=parse(readFileSync(new URL('../src/features/funds/FundsAssessment.vue',import.meta.url),'utf8'))
+function priceText(f){
+ const {code}=compile(descriptor.template.content,{mode:'function',prefixIdentifiers:true}),render=new Function('Vue',code)(Vue),texts=[]
+ function visit(v){if(!v||typeof v!=='object')return;if(typeof v.children==='string')texts.push(v.children);if(Array.isArray(v.children))v.children.forEach(visit)}
+ visit(render(Vue.proxyRefs(f.context),[]));return texts.join(' ')
+}
 function fixture(){
  let code=ts.transpileModule(compileScript(descriptor,{id:'funds-assessment-test'}).content,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText
  code=code.replace(/import\s*\{([^}]+)\}\s*from\s*['"]vue['"];?/g,(_,names)=>'const {'+names.replace(/\s+as\s+/g,':')+'}=__vue;').replace(/import .*from ['"].*['"];?/g,'').replace('export default','return')
  code='const httpClient=__client,ElDialog={};const URL=__urls;'+code
- let quote={assessment:{id:'assessment-one',lossFileId:'loss-one',amount:'620.00',sourceCurrent:true},gate:{customerServiceConfirmationRecorded:true}},fileType='image/png',unmount,responder,created=0
+ let quote={confirmedAmount:'600.00',assessment:{id:'assessment-one',lossFileId:'loss-one',amount:'620.00',sourceCurrent:true},gate:{customerServiceConfirmationRecorded:true}},fileType='image/png',unmount,responder,created=0
  const calls=[],revoked=[]
  const client={async get(path){calls.push(path);if(responder)return responder(path);return path.startsWith('/quotations/')?{data:{data:quote}}:{data:{type:path.includes('/preview?')?'image/png':fileType},headers:{'x-page-count':'3'}}}}
  const component=new Function('__vue','__client','__urls',code)({...Vue,watch(){},onUnmounted(fn){unmount=fn}},client,{createObjectURL(){return 'blob:funds-'+created++},revokeObjectURL(url){revoked.push(url)}})
@@ -31,6 +37,12 @@ test('missing sources, unconfirmed amounts and failed downloads are explicit; ol
 
 
 test('confirmed manually recorded assessment is valid without an original and makes no material request',async()=>{
- const f=fixture();f.setQuote({assessment:{id:'manual',amount:'620.00',sourceCurrent:true},gate:{customerServiceConfirmationRecorded:true}});await f.context.load()
+ const f=fixture();f.setQuote({confirmedAmount:'600.00',assessment:{id:'manual',amount:'620.00',sourceCurrent:true},gate:{customerServiceConfirmationRecorded:true}});await f.context.load()
  assert.equal(f.context.confirmed.value,true);assert.equal(f.context.error.value,'');assert.equal(f.context.preview.value,'');assert.deepEqual(f.calls,['/quotations/cases/synthetic-funds-assessment'])
+})
+test('funds shows the independent final price and never falls back to an assessed amount without a confirmation snapshot',async()=>{
+ const f=fixture();await f.context.load();assert.equal(f.context.confirmed.value,true)
+ assert.match(priceText(f),/600\.00/);assert.doesNotMatch(priceText(f),/620\.00/)
+ f.setQuote({assessment:{id:'manual',amount:'620.00',sourceCurrent:true},gate:{customerServiceConfirmationRecorded:true}})
+ await f.context.load();assert.equal(f.context.confirmed.value,false);assert.match(priceText(f),/未确认/)
 })

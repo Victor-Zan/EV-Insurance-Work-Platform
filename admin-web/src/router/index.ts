@@ -11,17 +11,10 @@ const NotificationsView = () => import('@/features/notification/NotificationPane
 const FundsWorkbenchView = () => import('@/views/FundsWorkbenchView.vue')
 const ComplaintsWorkbenchView = () => import('@/views/ComplaintsWorkbenchView.vue')
 const FundsImportsView = () => import('@/views/FundsImportsView.vue')
-const CatalogueView = () => import('@/features/pricing/CatalogueView.vue')
-const PartModelsView = () => import('@/features/pricing/PartModelsView.vue')
-const PricesView = () => import('@/features/pricing/PricesView.vue')
-const PriceEditorView = () => import('@/features/pricing/PriceEditorView.vue')
-const PriceHistoryView = () => import('@/features/pricing/PriceHistoryView.vue')
-const ImportView = () => import('@/features/pricing/ImportView.vue')
-const BatchesView = () => import('@/features/pricing/BatchesView.vue')
 const WorkOrdersView = () => import('@/features/workorders/WorkOrdersView.vue')
 const HistoricalCasesView = () => import('@/features/historical/HistoricalCasesView.vue')
 const WorkOrderDetailView = () => import('@/features/workorders/WorkOrderDetailView.vue')
-import { PRICE_READ_ROLES, PRICE_WRITE_ROLES } from '@/features/pricing/prices'
+import { PRICE_READ_ROLES } from '@/features/pricing/prices'
 import { authSession, api } from '@/shared/http/client'
 import { guard } from '@/shared/auth/guard'
 import type { Role } from '@/shared/auth/session'
@@ -46,15 +39,8 @@ const router = createRouter({
     { path: '/ocr/intake', component: () => import('@/features/materials/OcrIntakeView.vue'), meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
     { path: '/historical-cases', component: HistoricalCasesView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
     { path: '/work-orders/:id', component: WorkOrderDetailView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
-    { path: '/pricing/catalogue/:kind(brands|models|parts|aliases|sources)', component: CatalogueView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
-    { path: '/pricing/part-models', component: PartModelsView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
-    { path: '/pricing', component: PricesView, meta: { roles: PRICE_READ_ROLES } },
-    { path: '/pricing/new', component: PriceEditorView, meta: { roles: PRICE_WRITE_ROLES } },
-    { path: '/pricing/records/:recordId/new', component: PriceEditorView, meta: { roles: PRICE_WRITE_ROLES } },
-    { path: '/pricing/records/:recordId/history', component: PriceHistoryView, meta: { roles: PRICE_READ_ROLES } },
-    { path: '/pricing/import', component: ImportView, meta: { roles: PRICE_WRITE_ROLES } },
-    { path: '/pricing/batches', component: BatchesView, meta: { roles: PRICE_WRITE_ROLES } },
-    { path: '/pricing/batches/:batchId', component: BatchesView, meta: { roles: PRICE_WRITE_ROLES } },
+    { path: '/pricing', component: () => import('@/features/pricing/ReferencePricesView.vue'), meta: { roles: PRICE_READ_ROLES } },
+    { path: '/pricing/:retiredPath(.*)+', redirect: '/pricing' },
     { path: '/forbidden', component: AccessView, props: { message: '没有访问权限', retry: false } },
     { path: '/connection-error', component: AccessView, props: { message: '网络连接失败，请重试', retry: true } },
     { path: '/:pathMatch(.*)*', redirect: '/' },

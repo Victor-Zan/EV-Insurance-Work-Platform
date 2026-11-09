@@ -26,6 +26,8 @@ public interface QuotationMapper {
     void insertFormalItem(@Param("id") UUID id,@Param("line") AllocatedLine line);
     Assessment assessment(UUID id);
     AssessmentProof assessmentProof(UUID id);
+    @Select("SELECT file_snapshot FROM quotation_confirmation WHERE work_order_id=#{id} AND basis_version=#{basis} AND kind='CUSTOMER_SERVICE'")
+    String serviceConfirmationSnapshot(@Param("id") UUID id,@Param("basis") int basis);
     void insertAssessment(@Param("id") UUID id,@Param("caseId") UUID caseId,@Param("version") int version,@Param("formal") UUID formal,@Param("amount") BigDecimal amount,@Param("snapshot") String snapshot,@Param("actor") long actor);
     List<Map<String,Object>> activeLossFiles(UUID id);
     int confirmation(@Param("id") UUID id,@Param("c") Context context,@Param("kind") String kind,@Param("snapshot") String snapshot,@Param("actor") long actor);

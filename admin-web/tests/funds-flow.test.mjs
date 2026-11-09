@@ -15,7 +15,7 @@ function fixture(roles=['CUSTOMER_SERVICE']){
  const calls=[],events=[],ledger=[],commands=new Map(),failures=new Map();let afterEntry,afterTarget,confirmedAmount='10.00'
  const clone=value=>structuredClone(value)
  function refreshFlags(){for(const key of ['receivable','payable']){const b=value[key];b.status=b.target==null?'UNSET':BigInt(b.target.replace('.',''))===BigInt(b.net.replace('.',''))?'SETTLED':b.net==='0.00'?'UNPAID':'PARTIAL'}value.canConfirmReceive=value.flowStage==='WAITING_INSURER_PAYMENT'&&value.receivable.status==='SETTLED';value.canConfirmPay=value.flowStage==='WAITING_SHOP_SETTLEMENT'&&value.payable.status==='SETTLED'}
- const deps={currentUser:Vue.ref({roles}),httpClient:{async get(path){return {data:{data:path.startsWith('/quotations/')?{assessment:{amount:confirmedAmount,sourceCurrent:confirmedAmount!==null},gate:{customerServiceConfirmationRecorded:confirmedAmount!==null}}:path.endsWith('/entries')?{records:clone(ledger),total:ledger.length}:path.endsWith('/targets')?{records:[],total:0}:clone(value)}}},async post(path,body,options){
+ const deps={currentUser:Vue.ref({roles}),httpClient:{async get(path){return {data:{data:path.startsWith('/quotations/')?{confirmedAmount:confirmedAmount??undefined,assessment:{amount:'999.00',sourceCurrent:confirmedAmount!==null},gate:{customerServiceConfirmationRecorded:confirmedAmount!==null}}:path.endsWith('/entries')?{records:clone(ledger),total:ledger.length}:path.endsWith('/targets')?{records:[],total:0}:clone(value)}}},async post(path,body,options){
   const key=options.headers['Idempotency-Key'],kind=path.split('/').at(-1),failure=failures.get(kind)
   calls.push({path,body:clone(body),key})
   if(commands.has(key))return clone(commands.get(key))

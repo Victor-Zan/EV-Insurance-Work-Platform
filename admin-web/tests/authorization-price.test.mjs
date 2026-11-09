@@ -17,11 +17,11 @@ function fixture(){
  const context=component.setup(props,{expose(){}})
  return {context,props,calls,revoked,unmount(){unmount()},respond(fn){respond=fn}}
 }
-test('final price confirms on submission with loaded documents and exact adopted loss amount; formal total may differ',async()=>{
+test('final price confirms on submission with loaded documents and independent final price; assessed and formal totals may differ',async()=>{
  const f=fixture();assert.throws(()=>f.context.confirmation(),/加载并核对/)
  await f.context.load();assert.deepEqual(f.calls,['/quotations/cases/synthetic-authorization/formal-quotes/formal-1/preview?page=1','/materials/loss-1/download'])
  assert.throws(()=>f.context.confirmation(),/有效确认金额/)
- f.context.amount.value='30.00';assert.throws(()=>f.context.confirmation(),/必须与最终核损金额/)
+ f.context.amount.value='30.00';assert.equal(f.context.confirmation().amount,'30.00')
  f.context.amount.value='18.001';assert.throws(()=>f.context.confirmation(),/有效确认金额/)
  f.context.amount.value='18';assert.deepEqual(f.context.confirmation(),{assessmentId:'assessment-1',lossFileId:'loss-1',amount:'18.00',originalReviewed:true})
  f.props.quote.assessment.sourceCurrent=false;assert.throws(()=>f.context.confirmation(),/加载并核对/)
@@ -54,7 +54,7 @@ test('manual assessment needs no loss document, retains exact amount verificatio
  const f=fixture();delete f.props.quote.assessment.lossFileId;await f.context.load()
  assert.deepEqual(f.calls,['/quotations/cases/synthetic-authorization/formal-quotes/formal-1/preview?page=1'])
  assert.equal(f.context.error.value,'');f.context.amount.value='18';assert.deepEqual(f.context.confirmation(),{assessmentId:'assessment-1',amount:'18.00',originalReviewed:true})
- f.context.amount.value='30';assert.throws(()=>f.context.confirmation(),/必须与最终核损金额/)
+ f.context.amount.value='30';assert.equal(f.context.confirmation().amount,'30.00')
 })
 test('missing optional loss document permits final amount confirmation; an attachment download failure stays local',async()=>{
  const f=fixture();delete f.props.quote.assessment.lossFileId

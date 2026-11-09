@@ -7,5 +7,11 @@ public class PartEntity extends CatalogueRow {
  private String name;
  public String getName(){return name;} public void setName(String v){name=v;}
  private Boolean enabled;
+ private String unit;
+ public String getUnit(){return unit;} public void setUnit(String v){unit=v;}
+ private String oeCode;
+ public String getOeCode(){return oeCode;} public void setOeCode(String v){oeCode=v;}
+ private String manufacturerCode;
+ public String getManufacturerCode(){return manufacturerCode;} public void setManufacturerCode(String v){manufacturerCode=v;}
  public Boolean getEnabled(){return enabled;} public void setEnabled(Boolean v){enabled=v;}
 }

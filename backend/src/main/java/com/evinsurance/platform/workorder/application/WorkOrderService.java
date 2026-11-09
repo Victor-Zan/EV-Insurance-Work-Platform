@@ -42,16 +42,18 @@ public class WorkOrderService {
     private final WorkOrderMapper mapper;
     private final AuditService audit;
     private final ObjectMapper json;
+    private final DevelopmentOwnerResolver developmentOwner;
 
     private final com.evinsurance.platform.document.infrastructure.FileMapper files;
     private final com.evinsurance.platform.integration.map.MapProvider maps;
     private com.evinsurance.platform.organization.application.CaseWorkshopRegistry caseWorkshops;
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     public void setCaseWorkshops(com.evinsurance.platform.organization.application.CaseWorkshopRegistry registry){caseWorkshops=registry;}
-    public WorkOrderService(WorkOrderMapper mapper,AuditService audit,ObjectMapper json,com.evinsurance.platform.document.infrastructure.FileMapper files,com.evinsurance.platform.integration.map.MapProvider maps) {
+    public WorkOrderService(WorkOrderMapper mapper,AuditService audit,ObjectMapper json,com.evinsurance.platform.document.infrastructure.FileMapper files,com.evinsurance.platform.integration.map.MapProvider maps,DevelopmentOwnerResolver developmentOwner) {
         this.mapper=mapper;this.files=files;this.maps=maps;
         this.audit=audit;
         this.json=json;
+        this.developmentOwner=developmentOwner;
     }
 
     @Transactional
@@ -133,7 +135,7 @@ public class WorkOrderService {
             if(mapper.submit(id,row.getVersion(),businessNo,owner,binding,actor.id(),now)!=1) throw state("Draft changed concurrently");
             history(id,WorkOrderStatus.DRAFT.name(),WorkOrderStatus.PENDING_DISPATCH.name(),"SUBMIT",duplicateReason,actor,null,now);
             audit.record(actor,Action.WORK_ORDER_SUBMIT,"WORK_ORDER",id,
-                "Status DRAFT -> PENDING_DISPATCH; businessNo="+businessNo+"; ownerBinding="+binding+reasonSummary(duplicateReason));
+                "Status DRAFT -> PENDING_DISPATCH; businessNo="+businessNo+"; ownerBinding="+binding+"; ownerUserId="+owner+reasonSummary(duplicateReason));
             return mapper.find(id);
         });
     }
@@ -619,6 +621,8 @@ public class WorkOrderService {
     }
 
     private Long matchOwner(String phone) {
+        Long defaultOwner=developmentOwner.resolve();
+        if(defaultOwner!=null)return defaultOwner;
         var ids=mapper.ownersByPhone(phone);
         return ids.size()==1?ids.get(0):null;
     }

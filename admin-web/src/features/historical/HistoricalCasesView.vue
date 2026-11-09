@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElButton, ElInput, ElMessage, ElMessageBox, ElTag } from 'element-plus'
+import { ElButton, ElInput, ElMessage, ElMessageBox, ElOption, ElSelect, ElTag } from 'element-plus'
 import { httpClient } from '@/shared/http/client'
 import { workOrderApi, type WorkOrder } from '@/features/workorders/work-orders'
 
-interface Batch { id:string;fileName:string;totalRows:number;ready_count:number;invalid_count:number;duplicate_count:number;imported_count:number;failed_count:number }
-interface PreviewRow { rowNumber:number;status:string;values:Record<string,string>;error:string|null;warning:string|null;archiveId:string|null }
-interface Archive { id:string;claim_no:string|null;owner_name:string;owner_phone:string;brand:string;model:string;assessment_amount:string|null;repair_date:string|null;shop_name:string|null;legacy_status:string|null;created_at:string }
+interface Batch { id:string;fileName:string;format?:string;totalRows:number;ready_count:number;invalid_count:number;duplicate_count:number;imported_count:number;failed_count:number }
+interface FullRecord { fields:Record<string,string>;repairShop:string;details:{rowNumber:number;original:Record<string,string>;correctedSupplierAmount?:string}[] }
+interface PreviewRow { rowNumber:number;status:string;values:Record<string,string>;fullRecord?:FullRecord;error:string|null;warning:string|null;archiveId:string|null }
+interface Archive { id:string;claim_no:string|null;owner_name:string;owner_phone:string;brand:string;model:string|null;assessment_amount:string|null;repair_date:string|null;shop_name:string|null;legacy_status:string|null;created_at:string;platform_order_no?:string;formal_history:boolean }
 const file=ref<File>(),busy=ref(false),message=ref(''),batches=ref<Batch[]>([]),batchPage=ref(1),batchTotal=ref(0),selected=ref<Batch>(),rows=ref<PreviewRow[]>([]),rowPage=ref(1)
-const query=ref(''),archives=ref<Archive[]>([]),archivePage=ref(1),archiveTotal=ref(0),detail=ref<Record<string,unknown>>()
+const query=ref(''),archives=ref<Archive[]>([]),archivePage=ref(1),archiveTotal=ref(0),detail=ref<Record<string,unknown> & {full_record?:FullRecord}>()
+const importFormat=ref('FULL_WORKBOOK'),excludeRows=ref(''),correctionRow=ref(''),correctionAmount=ref(''),rawRow=ref<number>()
 const router=useRouter(),api=workOrderApi(httpClient),tab=ref<'completed'|'imported'>('completed'),showImport=ref(false)
 const completed=ref<WorkOrder[]>([]),completedPage=ref(1),completedTotal=ref(0),completedQuery=ref('')
 const detailFields=[['claim_no','报案号'],['owner_name','车主姓名'],['owner_phone','车主电话'],['vehicle_plate','车牌号'],['brand','品牌'],['model','车型'],['accident_address','事故地址'],['fault_description','故障描述'],['latitude','纬度'],['longitude','经度'],['assessment_amount','定损金额'],['repair_date','维修日期'],['shop_name','维修网点'],['legacy_status','原状态'],['fault_type','故障类型'],['source_name','来源'],['note','备注']] as const
@@ -17,16 +19,37 @@ async function run(action:()=>Promise<void>){busy.value=true;message.value='';tr
 async function loadBatches(){const page=(await httpClient.get<{data:{records:Batch[];total:number}}>('/historical-cases/imports',{params:{page:batchPage.value,size:20}})).data.data;batches.value=page.records;batchTotal.value=page.total}
 async function loadRows(){if(!selected.value)return;rows.value=(await httpClient.get<{data:{records:PreviewRow[]}}>(`/historical-cases/imports/${selected.value.id}/rows`,{params:{page:rowPage.value,size:20}})).data.data.records}
 async function select(batch:Batch){selected.value=batch;rowPage.value=1;await loadRows()}
-async function preview(){if(!file.value)throw Error('请先选择历史订单 XLSX');const body=new FormData();body.append('file',file.value);selected.value=(await httpClient.post<{data:Batch}>('/historical-cases/imports',body,{timeout:120_000})).data.data;rowPage.value=1;await Promise.all([loadBatches(),loadRows()]);message.value='预览完成，尚未归档；请检查示例行和异常行后再确认'}
+async function preview(){
+  if(!file.value)throw Error('请先选择历史订单 XLSX')
+  const body=new FormData();body.append('file',file.value)
+  const full=importFormat.value==='FULL_WORKBOOK'
+  if(full){
+    if(excludeRows.value.trim())body.append('excludeRows',excludeRows.value.trim().replaceAll('，',','))
+    if(correctionRow.value.trim())body.append('supplierCorrectionRow',correctionRow.value.trim())
+    if(correctionAmount.value.trim())body.append('supplierCorrectionAmount',correctionAmount.value.trim())
+  }
+  selected.value=(await httpClient.post<{data:Batch}>(`/historical-cases/imports${full?'/full':''}`,body,{timeout:120_000})).data.data
+  rowPage.value=1;await Promise.all([loadBatches(),loadRows()]);message.value='预览完成，请核对后确认归档'
+}
 async function confirm(){if(!selected.value)return;await ElMessageBox.confirm('仅有效且未重复的行会归档；归档后不可修改。确认继续？','确认历史归档');selected.value=(await httpClient.post<{data:Batch}>(`/historical-cases/imports/${selected.value.id}/confirm`,{},{timeout:120_000})).data.data;await Promise.all([loadBatches(),loadRows(),loadArchives()]);tab.value='imported';ElMessage.success('逐行归档完成，请核对结果')}
-async function source(){if(!selected.value)return;const blob=(await httpClient.get<Blob>(`/historical-cases/imports/${selected.value.id}/source`,{responseType:'blob'})).data;const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=selected.value.fileName;link.click();URL.revokeObjectURL(url)}
+async function importPrices(){
+  if(!selected.value)return
+  await ElMessageBox.confirm('按当前归档的明细和更正导入配件商报价与 CP 报价。确认继续？','导入历史配件报价')
+  const {data:{data}}=await httpClient.post<{data:{detailRows:number;importedPrices:number;existingPrices:number}}>(`/historical-cases/imports/${selected.value.id}/prices`,{},{timeout:120_000})
+  message.value=`已核对 ${data.detailRows} 条配件明细，新增 ${data.importedPrices} 条价格，已存在 ${data.existingPrices} 条`
+}
+async function source(id=selected.value?.id,name=selected.value?.fileName){if(!id)return;const blob=(await httpClient.get<Blob>(`/historical-cases/imports/${id}/source`,{responseType:'blob'})).data;const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=name||'历史档案原文件.xlsx';link.click();URL.revokeObjectURL(url)}
 async function loadArchives(){const page=(await httpClient.get<{data:{records:Archive[];total:number}}>('/historical-cases',{params:{page:archivePage.value,size:20,query:query.value.trim()||undefined}})).data.data;archives.value=page.records;archiveTotal.value=page.total}
 async function loadCompleted(){const page=await api.list(completedPage.value,'COMPLETED',completedQuery.value.trim());completed.value=page.records;completedTotal.value=page.total}
 function toggleImport(){showImport.value=!showImport.value;if(showImport.value)void run(loadBatches)}
 function switchTab(value:'completed'|'imported'){tab.value=value;void run(value==='completed'?loadCompleted:loadArchives)}
-async function openArchive(id:string){detail.value=(await httpClient.get<{data:Record<string,unknown>}>(`/historical-cases/${id}`)).data.data}
+async function openArchive(id:string){rawRow.value=undefined;detail.value=(await httpClient.get<{data:NonNullable<typeof detail.value>}>(`/historical-cases/${id}`)).data.data}
 function choose(event:Event){file.value=(event.target as HTMLInputElement).files?.[0]}
-onMounted(()=>run(loadCompleted))
+onMounted(()=>run(async()=>{
+  const archiveId=router.currentRoute.value.query.archiveId
+  if(typeof archiveId==='string'){tab.value='imported';await Promise.all([loadArchives(),openArchive(archiveId)])}
+  else await loadCompleted()
+}))
 </script>
 
 <template>
@@ -37,16 +60,33 @@ onMounted(()=>run(loadCompleted))
       <p v-if="busy" aria-busy="true">正在加载…</p><p v-else-if="!completed.length">暂无已完成案件。</p><template v-else><button v-for="item in completed" :key="item.id" class="archive-row" type="button" @click="router.push(`/work-orders/${item.id}`)"><strong>{{ item.claimNo||item.businessNo }}</strong><ElTag class="completed-tag" effect="plain">已完成</ElTag><span>{{ item.ownerName||item.ownerPhone||'未填写车主' }} · {{ item.vehicleBrand }} {{ item.vehicleModel }}</span><small>{{ item.businessNo }} · 查看案件详情 →</small></button></template>
       <div class="pager"><ElButton :disabled="busy||completedPage<=1" @click="completedPage--;run(loadCompleted)">上一页</ElButton><span>{{ completedPage }} / {{ Math.max(1,Math.ceil(completedTotal/20)) }}</span><ElButton :disabled="busy||completedPage*20>=completedTotal" @click="completedPage++;run(loadCompleted)">下一页</ElButton></div>
     </section>
-    <section v-if="tab==='imported'" class="archive-panel"><h2>导入档案</h2><form class="search" @submit.prevent="archivePage=1;run(loadArchives)"><ElInput v-model="query" clearable placeholder="报案号、车主、电话或车牌" aria-label="搜索历史档案"><template #append><ElButton :disabled="busy" native-type="submit">搜索</ElButton></template></ElInput></form><p>共 {{ archiveTotal }} 条</p>
-      <p v-if="busy" aria-busy="true">正在加载…</p><div v-else-if="!archives.length">暂无历史档案。</div><template v-else><button v-for="item in archives" :key="item.id" class="archive-row" type="button" @click="run(()=>openArchive(item.id))"><strong>{{ item.claim_no||'无报案号' }}</strong><span>{{ item.owner_name }} · {{ item.brand }} {{ item.model }}</span><small>{{ item.repair_date||'无维修日期' }} · {{ item.shop_name||'未填维修网点' }}</small></button></template>
+    <section v-if="tab==='imported'" class="archive-panel"><h2>导入档案</h2><form class="search" @submit.prevent="archivePage=1;run(loadArchives)"><ElInput v-model="query" clearable placeholder="平台工单号、案件号、车主、电话或车牌" aria-label="搜索历史档案"><template #append><ElButton :disabled="busy" native-type="submit">搜索</ElButton></template></ElInput></form><p>共 {{ archiveTotal }} 条</p>
+      <p v-if="busy" aria-busy="true">正在加载…</p><div v-else-if="!archives.length">暂无历史档案。</div><template v-else><button v-for="item in archives" :key="item.id" class="archive-row" type="button" @click="run(()=>openArchive(item.id))"><strong>{{ item.claim_no||'无报案号' }}</strong><ElTag v-if="item.formal_history" class="completed-tag" effect="plain" type="success">正式历史导入</ElTag><span>{{ item.owner_name }} · {{ item.brand }} {{ item.model }}</span><small>{{ item.platform_order_no ? `原平台工单 ${item.platform_order_no} · ` : '' }}{{ item.repair_date||'无维修日期' }} · {{ item.shop_name||'未填维修网点' }}</small></button></template>
       <div class="pager"><ElButton :disabled="busy||archivePage<=1" @click="archivePage--;run(loadArchives)">上一页</ElButton><span>{{ archivePage }} / {{ Math.max(1,Math.ceil(archiveTotal/20)) }}</span><ElButton :disabled="busy||archivePage*20>=archiveTotal" @click="archivePage++;run(loadArchives)">下一页</ElButton></div>
-      <div v-if="detail" class="detail"><h3>历史档案详情（只读）</h3><dl><template v-for="[key,label] in detailFields" :key="key"><dt>{{ label }}</dt><dd>{{ detail[key]??'—' }}</dd></template></dl></div>
+      <div v-if="detail" class="detail"><h3>历史档案详情（只读）</h3>
+        <template v-if="detail.full_record">
+          <p>正式历史导入 · {{ detail.full_record.details.length }} 条明细 · 维修网点 {{ detail.shop_name || '未注明' }}</p>
+          <ElButton v-if="detail.import_id" text @click="run(()=>source(String(detail?.import_id),'历史档案原文件.xlsx'))">下载原工作簿</ElButton>
+          <details open><summary>案件字段</summary><dl><template v-for="(value,label) in detail.full_record.fields" :key="label"><dt>{{ label === '序号' ? '原平台工单号' : label }}</dt><dd>{{ value || '—' }}</dd></template></dl></details>
+          <h3>原始明细</h3>
+          <article v-for="line in detail.full_record.details" :key="line.rowNumber" class="preview-row">
+            <div><strong>第 {{ line.rowNumber }} 行 · {{ line.original['受损部位'] }}</strong><span>{{ line.original['单位'] }} · 配件商 {{ line.correctedSupplierAmount ?? line.original['配件商明细报价'] }} 元 · CP {{ line.original['CP明细报价'] }} 元</span></div>
+            <p v-if="line.correctedSupplierAmount">用户确认更正配件商报价，原值 {{ line.original['配件商明细报价'] }} 元</p>
+            <ElButton text @click="rawRow=rawRow===line.rowNumber?undefined:line.rowNumber">{{ rawRow===line.rowNumber?'收起原行':'查看原行全部字段' }}</ElButton>
+            <dl v-if="rawRow===line.rowNumber"><template v-for="(value,label) in line.original" :key="label"><dt>{{ label }}</dt><dd>{{ value || '—' }}</dd></template></dl>
+          </article>
+        </template>
+        <dl v-else><template v-for="[key,label] in detailFields" :key="key"><dt>{{ label }}</dt><dd>{{ detail[key]??'—' }}</dd></template></dl>
+      </div>
     </section>
-    <section v-if="showImport" class="archive-panel"><h2>批量导入与预览</h2><p>使用“历史订单／字段说明”双工作表模板，最多 10 MiB、2000 行。模板中的示例行也会进入预览，请确认后再归档。</p>
+    <section v-if="showImport" class="archive-panel"><h2>批量导入与预览</h2>
+      <label class="search">工作簿格式<ElSelect v-model="importFormat" :disabled="busy"><ElOption label="正式历史工作簿 · 导入文档" value="FULL_WORKBOOK" /><ElOption label="原历史订单模板 · 17 列" value="LEGACY_17" /></ElSelect></label>
+      <div v-if="importFormat==='FULL_WORKBOOK'" class="preview-row"><p>按原平台工单号和案件号归组。各项行号使用 Excel 左侧行号。</p><div><label>排除行号<ElInput v-model="excludeRows" placeholder="逗号分隔，可留空" :disabled="busy" /></label><label>配件商报价更正行<ElInput v-model="correctionRow" placeholder="可留空" :disabled="busy" /></label><label>更正后金额（元）<ElInput v-model="correctionAmount" placeholder="可留空" :disabled="busy" /></label></div></div>
+      <p v-else>使用“历史订单／字段说明”双工作表模板。示例行也会进入预览。</p>
       <FileDropZone hint="一次1个XLSX；≤10 MiB、2000行。选择后仍需上传预览及人工确认归档。" :max-bytes="10485760" :feedback="message" :disabled="busy" :busy="busy"><input type="file" accept=".xlsx" aria-label="选择历史订单 Excel" :disabled="busy" @change="choose"></FileDropZone><ElButton :loading="busy" type="primary" @click="run(preview)">上传并预览</ElButton>
       <div class="batch-list"><h3>导入批次</h3><ElButton :disabled="busy" text @click="run(loadBatches)">刷新</ElButton><button v-for="batch in batches" :key="batch.id" type="button" :class="{active:selected?.id===batch.id}" @click="run(()=>select(batch))">{{ batch.fileName }} · {{ batch.totalRows }} 行</button><p v-if="!batches.length">暂无导入批次。</p><div class="pager"><ElButton :disabled="busy||batchPage<=1" @click="batchPage--;run(loadBatches)">上一页</ElButton><span>{{ batchPage }} / {{ Math.max(1,Math.ceil(batchTotal/20)) }}</span><ElButton :disabled="busy||batchPage*20>=batchTotal" @click="batchPage++;run(loadBatches)">下一页</ElButton></div></div>
-      <div v-if="selected" class="preview"><h3>第 {{ rowPage }} 页预览</h3><p>待归档 {{ selected.ready_count }} · 已归档 {{ selected.imported_count }} · 重复跳过 {{ selected.duplicate_count }} · 无效 {{ selected.invalid_count }} · 失败 {{ selected.failed_count }}</p><ElButton :disabled="busy||!selected.ready_count" type="primary" @click="run(confirm)">确认归档有效行</ElButton><ElButton :disabled="busy" @click="run(source)">下载原文件</ElButton>
-        <article v-for="row in rows" :key="row.rowNumber" class="preview-row"><div><strong>Excel 第 {{ row.rowNumber }} 行</strong><ElTag>{{ row.status }}</ElTag><span>{{ row.values['车主姓名'] }} · {{ row.values['报案号']||'无报案号' }}</span></div><p v-if="row.error" class="error">{{ row.error }}</p><p v-if="row.warning">报案号与其他历史记录相同，但整行内容不同；此行仍可归档。</p><details><summary>查看原始 17 列</summary><dl><template v-for="(value,key) in row.values" :key="key"><dt>{{ key }}</dt><dd>{{ value||'—' }}</dd></template></dl></details></article>
+      <div v-if="selected" class="preview"><h3>第 {{ rowPage }} 页预览</h3><p>待归档 {{ selected.ready_count }} · 已归档 {{ selected.imported_count }} · 重复跳过 {{ selected.duplicate_count }} · 无效 {{ selected.invalid_count }} · 失败 {{ selected.failed_count }}</p><ElButton :disabled="busy||!selected.ready_count" type="primary" @click="run(confirm)">确认归档</ElButton><ElButton v-if="selected.format==='FULL_WORKBOOK'&&!selected.ready_count&&(selected.imported_count||selected.duplicate_count)" :disabled="busy" @click="run(importPrices)">导入配件报价</ElButton><ElButton :disabled="busy" @click="run(()=>source())">下载原文件</ElButton>
+        <article v-for="row in rows" :key="row.rowNumber" class="preview-row"><div><strong>Excel 第 {{ row.rowNumber }} 行</strong><ElTag>{{ row.status }}</ElTag><span>{{ row.values['车主姓名'] }} · {{ row.values['案件号']||row.values['报案号']||'无案件号' }}</span><span v-if="row.fullRecord">{{ row.fullRecord.details.length }} 条明细 · {{ row.fullRecord.repairShop }}</span></div><p v-if="row.error" class="error">{{ row.error }}</p><p v-if="row.warning">报案号与其他历史记录相同，但整行内容不同；此行仍可归档。</p><details><summary>查看档案字段</summary><dl><template v-for="(value,key) in row.values" :key="key"><dt>{{ key }}</dt><dd>{{ value||'—' }}</dd></template></dl></details></article>
         <div class="pager"><ElButton :disabled="busy||rowPage<=1" @click="rowPage--;run(loadRows)">上一页</ElButton><span>{{ rowPage }} / {{ Math.max(1,Math.ceil(selected.totalRows/20)) }}</span><ElButton :disabled="busy||rowPage*20>=selected.totalRows" @click="rowPage++;run(loadRows)">下一页</ElButton></div>
       </div>
     </section>

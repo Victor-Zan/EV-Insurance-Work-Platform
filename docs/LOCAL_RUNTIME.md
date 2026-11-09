@@ -137,3 +137,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Manage-LocalWe
 本机8080已同步最终验证JAR，SHA256为DCD225D06F420BE8C258C7CDCCCA0962129561B9E66DC873AC5FB54A354C1F03。安装前数据库dump、JAR、私密配置和进程信息备份在tmp/rough-dispatch-20261026/before-install-20261026-173031。旧兼容SQL逐份字节核对保持，只追加V30；public实际从29升级30，守护target=30。原Vite管理端及Docker保持运行，Backend/Admin/AdminApi/LoginApi/WatchRunning/AutoRecoveryEnabled均True。
 
 等待接单页保留顶部原案件进度条，刷新后显示持久化的目的地和粗定位标记；切换到等待状态回到页顶，避免沿用派单按钮所在的滚动位置。合成测试EVR-20261026-000005从深圳宝安自由路粗定位派往市民中心模拟目的地ID13，实际开发接收shopId=1，开发网点账号回读可见；停在PENDING_ACCEPTANCE，没有代网点接单。既有案件未改动；此前保留的000003已不在待派单状态，因此没有复用它做本轮提交。截图及回执在tmp/rough-dispatch-20261026。
+## 2026-10-29：核损单次确认与开发车主联调运行版本
+
+本机运行包已同步当前源码，兼容迁移目录原样保留已应用SQL，仅追加V31—V32及已有dev模拟种子，启动器target更新至32。原V25版本与checksum保持，不执行repair；换包、迁移及绑定前的数据库备份在忽略目录`tmp/dev-owner-20261029/before-runtime.dump`，旧运行包和迁移目录位置记录于该目录runtime-install.json。独立最终价格补充版本的旧包与哈希在`tmp/final-price-20261029/runtime-install.json`。
+
+本机私密.env已开启`DEV_OWNER_BINDING_ENABLED=true`，仅dev profile生效；新提交工单默认绑定固定dev_owner。已有35张正式单经用户授权同步，原绑定/版本和审计trace保存在忽略目录binding-receipt.json及数据库审计中；联系人和工单流程状态不改，未提交草稿不开放给车主。正式环境或开关关闭仍用手机号匹配。
+
+客服核损输入“核损金额”和独立“最终确认价格”，可不同，一次确认完成办理；资金应收/应付默认采用客服确认快照中的最终价格。演示单EVR-20261029-000002停在保险核损、金额和确认均未提交，开发车主可见。车主端请使用配置已允许的`http://localhost:5174`；客服演示入口为`http://127.0.0.1:5173`。未将本机.env或数据库、截图、运行包提交到Git。
