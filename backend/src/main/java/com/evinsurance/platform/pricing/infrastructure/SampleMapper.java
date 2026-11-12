@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.*;
 
 @Mapper
 public interface SampleMapper {
+    record SourceQuote(int rowNumber, String nature) {}
     void lockSource(@Param("key") String key);
     Map<String,Object> existing(@Param("kind") String kind,@Param("key") String key);
     void batch(@Param("id") UUID id,@Param("kind") String kind,@Param("key") String key,
@@ -15,6 +16,7 @@ public interface SampleMapper {
     Map<String,Object> lock(@Param("id") UUID id);
     String detail(@Param("id") UUID id);
     List<String> relatedHistoricalQuotes(@Param("id") UUID id);
+    List<SourceQuote> existingWorkbookQuotes(@Param("hash") String hash, @Param("includeArchives") boolean includeArchives);
     long count(@Param("f") SampleRequests.Filter filter);
     List<String> list(@Param("f") SampleRequests.Filter filter,@Param("offset") int offset,@Param("size") int size);
     long groupCount(@Param("f") SampleRequests.Filter filter);
@@ -27,6 +29,7 @@ public interface SampleMapper {
     Map<String,Object> batchDetail(@Param("id") UUID id);
     List<Long> brandsNamed(@Param("name") String name);
     Long historicalModel(@Param("brand") long brand);
+    List<Long> modelsNamed(@Param("brand") long brand, @Param("name") String name);
     List<Long> partsNamed(@Param("name") String name,@Param("unit") String unit);
     void historicalReviews(@Param("rows") String rows,@Param("actor") long actor);
     void advanceBatch(@Param("batch") UUID batch);

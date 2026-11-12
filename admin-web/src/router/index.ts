@@ -32,6 +32,7 @@ const router = createRouter({
     { path: '/admin/audit-logs', component: AuditView, meta: { roles: ['ADMIN'] } },
     { path: '/admin/settings/work-orders', component: WorkOrderSettingsView, meta: { roles: ['ADMIN'] } },
     { path: '/notifications', component: NotificationsView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
+    { path: '/funds/analytics', component: () => import('@/features/funds/AnalyticsView.vue'), meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
     { path: '/funds/workbench', component: FundsWorkbenchView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
     { path: '/complaints', component: ComplaintsWorkbenchView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
     { path: '/funds/imports', component: FundsImportsView, meta: { roles: ['CUSTOMER_SERVICE'] } },

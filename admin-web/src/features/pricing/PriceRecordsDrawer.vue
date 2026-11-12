@@ -18,6 +18,7 @@ const history = ref<ReviewVersion[]>([]), historyPage = ref(1), historyTotal = r
 const api = '/pricing/samples'
 const evidenceLabels: Record<string, string> = {
   ...Object.fromEntries(sampleFields), historicalCaseId: '来源档案编号', lineNumber: '来源行号', vehicleBrand: '原始车辆品牌',
+  sheetName: '来源工作表',
   priceNature: '原始价格性质', caseId: '来源工单编号', quoteId: '来源报价编号', quantity: '数量', lineTotal: '原始行金额',
 }
 let rowsRequest = 0, detailsRequest = 0, historyRequest = 0

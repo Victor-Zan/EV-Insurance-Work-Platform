@@ -19,7 +19,7 @@ watch(()=>route.fullPath,refreshUnread)
 let previewTimer:ReturnType<typeof setTimeout>|undefined
 function cancelPreviewClose(){if(previewTimer)clearTimeout(previewTimer);previewTimer=undefined}
 function schedulePreviewClose(){cancelPreviewClose();previewTimer=setTimeout(()=>{preview.value=null},120)}
-function onResize(){const wide=window.innerWidth>=1440;if(wide!==desktopWide.value){desktopWide.value=wide;opened.value=wide&&active.value!=='pricing'?active.value:null;preview.value=null}}
+function onResize(){const wide=window.innerWidth>=1440;if(wide!==desktopWide.value){desktopWide.value=wide;opened.value=wide&&active.value!=='pricing'&&route.path!=='/funds/analytics'?active.value:null;preview.value=null}}
 onMounted(()=>{window.addEventListener('resize',onResize);window.addEventListener('focus',refreshUnread);document.addEventListener('visibilitychange',refreshUnread);unreadTimer=setInterval(refreshUnread,30000)})
 onUnmounted(()=>{cancelPreviewClose();window.removeEventListener('resize',onResize);window.removeEventListener('focus',refreshUnread);document.removeEventListener('visibilitychange',refreshUnread);if(unreadTimer)clearInterval(unreadTimer);unread.reset()})
 const isAdmin = computed(() => currentUser.value?.roles.includes('ADMIN') === true)
@@ -28,7 +28,7 @@ const modules = computed(() => [
   { id: 'home' as Module, label: '工作台', path: '/', glyph: 'home' },
   { id: 'cases' as Module, label: '案件', path: '/work-orders', glyph: 'case' },
   { id: 'pricing' as Module, label: '价格库', path: '/pricing', glyph: 'price' },
-  ...(isService.value || isAdmin.value ? [{ id: 'funds' as Module, label: '资金', path: '/funds/workbench', glyph: 'funds' }] : []),
+  ...(isService.value || isAdmin.value ? [{ id: 'funds' as Module, label: '资金', path: '/funds/analytics', glyph: 'funds' }] : []),
   { id: 'notices' as Module, label: '通知', path: '/notifications?tab=notices', glyph: 'bell' },
   ...(isAdmin.value ? [{ id: 'admin' as Module, label: '管理', path: '/admin/users', glyph: 'admin' }] : []),
 ])
@@ -38,13 +38,14 @@ const links = computed(() => {
   switch (visible.value) {
     case 'home': return [{ label: '工作台', to: '/' }, { label: '我的待办', to: '/notifications?tab=todos' }]
     case 'cases': return [{ label: '全部案件', to: '/work-orders' }, { label: '历史档案', to: '/historical-cases' }, { label: '投诉跟踪', to: '/complaints' }, { label: '我的待办', to: '/notifications?tab=todos' }, { label: '案件草稿', to: '/work-orders?status=DRAFT' }]
-    case 'funds': return [{ label: '跨案件资金查询', to: '/funds/workbench' }, ...(isService.value ? [{ label: '资金导入', to: '/funds/imports' }] : []), { label: '案件资金记录', to: '/work-orders' }]
+    case 'funds': return [{ label: '经营看板', to: '/funds/analytics' }, { label: '案件收支', to: '/funds/workbench' }, ...(isService.value ? [{ label: '资金导入', to: '/funds/imports' }] : []), { label: '案件资金记录', to: '/work-orders' }]
     case 'notices': return [{ label: '我的待办', to: '/notifications?tab=todos' }, { label: '站内通知', to: '/notifications?tab=notices' }]
     case 'admin': return [{ label: '用户与角色', to: '/admin/users' }, { label: '区域', to: '/admin/regions' }, { label: '网点', to: '/admin/shops' }, { label: '审计日志', to: '/admin/audit-logs' }, { label: '重复判断配置', to: '/admin/settings/work-orders' }]
     default: return []
   }
 })
 watch(active, value => { if(desktopWide.value&&value!=='pricing')opened.value=value;else if(opened.value!==value)opened.value=null;preview.value=null }, { immediate: true })
+watch(()=>route.path,path=>{if(path==='/funds/analytics'){opened.value=null;preview.value=null}},{immediate:true})
 function activate(id: Module, path: string) { opened.value = id==='pricing'?null:id; preview.value = null; void router.push(path) }
 function previewModule(id: Module) { cancelPreviewClose(); preview.value = id==='pricing'?null:id }
 function close() { preview.value = null; opened.value = null }
@@ -76,7 +77,7 @@ function logout() { authSession.clear(); void router.replace('/login') }
       <nav><RouterLink v-for="link in links" :key="link.to" :to="link.to" @click="opened=visible;preview=null">{{ link.label }}</RouterLink></nav>
     </aside></Transition>
     <div class="app-main-wrap" @click="preview=null;opened=null">
-      <header class="context-header"><img class="context-blueprint" :src="engineeringBlueprint" alt="" aria-hidden="true"><form class="global-search" role="search" @submit.prevent="submitSearch"><ElInput v-model="search" clearable placeholder="搜索案件号、报案号或手机号" aria-label="搜索案件"/><ElButton native-type="submit">搜索</ElButton></form><div class="header-actions"><RouterLink class="notification-link" to="/notifications?tab=notices" :aria-label="unreadCount?`站内通知，${unreadCount}条未读`:'站内通知'">站内通知<span v-if="unreadCount>0" class="unread-badge" aria-hidden="true">{{ unreadLabel }}</span></RouterLink><span>{{ currentUser?.displayName }}</span><ElButton text @click="logout">退出</ElButton></div></header>
+      <header class="context-header"><img class="context-blueprint" :src="engineeringBlueprint" alt="" aria-hidden="true"><form v-if="route.path!=='/funds/analytics'" class="global-search" role="search" @submit.prevent="submitSearch"><ElInput v-model="search" clearable placeholder="搜索案件号、报案号或手机号" aria-label="搜索案件"/><ElButton native-type="submit">搜索</ElButton></form><div class="header-actions" :style="route.path==='/funds/analytics'?{marginLeft:'auto'}:undefined"><RouterLink class="notification-link" to="/notifications?tab=notices" :aria-label="unreadCount?`站内通知，${unreadCount}条未读`:'站内通知'">站内通知<span v-if="unreadCount>0" class="unread-badge" aria-hidden="true">{{ unreadLabel }}</span></RouterLink><span>{{ currentUser?.displayName }}</span><ElButton text @click="logout">退出</ElButton></div></header>
       <main id="main-content" class="app-content" tabindex="-1"><slot /></main>
     </div>
   </div>

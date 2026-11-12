@@ -12,6 +12,7 @@ import com.evinsurance.platform.identity.domain.CurrentUser;
 import com.evinsurance.platform.identity.domain.Role;
 import com.evinsurance.platform.integration.storage.ObjectStorageService;
 import com.evinsurance.platform.pricing.application.HistoricalPriceImportService;
+import com.evinsurance.platform.pricing.infrastructure.SampleMapper.SourceQuote;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -212,6 +213,7 @@ public class HistoricalCaseService {
         var batch=batch(id);
         if(!"FULL_WORKBOOK".equals(batch.get("format"))||!mapper.pending(id).isEmpty())throw ApiException.invalid("请先确认全量工作簿归档");
         int rows=0,prices=0,existing=0;
+        var directQuotes=priceImport.directWorkbookQuotes((String)batch.get("sha256"));
         for(UUID archiveId:mapper.importedArchiveIds(id)) {
             var archived=mapper.archive(archiveId);
             var full=json.readValue((String)archived.get("full_record"),FullHistoricalCaseFileParser.CaseData.class);
@@ -227,7 +229,9 @@ public class HistoricalCaseService {
                 quotes.add(new HistoricalPriceImportService.Quote(detail.rowNumber(),part,unit,"CP_QUOTED",cp,FullHistoricalCaseFileParser.positiveAmount(cp)));
                 rows++;
             }
-            int added=priceImport.importQuotes(archiveId,full.fields().get("电动车品牌").strip(),quotes);
+            var pendingQuotes=quotes.stream().filter(quote -> !directQuotes.contains(
+                new SourceQuote(quote.sourceRow(),quote.nature()))).toList();
+            int added=priceImport.importQuotes(archiveId,full.fields().get("电动车品牌").strip(),pendingQuotes);
             prices+=added;existing+=quotes.size()-added;
         }
         return json.createObjectNode().put("detailRows",rows).put("importedPrices",prices).put("existingPrices",existing);

@@ -16,8 +16,9 @@ public class FileAccess {
     public WorkOrderEntity order(UUID id,boolean lock) {
         var a=CurrentUser.require(); var row=lock?orders.lock(id):orders.find(id);
         if(row==null) throw ApiException.missing("Work order");
+        if(lock) com.evinsurance.platform.workorder.application.WorkOrderWriteAccess.require(row,a);
         if(a.roles().contains(Role.ADMIN)) return row;
-        if(a.roles().contains(Role.CUSTOMER_SERVICE) && (!"DRAFT".equals(row.getStatus())||row.getCreatedBy()==a.id())) return row;
+        if(a.roles().contains(Role.CUSTOMER_SERVICE) && (!"DRAFT".equals(row.getStatus())||row.getCreatedBy()==a.id()||java.util.Objects.equals(row.getCurrentResponsibleId(),a.id()))) return row;
         if(!"DRAFT".equals(row.getStatus()) && a.roles().contains(Role.REPAIR_SHOP)&&a.shopId()!=null&&a.shopId().equals(row.getShopId())) return row;
         if(!"DRAFT".equals(row.getStatus()) && a.roles().contains(Role.OWNER)&&row.getOwnerUserId()!=null&&row.getOwnerUserId()==a.id()) return row;
         throw ApiException.denied();

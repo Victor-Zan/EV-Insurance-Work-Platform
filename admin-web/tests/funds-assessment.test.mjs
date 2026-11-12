@@ -46,3 +46,12 @@ test('funds shows the independent final price and never falls back to an assesse
  f.setQuote({assessment:{id:'manual',amount:'620.00',sourceCurrent:true},gate:{customerServiceConfirmationRecorded:true}})
  await f.context.load();assert.equal(f.context.confirmed.value,false);assert.match(priceText(f),/未确认/)
 })
+test('funds shows the confirmed shop cost, signed profit, and unavailable zero-denominator rate',async()=>{
+ const f=fixture(),gate={customerServiceConfirmationRecorded:true}
+ const quote={confirmedAmount:'60.00',assessment:{amount:'60.00',sourceCurrent:true},gate,
+  financialBasis:{shopAmount:'80.00',profitAmount:'-20.00',profitRate:'-33.33'}}
+ f.setQuote(quote);await f.context.load()
+ assert.match(priceText(f),/网点应付 80\.00 元 平台盈利 -20\.00 元 利润率 -33\.33%/)
+ f.setQuote({...quote,confirmedAmount:'0.00',financialBasis:{...quote.financialBasis,profitAmount:'-80.00',profitRate:null}});await f.context.load()
+ assert.match(priceText(f),/利润率 —/)
+})

@@ -11,10 +11,11 @@
  <select id="batchDetail" resultType="map">SELECT * FROM price_sample_batch WHERE id=#{id}</select>
  <select id="brandsNamed" resultType="long">SELECT id FROM price_brand WHERE name=#{name} AND enabled ORDER BY id LIMIT 2</select>
  <select id="historicalModel" resultType="long">SELECT id FROM price_model WHERE brand_id=#{brand} AND code='HIST-UNSPECIFIED' AND enabled</select>
+ <select id="modelsNamed" resultType="long">SELECT id FROM price_model WHERE brand_id=#{brand} AND name=#{name} AND enabled ORDER BY id LIMIT 2</select>
  <select id="partsNamed" resultType="long">SELECT id FROM price_part WHERE name=#{name} AND unit=#{unit} AND enabled ORDER BY id LIMIT 2</select>
- <insert id="historicalReviews">INSERT INTO price_sample_review(sample_id,revision,status,part_id,model_id,amount,unit,price_nature,reason,created_by)
- SELECT x.id,1,'CONFIRMED',x.part,x.model,x.amount,x.unit,x.nature,x.reason,#{actor}
- FROM jsonb_to_recordset(CAST(#{rows} AS jsonb)) AS x(id uuid,part bigint,model bigint,amount numeric,unit text,nature text,reason text)</insert>
+ <insert id="historicalReviews">INSERT INTO price_sample_review(sample_id,revision,status,part_id,model_id,amount,unit,price_nature,region,reason,created_by)
+ SELECT x.id,1,'CONFIRMED',x.part,x.model,x.amount,x.unit,x.nature,x.region,x.reason,#{actor}
+ FROM jsonb_to_recordset(CAST(#{rows} AS jsonb)) AS x(id uuid,part bigint,model bigint,amount numeric,unit text,nature text,region text,reason text)</insert>
  <update id="advanceBatch">UPDATE price_sample SET revision=revision+1 WHERE batch_id=#{batch} AND revision=0</update>
  <sql id="joins">FROM price_sample s JOIN price_sample_batch b ON b.id=s.batch_id
  LEFT JOIN price_sample_review r ON r.sample_id=s.id AND r.revision=s.revision
@@ -27,35 +28,55 @@
   <if test="f.partId != null">AND r.part_id=#{f.partId}</if>
   <if test="f.sourceKind != null and f.sourceKind != ''">AND b.source_kind=#{f.sourceKind}</if>
   <if test="f.status != null and f.status != ''">AND coalesce(r.status,'PENDING')=#{f.status}</if>
-  <if test="f.region != null and f.region != ''">AND r.region=#{f.region}</if>
+  <if test="f.exactGroup != true and f.region != null and f.region != '' and f.region != '全国'">
+   AND r.region IN (#{f.region},'全国','')
+  </if>
   <if test="f.priceNature != null and f.priceNature != ''">AND r.price_nature=#{f.priceNature}</if>
   <if test="f.from != null">AND s.created_at&gt;=(CAST(#{f.from} AS date)::timestamp AT TIME ZONE 'Asia/Shanghai')</if>
   <if test="f.to != null">AND s.created_at&lt;((CAST(#{f.to} AS date)+1)::timestamp AT TIME ZONE 'Asia/Shanghai')</if>
   <if test="f.batchId != null">AND s.batch_id=#{f.batchId}</if>
   <if test="f.exactGroup == true">AND r.unit=#{f.unit} AND r.part_brand=coalesce(#{f.partBrand},'')
-   AND r.region=coalesce(#{f.region},'')</if>
+   <choose>
+    <when test="f.region == null or f.region == '' or f.region == '全国'">AND r.region IN ('全国','')</when>
+    <otherwise>AND r.region=#{f.region}</otherwise>
+   </choose>
+  </if>
  </where></sql>
  <sql id="view">jsonb_build_object('id',s.id,'batchId',b.id,'sourceKind',b.source_kind,'fileName',b.file_name,
  'hasFile',b.object_key IS NOT NULL,'original',s.original-'quality'-'priceDate','version',s.revision,'status',coalesce(r.status,'PENDING'),
  'partId',r.part_id,'partName',p.name,'modelId',r.model_id,'modelName',m.name,'vehicleBrand',brand.name,
- 'amount',r.amount::text,'unit',r.unit,'partBrand',r.part_brand,'region',r.region,
+ 'amount',r.amount::text,'unit',r.unit,'partBrand',r.part_brand,'region',CASE WHEN r.region='' THEN '全国' ELSE r.region END,
  'importedDate',(s.created_at AT TIME ZONE 'Asia/Shanghai')::date,
  'priceNature',r.price_nature,'reason',coalesce(r.reason,'请核对车型、配件、单位及价格性质'))::text</sql>
  <select id="detail" resultType="string">SELECT <include refid="view"/><include refid="joins"/> WHERE s.id=#{id}</select>
  <select id="relatedHistoricalQuotes" resultType="string">SELECT <include refid="view"/><include refid="joins"/>
  JOIN price_sample origin ON origin.id=#{id} AND origin.batch_id=s.batch_id
-  AND origin.original-&gt;&gt;'historicalCaseId'=s.original-&gt;&gt;'historicalCaseId'
+  AND (origin.original-&gt;&gt;'historicalCaseId') IS NOT DISTINCT FROM (s.original-&gt;&gt;'historicalCaseId')
   AND origin.original-&gt;&gt;'lineNumber'=s.original-&gt;&gt;'lineNumber'
- WHERE b.source_kind='HISTORICAL_ARCHIVE' AND r.status='CONFIRMED' AND r.price_nature IN ('SUPPLIER_QUOTED','CP_QUOTED')
+ WHERE (b.source_kind='HISTORICAL_ARCHIVE' OR (b.source_kind='XIAOBANGBANG' AND b.source_key LIKE 'quote-workbook:%'))
+  AND r.status='CONFIRMED' AND r.price_nature IN ('SUPPLIER_QUOTED','CP_QUOTED')
  ORDER BY r.price_nature DESC,s.id LIMIT 2</select>
+ <select id="existingWorkbookQuotes" resultType="com.evinsurance.platform.pricing.infrastructure.SampleMapper$SourceQuote">
+  SELECT (s.original-&gt;&gt;'lineNumber')::int row_number,s.original-&gt;&gt;'priceNature' nature
+  FROM price_sample_batch b JOIN price_sample s ON s.batch_id=b.id
+  WHERE b.source_kind='XIAOBANGBANG' AND b.source_key=concat('quote-workbook:',#{hash})
+  <if test="includeArchives">
+   UNION
+   SELECT (s.original-&gt;&gt;'lineNumber')::int row_number,s.original-&gt;&gt;'priceNature' nature
+   FROM historical_case_import h JOIN historical_case_import_row hr ON hr.import_id=h.id
+   JOIN price_sample_batch b ON b.source_kind='HISTORICAL_ARCHIVE' AND b.source_key=concat('archive:',hr.archive_id)
+   JOIN price_sample s ON s.batch_id=b.id
+   WHERE h.sha256=#{hash} AND hr.archive_id IS NOT NULL
+  </if>
+ </select>
  <select id="count" resultType="long">SELECT count(*) <include refid="joins"/><include refid="filter"/></select>
  <select id="list" resultType="string">SELECT <include refid="view"/><include refid="joins"/><include refid="filter"/>
  ORDER BY s.created_at DESC,s.id LIMIT #{size} OFFSET #{offset}</select>
  <sql id="grouped">SELECT r.part_id,r.model_id,p.name part_name,m.name model_name,brand.name vehicle_brand,
- r.unit,r.part_brand,r.region,r.price_nature,count(*) records,min(r.amount)::text minimum,
+ r.unit,r.part_brand,coalesce(nullif(r.region,''),'全国') region,r.price_nature,count(*) records,min(r.amount)::text minimum,
  max(r.amount)::text maximum,(max(s.created_at) AT TIME ZONE 'Asia/Shanghai')::date latest
  <include refid="joins"/><include refid="filter"/>
- GROUP BY r.part_id,r.model_id,p.name,m.name,brand.name,r.unit,r.part_brand,r.region,r.price_nature</sql>
+ GROUP BY r.part_id,r.model_id,p.name,m.name,brand.name,r.unit,r.part_brand,coalesce(nullif(r.region,''),'全国'),r.price_nature</sql>
  <select id="groupCount" resultType="long">SELECT count(*) FROM (<include refid="grouped"/>) g</select>
  <select id="groups" resultType="string">SELECT to_jsonb(g)::text FROM (<include refid="grouped"/>) g
  ORDER BY latest DESC,part_id,model_id,unit,part_brand,region,price_nature LIMIT #{size} OFFSET #{offset}</select>

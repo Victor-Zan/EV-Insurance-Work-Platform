@@ -76,7 +76,8 @@ public class SampleService {
         if(!"CONFIRMED".equals(record.path("status").asText()))throw ApiException.missing("Confirmed price sample");
         var result=json.createObjectNode();
         result.set("record",record);
-        result.set("relatedQuotes",json.valueToTree("HISTORICAL_ARCHIVE".equals(record.path("sourceKind").asText())
+        result.set("relatedQuotes",json.valueToTree(("HISTORICAL_ARCHIVE".equals(record.path("sourceKind").asText())
+            ||record.path("original").has("sheetName"))
             ?mapper.relatedHistoricalQuotes(id).stream().map(json::readTree).toList():List.of()));
         return result;
     }

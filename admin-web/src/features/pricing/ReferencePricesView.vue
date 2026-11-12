@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElButton, ElInput, ElSelect, ElOption, ElTable, ElTableColumn, ElPagination, ElSkeleton } from 'element-plus'
 import { httpClient } from '@/shared/http/client'
 import type { ApiResponse, Page } from '@/shared/http/create-client'
 import PricingLookup from './PricingLookup.vue'
 import PriceRecordsDrawer from './PriceRecordsDrawer.vue'
+import WorkbookPriceImportDialog from './WorkbookPriceImportDialog.vue'
 import { importDateRange, importPeriods, sampleSources, priceNatures } from './samples'
 import type { ImportPeriod, ReferenceGroup } from './samples'
 
@@ -19,6 +20,7 @@ const page = ref(1), total = ref(0), groups = ref<ReferenceGroup[]>([])
 const loading = ref(false), error = ref('')
 const applied = ref<QueryParams>({})
 const drawer = ref<{ group: ReferenceGroup; filters: QueryParams }>()
+const importOpen = ref(false)
 let generation = 0
 
 async function load() {
@@ -46,11 +48,13 @@ function search() {
   void load()
 }
 
-function reset() {
+async function reset() {
+  const request = generation
   Object.assign(filters, defaults)
   importPeriod.value = 'ALL'
   brandId.value = null
-  search()
+  await nextTick()
+  if (generation === request) search()
 }
 
 function viewRecords(group: ReferenceGroup) {
@@ -59,24 +63,45 @@ function viewRecords(group: ReferenceGroup) {
 
 watch(() => route.query.partName, value => {
   filters.query = typeof value === 'string' ? value : ''
-  search()
 }, { immediate: true })
+watch([
+  () => filters.query.trim(),
+  () => filters.region.trim(),
+  () => filters.modelId,
+  () => filters.sourceKind,
+  () => filters.priceNature,
+  brandId,
+  importPeriod,
+], ([query, region], [previousQuery, previousRegion], onCleanup) => {
+  if (query === previousQuery && region === previousRegion) {
+    search()
+    return
+  }
+  generation++
+  loading.value = true
+  const timer = setTimeout(search, 250)
+  onCleanup(() => clearTimeout(timer))
+})
+search()
 onBeforeUnmount(() => { generation++ })
 </script>
 
 <template>
   <section class="reference-workspace">
-    <header class="page-heading"><h1>参考查询</h1><p>按车型和配件查询参考价格及原始依据。</p></header>
-    <form class="filter-grid" @submit.prevent="search">
+    <header class="page-heading">
+      <div><h1>参考查询</h1><p>按车型和配件查询参考价格及原始依据。</p></div>
+      <ElButton type="primary" @click="importOpen = true">价格批量导入</ElButton>
+    </header>
+    <div class="filter-grid">
       <label>车辆品牌<PricingLookup v-model="brandId" kind="brands" @selected="filters.modelId = null" /></label>
       <label>适配车型<PricingLookup v-model="filters.modelId" kind="models" :brand-id="brandId" /></label>
       <label>配件名称<ElInput v-model="filters.query" clearable maxlength="120" placeholder="标准名称或原始名称" /></label>
       <label>来源<ElSelect v-model="filters.sourceKind" clearable placeholder="全部来源"><ElOption v-for="(label,key) in sampleSources" :key="key" :value="key" :label="label" /></ElSelect></label>
-      <label>地区<ElInput v-model="filters.region" clearable maxlength="120" placeholder="输入地区名称" /></label>
-      <label>导入日期<ElSelect v-model="importPeriod" @change="search"><ElOption v-for="(label,key) in importPeriods" :key="key" :value="key" :label="label" /></ElSelect></label>
+      <label>地区<ElInput v-model="filters.region" clearable maxlength="120" placeholder="全国（全部地区）" /></label>
+      <label>导入日期<ElSelect v-model="importPeriod"><ElOption v-for="(label,key) in importPeriods" :key="key" :value="key" :label="label" /></ElSelect></label>
       <label>价格性质<ElSelect v-model="filters.priceNature" clearable placeholder="全部价格性质"><ElOption v-for="(label,key) in priceNatures" :key="key" :value="key" :label="label" /></ElSelect></label>
-      <div class="filter-actions"><ElButton type="primary" native-type="submit" :disabled="loading">查询</ElButton><ElButton @click="reset">重置</ElButton></div>
-    </form>
+      <div class="filter-actions"><ElButton @click="reset">重置</ElButton></div>
+    </div>
     <section class="result-section" :aria-busy="loading">
       <header class="section-heading"><h2>参考价格</h2><span>{{ total }} 组</span></header>
       <ElSkeleton v-if="loading" :rows="7" animated />
@@ -94,12 +119,13 @@ onBeforeUnmount(() => { generation++ })
       </template>
     </section>
     <PriceRecordsDrawer v-if="drawer" :group="drawer.group" :filters="drawer.filters" @close="drawer = undefined" />
+    <WorkbookPriceImportDialog v-if="importOpen" @close="importOpen = false" @imported="search" />
   </section>
 </template>
 
 <style scoped>
 .reference-workspace { max-width: 1400px; margin: 0 auto; padding: 28px 32px 48px; }
-.page-heading { margin-bottom: 28px; }
+.page-heading { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 28px; }
 .page-heading h1 { margin: 0; font-size: 28px; line-height: 1.3; font-weight: 600; }
 .page-heading p, .section-heading span { color: var(--color-text-secondary); font-size: 13px; }
 .filter-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px 20px; padding-bottom: 24px; }

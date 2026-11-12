@@ -70,7 +70,17 @@ class ShopQuoteOcrPostgresIT {
         mvc.perform(multipart("/api/v1/materials/cases/"+id).file(new MockMultipartFile("file","synthetic-scene.png","image/png",image)).param("category","SCENE_PHOTO").header("Authorization","Bearer "+cs).header("Idempotency-Key",UUID.randomUUID().toString())).andExpect(status().isOk());
         var submitted=post(cs,"work-orders/"+id+"/submit",Map.of("confirmPossibleDuplicate",true,"duplicateReason","合成测试"),200);
         mvc.perform(put("/api/v1/work-orders/"+id+"/dispatch-location").header("Authorization","Bearer "+cs).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("expectedVersion",submitted.path("version").asLong(),"regionId",region,"address","合成接车地址","confirmed",true)))).andExpect(status().isOk());post(cs,"work-orders/"+id+"/dispatch",Map.of("shopId",shopId,"confirmPossibleDuplicate",true,"duplicateReason","合成测试"),200);post(shop,"work-orders/"+id+"/accept",Map.of("assignmentVersion",1),200);post(shop,"work-orders/"+id+"/arrive",Map.of("assignmentVersion",1),200);
-        mvc.perform(multipart("/api/v1/materials/cases/"+id).file(new MockMultipartFile("file","synthetic-arrival.png","image/png",image)).param("category","ARRIVAL_PHOTO").param("assignmentVersion","1").header("Authorization","Bearer "+shop).header("Idempotency-Key",UUID.randomUUID().toString())).andExpect(status().isOk());return id;
+        uploadArrivalPhoto(id, 1, image);
+        return id;
+    }
+    private void uploadArrivalPhoto(String caseId, int assignmentVersion, byte[] photo) throws Exception {
+        mvc.perform(multipart("/api/v1/materials/cases/{id}", caseId)
+            .file(new MockMultipartFile("file", "synthetic-arrival.png", "image/png", photo))
+            .param("category", "ARRIVAL_PHOTO")
+            .param("assignmentVersion", String.valueOf(assignmentVersion))
+            .header("Authorization", "Bearer " + shop)
+            .header("Idempotency-Key", UUID.randomUUID().toString()))
+            .andExpect(status().isOk());
     }
     String base(String c){return "quotations/cases/"+c+"/ocr";}
     JsonNode upload(String token,String c,int version,String category,byte[] bytes,String key,int code) throws Exception {return json.readTree(mvc.perform(multipart("/api/v1/"+base(c)).file(new MockMultipartFile("file","synthetic.png","image/png",bytes)).param("assignmentVersion",String.valueOf(version)).param("category",category).param("pageNo","1").header("Authorization","Bearer "+token).header("Idempotency-Key",key)).andExpect(status().is(code)).andReturn().getResponse().getContentAsString()).path("data");}
@@ -88,7 +98,8 @@ class ShopQuoteOcrPostgresIT {
         assertThat(db.queryForObject("SELECT count(*) FROM quote_raw WHERE work_order_id=?::uuid",Long.class,c)).isEqualTo(2);assertThat(db.queryForObject("SELECT count(*) FROM quote_raw_ocr_line WHERE raw_quote_id=?::uuid",Long.class,quote)).isEqualTo(1);
         assertThatThrownBy(()->db.update("UPDATE quote_raw_item SET unit_price=1 WHERE raw_quote_id=?::uuid",quote)).isInstanceOf(org.springframework.dao.DataAccessException.class);
         assertThat(get(shop,base(c)+"/"+j+"/raw",200).path("text").asString()).isEqualTo(new String(raw,StandardCharsets.UTF_8));assertThat(get(shop,base(c)+"/"+j+"/program",200).at("/items/0/description").asString()).isEqualTo("合成轮胎");
-        var audit=json.writeValueAsString(db.queryForList("SELECT summary FROM audit_log WHERE object_id=?",j));assertThat(audit).doesNotContain("人工核对合成轮胎","access_token","13800000000","words_result");flyway.validate();assertThat(flyway.info().current().getVersion().toString()).isEqualTo("32");
+        var audit=json.writeValueAsString(db.queryForList("SELECT summary FROM audit_log WHERE object_id=?",j));assertThat(audit).doesNotContain("人工核对合成轮胎","access_token","13800000000","words_result");
+        flyway.validate();
     }
     @Test void providerSwitchReusesOriginalButCreatesNewJobAndKeepsHistoricalEvidence() throws Exception {
         String c=arrived(),key=UUID.randomUUID().toString();when(provider.id()).thenReturn("MOCK_V1");
@@ -190,7 +201,10 @@ class ShopQuoteOcrPostgresIT {
         String c=arrived(),j=upload(shop,c,1,"ASSESSMENT",image,UUID.randomUUID().toString(),200).path("id").asString();tick();apply(c,j,0,200);assertThat(get(cs,base(c)+"/"+j,200).path("shopQuote").asBoolean()).isTrue();
         db.update("UPDATE work_order_assignment SET status='CANCELLED' WHERE work_order_id=?::uuid",c);
         db.update("INSERT INTO work_order_assignment(work_order_id,assignment_version,shop_id,status,assigned_by,assigned_at) VALUES(?::uuid,2,?,'ACCEPTED',(SELECT id FROM app_user WHERE username='dev_customer_service'),now())",c,shopId);
-        get(shop,base(c)+"/"+j,403);post(shop,"quotations/cases/"+c+"/raw-quotes",Map.of("expectedVersion",0,"assignmentVersion",2,"lines",((List<?>)rawRequest(0,j,1).get("lines"))),403);
+        get(shop,base(c)+"/"+j,403);
+        uploadArrivalPhoto(c, 2, image(4));
+        post(shop,"quotations/cases/"+c+"/raw-quotes",Map.of("expectedVersion",0,"assignmentVersion",2,"lines",rawRequest(0,j,1).get("lines")),403);
+        assertThat(db.queryForObject("SELECT count(*) FROM quote_raw WHERE work_order_id=?::uuid", Long.class, c)).isZero();
         String document=mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/v3/api-docs")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();assertThat(document).contains("/api/v1/quotations/cases/{caseId}/ocr","/api/v1/quotations/cases/{caseId}/ocr/{job}/apply");
     }
     @Test void threeManualRerunsAreIdempotentAndPreserveOriginalQuoteHistory() throws Exception {

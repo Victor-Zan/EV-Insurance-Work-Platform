@@ -86,6 +86,8 @@ class QuotationPostgresIT {
     @Autowired ObjectMapper json;
     @Autowired JdbcTemplate db;
     @Autowired Flyway flyway;
+    @Autowired com.evinsurance.platform.workorder.application.WorkflowMaterialRemoval workflowRemoval;
+    @Autowired com.evinsurance.platform.integration.storage.ObjectStorageService workflowStorage;
 
     @org.springframework.beans.factory.annotation.Autowired private com.evinsurance.platform.notification.application.NotificationProjector notificationProjector;
     private String admin;
@@ -209,9 +211,154 @@ class QuotationPostgresIT {
     }
 
     private JsonNode request(String token,String path,Object body,String key,int expected) throws Exception {
-        String text=mvc.perform(post("/api/v1/"+path).header("Authorization","Bearer "+token).header("Idempotency-Key",key).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body))).andExpect(status().is(expected)).andReturn().getResponse().getContentAsString();return json.readTree(text).path("data");
+        String text=mvc.perform(post("/api/v1/"+path).header("Authorization","Bearer "+token).header("Idempotency-Key",key).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body))).andDo(result->{
+            if(result.getResponse().getStatus()!=expected&&result.getResolvedException()!=null)
+                throw new AssertionError("Unexpected error in synthetic integration fixture",result.getResolvedException());
+        }).andExpect(status().is(expected)).andReturn().getResponse().getContentAsString();return json.readTree(text).path("data");
     }
     private JsonNode request(String token,String path,Object body,int expected) throws Exception{return request(token,path,body,UUID.randomUUID().toString(),expected);}
+    private JsonNode management(String token,String id,String suffix) throws Exception {
+        var response=mvc.perform(get("/api/v1/work-orders/"+id+"/management"+suffix)
+            .header("Authorization","Bearer "+token)).andExpect(status().isOk()).andReturn().getResponse();
+        return json.readTree(response.getContentAsString()).path("data");
+    }
+
+    @Test void managementWithdrawKeepsEarlierEvidenceAndRejectsChangedMaterialScope() throws Exception {
+        String id=arrived();
+        raw(id,"20.00");
+        review(id,"FIXED_AMOUNT","0.00",200);
+        var before=management(customerService,id,"");
+        assertThat(before.path("withdrawal").path("label").asText()).isEqualTo("撤回报价审核");
+        var path="work-orders/"+id+"/management/withdraw";
+        request(customerService,path,Map.of("version",before.path("version").asLong(),"reason","重新核对报价","materialIds",List.of(UUID.randomUUID())),409);
+        request(customerService,path,Map.of("version",before.path("version").asLong(),"reason","重新核对报价","materialIds",List.of()),200);
+        caseStatus(id,"QUOTE_REVIEWING");
+        assertThat(context(customerService,id).path("rawQuote").path("id").asText()).isNotBlank();
+        assertThat(db.queryForObject("SELECT count(*) FROM case_file WHERE work_order_id=?::uuid AND category IN ('SCENE_PHOTO','ARRIVAL_PHOTO')",Long.class,id)).isEqualTo(2);
+        before=management(customerService,id,"");
+        request(customerService,path,Map.of("version",before.path("version").asLong(),"reason","退回报价","materialIds",List.of()),200);
+        caseStatus(id,"ARRIVED");
+        raw(id,"23.00");
+        caseStatus(id,"QUOTE_REVIEWING");
+    }
+
+    @Test void managementTransferMovesWritePermissionAndNotifiesNewHandler() throws Exception {
+        String id=arrived();
+        raw(id,"20.00");
+        var recipient=createUser("CUSTOMER_SERVICE",null);
+        String next=login(recipient.path("username").asText(),"ADMIN");
+        long version=management(customerService,id,"").path("version").asLong();
+        request(customerService,"work-orders/"+id+"/management/transfer",
+            Map.of("version",version,"recipient",recipient.path("id").asLong(),"reason","转交测试"),200);
+        assertThat(management(customerService,id,"").path("readOnly").asBoolean()).isTrue();
+        review(id,"FIXED_AMOUNT","0.00",403);
+        var c=context(next,id);
+        request(next,path(id,"formal-quotes"),Map.of("expectedVersion",c.path("version").asInt(),
+            "rawQuoteId",c.path("rawQuote").path("id").asText(),"mode","FIXED_AMOUNT","fixedAmount","0.00"),200);
+        assertThat(db.queryForObject("""
+            SELECT count(*) FROM in_app_notification n JOIN notification_event e ON e.audit_id=n.event_id
+            WHERE e.work_order_id=?::uuid AND e.kind='WORK_ORDER_TRANSFERRED' AND n.recipient_id=?
+            """,Long.class,id,recipient.path("id").asLong())).isEqualTo(1);
+    }
+
+    @Test void managementDeletionFreezesWritesAndErasesCaseFundsAndEvidenceAfterApproval() throws Exception {
+        String id=receivedRepair();
+        fundsTarget(id,"RECEIVE","100.00",200);
+        request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"RECEIVE","DELETE-"+UUID.randomUUID(),"20.00"),200);
+        String path="work-orders/"+id+"/management/deletion";
+        var view=management(customerService,id,"/deletion");
+        request(customerService,path,Map.of("version",view.path("version").asLong(),"reason","合成删除申请"),200);
+        fundsTarget(id,"RECEIVE","100.00",409);
+        view=management(admin,id,"/deletion");
+        assertThat(view.path("ledger").get(0).path("count").asInt()).isEqualTo(1);
+        long version=view.path("version").asLong();
+        String number=view.path("confirmationNumber").asText();
+        var objects=db.queryForList("SELECT object_key FROM case_file WHERE work_order_id=?::uuid",String.class,id);
+        request(customerService,path+"/approve",Map.of("version",version,"number",number),403);
+        request(admin,path+"/approve",Map.of("version",version,"number","WRONG"),400);
+        request(admin,path+"/approve",Map.of("version",version,"number",number),200);
+        for(String table:List.of("funds_entry","case_file","work_order_status_history","work_order_deletion_request"))
+            assertThat(db.queryForObject("SELECT count(*) FROM "+table+" WHERE work_order_id=?::uuid",Long.class,id)).as(table).isZero();
+        assertThat(db.queryForObject("SELECT count(*) FROM audit_log WHERE object_id=?",Long.class,id)).isZero();
+        mvc.perform(get("/api/v1/work-orders/"+id).header("Authorization","Bearer "+admin)).andExpect(status().isNotFound());
+        workflowRemoval.removeQueuedObjects();
+        assertThat(workflowRemoval.pending(UUID.fromString(id))).isFalse();
+        for(String object:objects)assertThatThrownBy(()->workflowStorage.read(object)).isInstanceOf(com.evinsurance.platform.foundation.api.ApiException.class);
+    }
+
+    @Test void managementReassignmentClearsOldQuoteAndFilesAndRequiresNewAcceptance() throws Exception {
+        String id=arrived();
+        raw(id,"30.00");
+        long destination=createEligibleShop();
+        var view=management(admin,id,"");
+        var materials=new ArrayList<String>();
+        view.path("shopMaterials").forEach(file->materials.add(file.path("id").asText()));
+        assertThat(materials).hasSize(1);
+        var body=Map.of("version",view.path("version").asLong(),"shopId",destination,"reason","原网点缺件",
+            "transferDescription","原网点协助交接","confirmPossibleDuplicate",true,"materialIds",materials);
+        request(admin,"work-orders/"+id+"/management/reassign",body,200);
+        caseStatus(id,"PENDING_ACCEPTANCE");
+        assertThat(db.queryForObject("SELECT shop_id FROM work_order WHERE id=?::uuid",Long.class,id)).isEqualTo(destination);
+        assertThat(db.queryForObject("SELECT count(*) FROM case_file WHERE work_order_id=?::uuid AND category='ARRIVAL_PHOTO'",Long.class,id)).isZero();
+        assertThat(db.queryForObject("SELECT count(*) FROM case_file WHERE work_order_id=?::uuid AND category='SCENE_PHOTO'",Long.class,id)).isEqualTo(1);
+        mvc.perform(get("/api/v1/work-orders/"+id).header("Authorization","Bearer "+shop)).andExpect(status().isForbidden());
+    }
+
+    @Test void managementWithdrawCompletedFundsKeepsLedgerAndAllowsReconfirmation() throws Exception {
+        String id=receivedRepair();
+        fundsTarget(id,"RECEIVE","100.00",200);
+        fundsTarget(id,"PAY","80.00",200);
+        request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"RECEIVE","RECV-"+UUID.randomUUID(),"100.00"),200);
+        fundsConfirm(id,"RECEIVE",200);
+        request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"PAY","PAY-"+UUID.randomUUID(),"80.00"),200);
+        fundsConfirm(id,"PAY",200);
+        var view=management(customerService,id,"");
+        assertThat(view.path("withdrawal").path("label").asText()).isEqualTo("撤回结算确认");
+        request(customerService,"work-orders/"+id+"/management/withdraw",Map.of("version",view.path("version").asLong(),
+            "reason","重核结算","materialIds",List.of()),200);
+        caseStatus(id,"WAITING_SHOP_SETTLEMENT");
+        var ledger=funds(customerService,id);
+        assertThat(ledger.path("payConfirmed").asBoolean()).isFalse();
+        assertThat(ledger.path("payable").path("net").asText()).isEqualTo("80.00");
+        assertThat(management(customerService,id,"/deletion").path("canRequest").asBoolean()).isTrue();
+        var recipient=createUser("CUSTOMER_SERVICE",null);
+        long handler=recipient.path("id").asLong();
+        request(customerService,"work-orders/"+id+"/management/transfer",Map.of(
+            "version",management(customerService,id,"").path("version").asLong(),"recipient",handler,"reason","重新结算交接"),200);
+        String next=login(recipient.path("username").asText(),"ADMIN");
+        request(next,"funds/cases/"+id+"/confirmations",Map.of("expectedVersion",funds(next,id).path("version").asInt(),"direction","PAY"),200);
+        caseStatus(id,"COMPLETED");
+        assertThat(db.queryForObject("SELECT created_by FROM funds_analytics_fact WHERE id=?::uuid",Long.class,id)).isEqualTo(handler);
+    }
+
+    @Test void managementCorrectsUnstartedRepairWithoutReopeningShopChange() throws Exception {
+        String id=arrived();
+        authorized(id);
+        var view=management(admin,id,"");
+        var withdrawal=view.path("withdrawal");
+        assertThat(withdrawal.path("noRepair").asBoolean()).isTrue();
+        var files=new ArrayList<String>();
+        withdrawal.path("materials").forEach(file->files.add(file.path("id").asText()));
+        String path="work-orders/"+id+"/management/withdraw";
+        request(admin,path,Map.of("version",view.path("version").asLong(),"reason","纠正误操作","materialIds",files),400);
+        request(admin,path,Map.of("version",view.path("version").asLong(),"reason","纠正误操作","materialIds",files,"noRepair",true),200);
+        caseStatus(id,"WAITING_INSURER_ASSESSMENT");
+        var corrected=management(admin,id,"");
+        assertThat(corrected.path("withdrawal").isNull()).isTrue();
+        assertThat(corrected.path("canChangeShop").asBoolean()).isFalse();
+    }
+
+    @Test void managementWithdrawSubmissionRestoresSameNumberOnResubmit() throws Exception {
+        var order=formal(customerService,"RECALL-"+UUID.randomUUID(),OWNER_PHONE,"VIN-"+UUID.randomUUID(),Instant.now());
+        String id=order.path("id").asText();
+        var view=management(customerService,id,"");
+        request(customerService,"work-orders/"+id+"/management/withdraw",Map.of(
+            "version",view.path("version").asLong(),"reason","补充工单资料","materialIds",List.of()),200);
+        caseStatus(id,"DRAFT");
+        assertThat(submit(customerService,id,true,"合成重新提交",UUID.randomUUID().toString(),200).path("data").path("businessNo").asText())
+            .isEqualTo(order.path("businessNo").asText());
+    }
+
     private String arrived() throws Exception {return arrived(true);}
     private String arrived(boolean withPhoto) throws Exception {
         String id=formal(customerService,"QUOTE-"+UUID.randomUUID(),OWNER_PHONE,"VIN-"+UUID.randomUUID(),Instant.now()).path("id").asText();
@@ -320,10 +467,11 @@ class QuotationPostgresIT {
     }
     @Test void futureStageMaterialsAreRejectedWithoutStoringFiles() throws Exception {
         String id=arrived();
+        long before=db.queryForObject("select count(*) from case_file where work_order_id=?::uuid",Long.class,id);
         upload(id,"LOSS_ASSESSMENT",null,409);
         upload(id,"PROGRESS_PHOTO",null,409);
         upload(id,"NOTICE",null,200);
-        assertThat(db.queryForObject("select count(*) from case_file where work_order_id=?::uuid",Long.class,id)).isEqualTo(2);
+        assertThat(db.queryForObject("select count(*) from case_file where work_order_id=?::uuid",Long.class,id)).isEqualTo(before+1);
         assertThat(db.queryForObject("select count(*) from case_file where work_order_id=?::uuid AND category IN ('LOSS_ASSESSMENT','PROGRESS_PHOTO')",Long.class,id)).isZero();
     }
     @Test void workflowViewIsStaffScopedAndDoesNotExposeMoney() throws Exception {
@@ -379,8 +527,9 @@ class QuotationPostgresIT {
         var invalidVersion=new HashMap<>(body);invalidVersion.put("expectedVersion",-1);request(customerService,path(id,"assessment-confirmation"),invalidVersion,409);
         for(var token:List.of(admin,shop,owner))request(token,path(id,"assessment-confirmation"),body,403);
         for(String invalid:List.of("-1","1.001","1e2",""))request(customerService,path(id,"assessment-confirmation"),completionBody(id,invalid,invalid),400);
-        var missing=new HashMap<>(completionBody(id,"1.00","1.00"));missing.remove("confirmedAmount");request(customerService,path(id,"assessment-confirmation"),missing,400);
-        missing.put("confirmedAmount","1.00");missing.put("originalReviewed",false);request(customerService,path(id,"assessment-confirmation"),missing,400);
+        request(customerService,path(id,"assessment-confirmation"),body,400);
+        var missing=new HashMap<>(completionBody(id,"1.00","1.00"));missing.remove("amount");request(customerService,path(id,"assessment-confirmation"),missing,400);
+        missing.put("amount","1.00");missing.remove("confirmedAmount");missing.put("originalReviewed",false);request(customerService,path(id,"assessment-confirmation"),missing,400);
         var stale=new HashMap<>(completionBody(id,"1.00","1.00"));stale.put("expectedVersion",-1);request(customerService,path(id,"assessment-confirmation"),stale,409);
         assertThat(context(customerService,id)).isEqualTo(original);
         assertThat(db.queryForObject("select count(*) from quotation_confirmation where work_order_id=?::uuid",Long.class,id)).isZero();
@@ -411,30 +560,45 @@ class QuotationPostgresIT {
         assertThat(db.queryForObject("select count(*) from quotation_command where command_key=?",Long.class,key)).isZero();
         assertThat(request(customerService,path(id,"assessment-confirmation"),body,key,200).path("authorized").asBoolean()).isTrue();
     }
-    @Test void oneAssessmentConfirmationUsesIndependentFinalPriceForBothFundsDirections() throws Exception {
-        for(String finalPrice:List.of("180.00","220.00","0.00")){
-            String id=arrived();prepareFormal(id);assertThat(context(customerService,id).has("confirmedAmount")).isFalse();
-            var result=request(customerService,path(id,"assessment-confirmation"),completionBody(id,"200.00",finalPrice),200);
-            assertThat(result.path("assessment").path("amount").asText()).isEqualTo("200.00");
+    @Test void oneAssessmentConfirmationUsesReviewedCostAndFinalLossAmountForFunds() throws Exception {
+        for(var example:List.of(List.of("120.00","40.00","33.33"),List.of("60.00","-20.00","-33.33"),List.of("0.00","-80.00",""))){
+            String finalPrice=example.get(0),id=arrived();
+            raw(id,"33.33");prepareFormal(id);
+            var current=context(customerService,id);
+            request(customerService,path(id,"formal-quotes"),Map.of("expectedVersion",current.path("version").asInt(),
+                "rawQuoteId",current.path("rawQuote").path("id").asText(),"mode","PERCENTAGE","percentage","25.00",
+                "reviewedLines",List.of(Map.of("description","核对后配件","quantity",1,"unitPrice","80.00"))),200);
+            var body=new HashMap<>(completionBody(id,finalPrice,finalPrice));body.remove("confirmedAmount");
+            var result=request(customerService,path(id,"assessment-confirmation"),body,200);
+            assertThat(result.path("assessment").path("amount").asText()).isEqualTo(finalPrice);
             assertThat(result.path("confirmedAmount").asText()).isEqualTo(finalPrice);
-            assertThat(context(shop,id).has("confirmedAmount")).isFalse();
+            var financial=result.path("financialBasis");
+            assertThat(financial.path("insuranceAmount").asText()).isEqualTo(finalPrice);
+            assertThat(financial.path("shopAmount").asText()).isEqualTo("80.00");
+            assertThat(financial.path("profitAmount").asText()).isEqualTo(example.get(1));
+            if(example.get(2).isEmpty())assertThat(financial.path("profitRate").isNull()).isTrue();
+            else assertThat(financial.path("profitRate").asText()).isEqualTo(example.get(2));
+            assertThat(context(shop,id).has("financialBasis")).isFalse();
+            assertThat(context(admin,id).path("financialBasis")).isEqualTo(financial);
             assertThat(db.queryForObject("select count(*) from audit_log where object_id=? and action='QUOTE_SERVICE_CONFIRM' and summary like ?",Long.class,id,"%amount="+finalPrice)).isEqualTo(1);
             String photo=repairPhoto(shop,id,"COMPLETION_PHOTO");
             request(shop,"repairs/cases/"+id+"/completion",Map.of("expectedVersion",0,"assignmentVersion",context(shop,id).path("assignmentVersion").asInt(),"photoIds",List.of(photo)),200);
             request(owner,"repairs/cases/"+id+"/receipt",Map.of("expectedVersion",1),200);
-            fundsTarget(id,"RECEIVE",result.path("confirmedAmount").asText(),200);
+            fundsTarget(id,"RECEIVE","80.00",409);
+            fundsTarget(id,"RECEIVE",finalPrice,200);
             if(!finalPrice.equals("0.00"))request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"RECEIVE","FINAL-RECEIVE-"+UUID.randomUUID(),finalPrice),200);
             fundsConfirm(id,"RECEIVE",200);
-            fundsTarget(id,"PAY",result.path("confirmedAmount").asText(),200);
-            if(!finalPrice.equals("0.00"))request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"PAY","FINAL-PAY-"+UUID.randomUUID(),finalPrice),200);
+            fundsTarget(id,"PAY",finalPrice,409);
+            fundsTarget(id,"PAY","80.00",200);
+            request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"PAY","FINAL-PAY-"+UUID.randomUUID(),"80.00"),200);
             fundsConfirm(id,"PAY",200);
             assertThat(funds(customerService,id).path("receivable").path("target").asText()).isEqualTo(finalPrice);
-            assertThat(funds(customerService,id).path("payable").path("target").asText()).isEqualTo(finalPrice);
-            assertThat(context(customerService,id).path("assessment").path("amount").asText()).isEqualTo("200.00");
+            assertThat(funds(customerService,id).path("payable").path("target").asText()).isEqualTo("80.00");
+            assertThat(context(customerService,id).path("financialBasis")).isEqualTo(financial);
         }
     }
     private void authorized(String id) throws Exception {prepareFormal(id);upload(id,"LOSS_ASSESSMENT",null,200);assess(id,"0.00",200);confirm(id,"INSURER");confirm(id,"CUSTOMER_SERVICE");assertThat(context(shop,id).path("authorized").asBoolean()).isTrue();}
-    @Test void finalAuthorizationKeepsIndependentPriceAndChecksLatestConfirmedLossDocument() throws Exception {
+    @Test void finalAuthorizationMatchesLossPriceAndChecksLatestConfirmedLossDocument() throws Exception {
         String id=arrived();raw(id,"10.00");review(id,"FIXED_AMOUNT","0.00",200);
         upload(id,"LOSS_ASSESSMENT",null,200);assess(id,"18.00",200);confirm(id,"INSURER");
         var c=context(customerService,id);var a=c.path("assessment");
@@ -446,13 +610,16 @@ class QuotationPostgresIT {
         body.put("lossFileId",a.path("lossFileId").asText());body.put("assessmentId",UUID.randomUUID().toString());request(customerService,path(id,"confirmations/CUSTOMER_SERVICE"),body,409);
         body.put("assessmentId",a.path("id").asText());
         for(String token:List.of(shop,owner,admin))request(token,path(id,"confirmations/CUSTOMER_SERVICE"),body,403);
+        request(customerService,path(id,"confirmations/CUSTOMER_SERVICE"),body,409);
         assertThat(context(customerService,id).path("authorized").asBoolean()).isFalse();
+        body.put("amount","18.00");
         String key=UUID.randomUUID().toString();var accepted=request(customerService,path(id,"confirmations/CUSTOMER_SERVICE"),body,key,200);
         assertThat(accepted.path("authorized").asBoolean()).isTrue();
         assertThat(request(customerService,path(id,"confirmations/CUSTOMER_SERVICE"),body,key,200)).isEqualTo(accepted);
         var stored=json.readTree(db.queryForObject("select file_snapshot from quotation_confirmation where work_order_id=?::uuid and kind='CUSTOMER_SERVICE' order by created_at desc limit 1",String.class,id));
-        assertThat(stored.path("amount").asText()).isEqualTo("30.00");assertThat(stored.path("lossFileId").asText()).isEqualTo(a.path("lossFileId").asText());
-        assertThat(accepted.path("assessment").path("amount").asText()).isEqualTo("18.00");assertThat(accepted.path("confirmedAmount").asText()).isEqualTo("30.00");
+        assertThat(stored.path("amount").asText()).isEqualTo("18.00");assertThat(stored.path("lossFileId").asText()).isEqualTo(a.path("lossFileId").asText());
+        assertThat(accepted.path("assessment").path("amount").asText()).isEqualTo("18.00");assertThat(accepted.path("confirmedAmount").asText()).isEqualTo("18.00");
+        assertThat(stored.path("financialBasis").path("profitAmount").asText()).isEqualTo("-12.00");
         assertThat(accepted.path("status").asText()).isEqualTo("REPAIRING");
         upload(id,"LOSS_ASSESSMENT",null,409);
         assess(id,"19.00",409);start(id,200);
@@ -842,6 +1009,7 @@ class QuotationPostgresIT {
         String id=formal(customerService,"ROLE-REPLAY-"+UUID.randomUUID(),phone,"VIN-"+UUID.randomUUID(),Instant.now()).path("id").asText();
         var assigned=dispatch(customerService,id,shopId,true,"合成角色回放验证",UUID.randomUUID().toString(),200).path("data");int assignment=assignmentVersion(assigned);
         request(shop,"work-orders/"+id+"/accept",Map.of("assignmentVersion",assignment),200);request(shop,"work-orders/"+id+"/arrive",Map.of("assignmentVersion",assignment),200);
+        arrivalPhoto(shop,id,assignment);
         authorized(id);start(id,200);String photo=repairPhoto(shop,id,"COMPLETION_PHOTO");request(shop,"repairs/cases/"+id+"/completion",Map.of("expectedVersion",0,"assignmentVersion",assignment,"photoIds",List.of(photo)),200);
         String actorOwner=login(username,"H5");request(actorOwner,"repairs/cases/"+id+"/receipt",Map.of("expectedVersion",1),200);request(actorOwner,"repairs/cases/"+id+"/review",Map.of("expectedVersion",2,"score",5),200);
         request(customerService,"repairs/cases/"+id+"/review/corrections",Map.of("expectedVersion",3,"score",4,"reason","STAFF_REASON_MUST_NOT_REPLAY"),200);
@@ -858,7 +1026,25 @@ class QuotationPostgresIT {
     private Map<String,Object> fundsEntry(String id,String dir,String number,String amount) throws Exception {return Map.of("expectedVersion",funds(customerService,id).path("version").asInt(),"direction",dir,"transactionNo",number,"amount",amount,"occurredAt","2026-10-10T02:00:00Z","note","SYNTHETIC_INTERNAL_NOTE");}
     private JsonNode fundsConfirm(String id,String dir,int expected) throws Exception {return request(customerService,"funds/cases/"+id+"/confirmations",Map.of("expectedVersion",funds(customerService,id).path("version").asInt(),"direction",dir),expected);}
     private void caseStatus(String id,String state) {assertThat(db.queryForObject("select status from work_order where id=?::uuid",String.class,id)).isEqualTo(state);}
-    private String receivedRepair() throws Exception {String id=completedRepair();request(owner,"repairs/cases/"+id+"/receipt",Map.of("expectedVersion",1),200);return id;}
+    private String receivedRepair() throws Exception {
+        String id=arrived();prepareFormal(id);assess(id,"0.00",200);confirm(id,"INSURER");
+        // Seed an already confirmed legacy snapshot for tests of pre-existing manual funds behavior.
+        db.update("""
+            INSERT INTO quotation_confirmation(id,work_order_id,basis_version,kind,raw_quote_id,formal_quote_id,assessment_id,file_snapshot,actor_id)
+            SELECT gen_random_uuid(),c.work_order_id,c.basis_version,'CUSTOMER_SERVICE',c.raw_quote_id,c.formal_quote_id,c.assessment_id,
+              jsonb_build_object('amount','7.00','assessmentId',c.assessment_id,'originalReviewed',true)::text,a.created_by
+            FROM quotation_context c JOIN quote_assessment a ON a.id=c.assessment_id WHERE c.work_order_id=?::uuid
+            """,id);
+        db.update("UPDATE quotation_context SET service_confirmed=true,authorized=true WHERE work_order_id=?::uuid",id);
+        var quote=context(customerService,id);
+        assertThat(quote.path("confirmedAmount").asText()).isEqualTo("7.00");
+        assertThat(quote.has("financialBasis")).isFalse();
+        start(id,200);
+        String photo=repairPhoto(shop,id,"COMPLETION_PHOTO");
+        request(shop,"repairs/cases/"+id+"/completion",Map.of("expectedVersion",0,"assignmentVersion",context(shop,id).path("assignmentVersion").asInt(),"photoIds",List.of(photo)),200);
+        request(owner,"repairs/cases/"+id+"/receipt",Map.of("expectedVersion",1),200);
+        return id;
+    }
     @Test void fundsPartialMultipleReceiptsAndPaymentsRemainSeparateFromRepairAndRoleFiltered() throws Exception {
         String id=receivedRepair();fundsTarget(id,"RECEIVE","100.01",200);fundsTarget(id,"PAY","80.00",200);
         String number="RECEIVE-"+UUID.randomUUID();var first=fundsEntry(id,"RECEIVE",number,"20.00");String key=UUID.randomUUID().toString();request(customerService,"funds/cases/"+id+"/entries",first,key,200);request(customerService,"funds/cases/"+id+"/entries",first,key,200);
@@ -887,6 +1073,72 @@ class QuotationPostgresIT {
         mvc.perform(get("/api/v1/funds/cases/{id}",id).header("Authorization","Bearer "+otherToken)).andExpect(status().isForbidden());
         mvc.perform(get("/api/v1/funds/cases/{id}/export",id).header("Authorization","Bearer "+otherToken)).andExpect(status().isForbidden());
         assertThat(db.queryForObject("select status from work_order where id=?::uuid",String.class,id)).isEqualTo("COMPLETED");assertThat(db.queryForObject("select count(*) from funds_entry where work_order_id=?::uuid",Integer.class,id)).isEqualTo(4);
+    }
+    @Test void analyticsKeepsZeroNegativeMissingAndChinaMonthBoundaries() throws Exception {
+        String negative=arrived(),zero=arrived(),missing=arrived(),modern=arrived();
+        fundsTarget(negative,"RECEIVE","100.00",200);fundsTarget(negative,"PAY","120.00",200);
+        fundsTarget(zero,"RECEIVE","0.00",200);fundsTarget(zero,"PAY","0.00",200);
+        var snapshot=Map.of("financialBasis",Map.of("rule","ASSESSMENT_LESS_REVIEWED_QUOTE_V1","insuranceAmount","200.00","shopAmount","150.00"));
+        db.update("insert into quotation_confirmation(id,work_order_id,basis_version,kind,file_snapshot,actor_id,created_at) select ?::uuid,id,999,'CUSTOMER_SERVICE',?,created_by,'2031-01-01T00:00:00Z'::timestamptz from work_order where id=?::uuid",UUID.randomUUID().toString(),json.writeValueAsString(snapshot),modern);
+        for(String id:List.of(negative,zero,missing,modern)) {
+            db.update("update work_order set status='COMPLETED' where id=?::uuid",id);
+            String time=List.of(zero,modern).contains(id)?"2031-01-31T16:00:00Z":"2031-01-31T15:59:59Z";
+            db.update("insert into work_order_status_history(work_order_id,from_status,to_status,action,actor_id,actor_roles,assignment_version,trace_id,occurred_at) select id,'WAITING_SHOP_SETTLEMENT','COMPLETED','TEST_ANALYTICS',created_by,'CUSTOMER_SERVICE',1,'analytics-boundary',?::timestamptz from work_order where id=?::uuid",time,id);
+        }
+        var result=getData(customerService,"funds/analytics?from=2031-01-01&to=2031-02-28");
+        assertThat(result.path("summary").path("completed").asInt()).isEqualTo(4);
+        assertThat(result.path("summary").path("accounted").asInt()).isEqualTo(3);
+        assertThat(result.path("summary").path("profit").asText()).isEqualTo("30.00");
+        assertThat(result.path("summary").path("margin").asText()).isEqualTo("10.00");
+        assertThat(result.path("trend").size()).isEqualTo(59);
+        var january=getData(customerService,"funds/analytics?from=2031-01-01&to=2031-01-31");
+        assertThat(january.path("summary").path("completed").asInt()).isEqualTo(2);
+        assertThat(january.path("summary").path("margin").asText()).isEqualTo("-20.00");
+        var pendingOnly=getData(customerService,"funds/analytics?from=2031-01-01&to=2031-02-28&pending=true");
+        assertThat(pendingOnly.path("summary")).isEqualTo(result.path("summary"));
+        assertThat(pendingOnly.path("details").path("total").asInt()).isEqualTo(1);
+        assertThat(pendingOnly.path("details").path("records").get(0).path("pending_reason").asText()).contains("缺少");
+        var drill=getData(customerService,"funds/analytics?from=2031-01-01&to=2031-02-28&detailFrom=2031-02-01&detailTo=2031-02-01");
+        assertThat(drill.path("summary")).isEqualTo(result.path("summary"));
+        assertThat(drill.path("details").path("total").asInt()).isEqualTo(2);
+        db.update("update work_order set status='WAITING_INSURER_PAYMENT' where id=?::uuid",negative);
+        assertThat(getData(customerService,"funds/analytics?from=2031-01-01&to=2031-01-31").path("summary").path("completed").asInt()).isEqualTo(1);
+        db.update("insert into work_order_status_history(work_order_id,from_status,to_status,action,actor_id,actor_roles,assignment_version,trace_id,occurred_at) select id,'WAITING_SHOP_SETTLEMENT','COMPLETED','TEST_ANALYTICS',created_by,'CUSTOMER_SERVICE',1,'analytics-recomplete','2031-02-01T00:00:00Z'::timestamptz from work_order where id=?::uuid",negative);
+        db.update("update work_order set status='COMPLETED' where id=?::uuid",negative);
+        assertThat(getData(customerService,"funds/analytics?from=2031-01-01&to=2031-01-31").path("summary").path("completed").asInt()).isEqualTo(1);
+        assertThat(getData(customerService,"funds/analytics?from=2031-02-01&to=2031-02-28").path("summary").path("completed").asInt()).isEqualTo(3);
+    }
+    @Test void analyticsScopesAmountsHistoryAndRecompletion() throws Exception {
+        String id=receivedRepair();
+        fundsTarget(id,"RECEIVE","100.00",200);fundsTarget(id,"PAY","80.00",200);
+        String entry=request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"RECEIVE","ANALYTICS-R-"+UUID.randomUUID(),"100.00"),200).path("entryId").asText();
+        fundsConfirm(id,"RECEIVE",200);
+        request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"PAY","ANALYTICS-P-"+UUID.randomUUID(),"80.00"),200);fundsConfirm(id,"PAY",200);
+        String date=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai")).toString();
+        String endpoint="funds/analytics?from="+date+"&to="+date+"&size=100";
+        var facts=db.queryForMap("select * from funds_analytics_fact where id=?::uuid",id);
+        assertThat(facts.get("profit").toString()).isEqualTo("20.00");
+        assertThat(facts.get("pending_reason")).isNull();
+        var firstCompletion=facts.get("completion_id");
+        var dashboard=getData(customerService,endpoint);
+        assertThat(dashboard.path("summary").path("completed").asInt()).isPositive();
+        assertThat(dashboard.path("details").toString()).contains(id);
+        var other=createUser("CUSTOMER_SERVICE",null);String otherToken=login(other.path("username").asText(),"ADMIN");
+        assertThat(getData(otherToken,endpoint).path("summary").path("completed").asInt()).isZero();
+        long actor=db.queryForObject("select created_by from work_order where id=?::uuid",Long.class,id);
+        mvc.perform(get("/api/v1/"+endpoint+"&creator="+actor).header("Authorization","Bearer "+otherToken)).andExpect(status().isForbidden());
+        for(String token:List.of(owner,shop))mvc.perform(get("/api/v1/"+endpoint).header("Authorization","Bearer "+token)).andExpect(status().isForbidden());
+        getData(admin,"funds/analytics/groups?from="+date+"&to="+date+"&dimension=creator");
+        mvc.perform(get("/api/v1/funds/analytics/groups?from="+date+"&to="+date+"&dimension=creator").header("Authorization","Bearer "+customerService)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/v1/"+endpoint+"&page=0").header("Authorization","Bearer "+admin)).andExpect(status().isBadRequest());
+        request(customerService,"funds/cases/"+id+"/entries/"+entry+"/reverse",Map.of("expectedVersion",funds(customerService,id).path("version").asInt(),"reason","合成看板冲销验证"),200);
+        assertThat(db.queryForObject("select count(*) from funds_analytics_fact where id=?::uuid",Integer.class,id)).isZero();
+        request(customerService,"funds/cases/"+id+"/entries",fundsEntry(id,"RECEIVE","ANALYTICS-RE-"+UUID.randomUUID(),"100.00"),200);
+        fundsConfirm(id,"RECEIVE",200);fundsConfirm(id,"PAY",200);
+        facts=db.queryForMap("select * from funds_analytics_fact where id=?::uuid",id);
+        assertThat(facts.get("completion_id")).isNotEqualTo(firstCompletion);
+        assertThat(facts.get("profit").toString()).isEqualTo("20.00");
+        assertThat(db.queryForObject("select count(*) from funds_analytics_fact where id=?::uuid",Integer.class,id)).isEqualTo(1);
     }
     @Test void fundsZeroUnknownTargetVersionsAndReversalsProtectHistory() throws Exception {
         String id=arrived();fundsTarget(id,"RECEIVE","0.00",200);assertThat(funds(customerService,id).path("receivable").path("status").asText()).isEqualTo("SETTLED");fundsTarget(id,"PAY",null,200);assertThat(funds(shop,id).path("payable").path("target").isNull()).isTrue();

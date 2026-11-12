@@ -1,6 +1,7 @@
 package com.evinsurance.platform.pricing.api;
 
 import com.evinsurance.platform.pricing.application.SampleService;
+import com.evinsurance.platform.pricing.application.WorkbookPriceImportService;
 import com.evinsurance.platform.foundation.api.*;
 import jakarta.validation.Valid;
 import java.nio.charset.StandardCharsets;
@@ -19,7 +20,11 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 @Tag(name="配件参考样本")
 public class SampleController {
     private final SampleService service;
-    public SampleController(SampleService service) {this.service=service;}
+    private final WorkbookPriceImportService workbook;
+    public SampleController(SampleService service, WorkbookPriceImportService workbook) {
+        this.service=service;
+        this.workbook=workbook;
+    }
 
     @GetMapping @Operation(summary="分页查询原始样本及当前核对结果，from/to按导入日期筛选")
     public ApiResponse<PageResponse<JsonNode>> list(@ModelAttribute SampleRequests.Filter filter,
@@ -38,6 +43,17 @@ public class SampleController {
     public ApiResponse<JsonNode> capture(@Valid @RequestBody SampleRequests.Capture request) {return ApiResponse.success(service.capture(request));}
     @PostMapping("/imports") @Operation(summary="采集UTF-8 CSV或单工作表XLSX，保留原件；重复文件返回原批次")
     public ApiResponse<JsonNode> upload(@RequestParam MultipartFile file,@RequestParam String sourceKind) {return ApiResponse.success(service.upload(file,sourceKind));}
+    @PostMapping("/workbook/preview") @Operation(summary="分页预览工作簿配件报价及排除、异常与重复结果")
+    public ApiResponse<WorkbookPriceImportService.Preview> workbookPreview(@RequestParam MultipartFile file,
+        @ModelAttribute WorkbookPriceImportService.Options options,
+        @RequestParam(defaultValue="1") int page, @RequestParam(defaultValue="20") int size) {
+        return ApiResponse.success(workbook.preview(file,options,page,size));
+    }
+    @PostMapping("/workbook/confirm") @Operation(summary="确认当前文件和预览选项，幂等追加可用配件报价")
+    public ApiResponse<WorkbookPriceImportService.Result> workbookConfirm(@RequestParam MultipartFile file,
+        @ModelAttribute WorkbookPriceImportService.Options options,@RequestParam String fingerprint) {
+        return ApiResponse.success(workbook.confirm(file,options,fingerprint));
+    }
     @PostMapping("/cases/{caseId}/capture") @Operation(summary="从当前已提交网点报价中采集指定行，待人工确认配件属性")
     public ApiResponse<JsonNode> quote(@PathVariable UUID caseId,@Valid @RequestBody SampleRequests.QuoteCapture request) {return ApiResponse.success(service.captureQuote(caseId,request));}
     @PostMapping("/{id}/reviews") @Operation(summary="按预期版本追加核对、排除或更正记录，确认后参与参考统计")

@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController @RequestMapping("/api/v1/quotations/cases/{id}") @SecurityRequirement(name="bearerAuth")
 public class QuotationController {
     private final QuotationService service;public QuotationController(QuotationService service){this.service=service;}
-    @GetMapping @Operation(summary="报价当前上下文；网点仅本次原始报价及无金额的授权门禁，车主拒绝")
+    @GetMapping @Operation(summary="报价当前上下文；资金依据仅工作人员可见，网点仅本次原始报价及无金额的授权门禁，车主拒绝")
     public ApiResponse<JsonNode> get(@PathVariable UUID id){return ApiResponse.success(service.get(id));}
     @PostMapping("/raw-quotes") @Operation(summary="当前已接单网点提交不可变报价；须本次派单有效JPG/PNG到店照片，否则409 ARRIVAL_PHOTO_REQUIRED；金额为CNY元十进制字符串")
     public ApiResponse<JsonNode> raw(@PathVariable UUID id,@RequestHeader("Idempotency-Key") String key,@RequestBody QuotationRequests.Raw body){return ApiResponse.success(service.submitRaw(id,body,key));}
@@ -18,9 +18,9 @@ public class QuotationController {
     public ApiResponse<JsonNode> formal(@PathVariable UUID id,@RequestHeader("Idempotency-Key") String key,@RequestBody QuotationRequests.Formal body){return ApiResponse.success(service.issueFormal(id,body,key));}
     @PostMapping("/assessments") @Operation(summary="客服基于当前正式报价记录核损金额新版本；核损单与OCR可选，未完成报价审核拒绝")
     public ApiResponse<JsonNode> assess(@PathVariable UUID id,@RequestHeader("Idempotency-Key") String key,@RequestBody QuotationRequests.Assessment body){return ApiResponse.success(service.assess(id,body,key));}
-    @PostMapping("/assessment-confirmation") @Operation(summary="客服输入核损金额及独立的最终价格后一次确认；事务内记录核损、保险/客服确认并进入维修，失败整体回滚，沿用版本/幂等/审计")
+    @PostMapping("/assessment-confirmation") @Operation(summary="客服以核损金额作为最终价格一次确认；保存核对后未加价的应付、盈利和利润率依据，事务内进入维修")
     public ApiResponse<JsonNode> completeAssessment(@PathVariable UUID id,@RequestHeader("Idempotency-Key") String key,@RequestBody QuotationRequests.CompleteAssessment body){return ApiResponse.success(service.completeAssessment(id,body,key));}
-    @PostMapping("/confirmations/{kind}") @Operation(summary="客服依次代录保险确认、执行最终价格确认；最终确认须报价核对、当前核损版本有效并留档独立最终价格；授权齐备直接进入维修，可无核损单")
+    @PostMapping("/confirmations/{kind}") @Operation(summary="客服依次代录保险确认、执行最终价格确认；最终价格须与当前核损一致；授权齐备直接进入维修，可无核损单")
     public ApiResponse<JsonNode> confirm(@PathVariable UUID id,@PathVariable String kind,@RequestHeader("Idempotency-Key") String key,@RequestBody QuotationRequests.Confirm body){return ApiResponse.success(service.confirm(id,kind,body,key));}
     @PostMapping("/start-repair") @Operation(summary="当前网点开修：锁案件、重新校验核损金额、保险/客服确认及派单版本；不等回款或网点二次确认")
     public ApiResponse<JsonNode> start(@PathVariable UUID id,@RequestHeader("Idempotency-Key") String key,@RequestBody QuotationRequests.Start body){return ApiResponse.success(service.start(id,body,key));}

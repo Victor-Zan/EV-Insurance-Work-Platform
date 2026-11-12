@@ -34,7 +34,7 @@
   <sql id="scopeFilter">
     <where>
       <choose>
-        <when test="scope == 'CUSTOMER_SERVICE'">(w.status&lt;&gt;'DRAFT' OR w.created_by=#{scopeId})</when>
+        <when test="scope == 'CUSTOMER_SERVICE'">(w.status&lt;&gt;'DRAFT' OR w.created_by=#{scopeId} OR w.current_responsible_id=#{scopeId})</when>
         <when test="scope == 'SHOP'">w.shop_id=#{scopeId}</when>
         <when test="scope == 'OWNER'">w.owner_user_id=#{scopeId}</when>
       </choose>
@@ -87,7 +87,7 @@
     ON CONFLICT(business_date) DO UPDATE SET last_value=work_order_number_counter.last_value+1 RETURNING last_value
   </select>
   <update id="submit">
-    UPDATE work_order SET business_no=#{businessNo},owner_user_id=#{ownerUserId},owner_binding_status=#{binding},
+    UPDATE work_order SET business_no=#{businessNo},recalled_business_no=NULL,owner_user_id=#{ownerUserId},owner_binding_status=#{binding},
       status='PENDING_DISPATCH',status_started_at=#{now},updated_by=#{actorId},updated_at=#{now},version=version+1
     WHERE id=#{id} AND status='DRAFT' AND version=#{version}
   </update>
@@ -146,7 +146,7 @@
     INSERT INTO work_order_status_history(work_order_id,from_status,to_status,action,reason,actor_id,actor_roles,assignment_version,trace_id,occurred_at)
     VALUES(#{workOrderId},#{fromStatus},#{toStatus},#{action},#{reason},#{actorId},#{actorRoles},#{assignmentVersion},#{traceId},#{now})
   </insert>
-  <sql id="visibleHistory">work_order_id=#{workOrderId}<if test="!staff"> AND action&lt;&gt;'FUNDS_WORKFLOW'</if></sql>
+  <sql id="visibleHistory">work_order_id=#{workOrderId}<if test="!staff"> AND action NOT IN ('FUNDS_WORKFLOW','WORK_ORDER_TRANSFER','WORK_ORDER_WITHDRAW','SHOP_CHANGE_RESET')</if></sql>
   <select id="historyCount" resultType="long">SELECT count(*) FROM work_order_status_history WHERE <include refid="visibleHistory"/></select>
   <select id="milestones" resultType="com.evinsurance.platform.workorder.infrastructure.WorkOrderRows$Milestone">
     SELECT to_status AS status,CASE WHEN to_status IN ('PENDING_DISPATCH','WAITING_OWNER_CONFIRMATION') THEN min(occurred_at) ELSE max(occurred_at) END AS occurred_at FROM work_order_status_history

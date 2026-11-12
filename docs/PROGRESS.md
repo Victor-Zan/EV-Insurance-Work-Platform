@@ -2630,3 +2630,81 @@ API用providerManaged=true和remaining=null表达本地不设累计上限、供�
 - 管理端 `npm.cmd run lint`、`typecheck`、`test`、`build` 通过，260 项测试通过。Java 21 离线 `mvnw.cmd -Ppostgres-it verify` 定向执行 4 项单元和 6 项 PostgreSQL 集成测试，全部通过。新断言覆盖同行关联、原值保留及其他档案报价的隔离。后端全量测试未执行。
 - 已同步本机 V35 运行包。首次启动超过健康检查时限，核实原 PostgreSQL 和 MinIO 正常后，按现有配置启动并登记本项目前后端，恢复守护。后台、代理和登录健康检查通过，Flyway 确认无需迁移。旧包备份位于 `tmp/price-reference-only-20261109/before-install-165240`。
 - 本机浏览器只读验收通过。旧地址跳回参考查询，价格库悬浮导航、其他标签及采集入口移除，来源下拉显示“肖邦邦导入”。已核对同一行的配件商与 CP 报价、原始金额、来源档案和核对历史，关闭详情后保留筛选。详情接口未登录返回 401。本阶段完成。
+
+## 2026-11-09 参考价格随筛选更新
+
+- 开始前将此前代码提交为 `2b9e0cc`，已核对 GitHub `origin/main` 指向该提交。正式工作簿、实际报价和导入批次记录留在本机。
+- 筛选条件变化后自动刷新参考价格并回到第一页。配件名称和地区输入防抖 250 毫秒，切换下拉选项直接刷新，旧请求的响应不能覆盖新结果。移除查询按钮，保留重置和详情查询依据。
+- 本机浏览器只读验收通过，覆盖翻页后输入自动回到第一页、清空、重置、价格性质联动、连续输入合并请求和延迟响应隔离。
+- 管理端 `npm.cmd run lint`、`npm.cmd run typecheck`、`npm.cmd run test`、`npm.cmd run build` 全部通过，260 项测试通过。筛选联动作为提交后的本机工作区改动交付。本阶段完成。
+
+## 2026-11-09 历史配件报价地区补录
+
+- 通过本机价格核对接口为指定导入批次的 156 条配件报价追加地区版本，配件商和 CP 各 78 条，地区均为“东莞”。已按来源档案核对范围，按地区筛选读回 156 条，并逐条比对金额、导入日期、配件、车型和原始记录。补录通过已有版本与审计流程，本阶段完成。
+
+## 2026-11-10 核损最终价与平台盈利
+
+- 核损页只录入一个最终核损金额。新客服确认将其存为保险应收，以当前正式报价中核对后的未加价合计为网点应付，并在不可变快照保存盈利和利润率。资金目标、流水和结清确认验证该依据，工作人员可在资金页查询。已确认的历史案件继续使用旧快照。
+- 管理端 `npm.cmd run lint`、`typecheck`、`test`、`build` 全部通过，261 项测试通过。Java 21 离线 `mvnw.cmd -Ppostgres-it verify` 通过，99 项单元和 71 项 PostgreSQL 集成通过，覆盖新资金口径、正负盈利、零分母、历史快照、权限、事务回滚与 V25 兼容链。
+- 首轮完整集成发现一项已变更的金额断言、旧快照夹具缺开修步骤及两项旧到店照夹具问题。按新规则校验金额，使用正常开修接口补足旧快照夹具，修正附件计数和上传准备后复跑通过。首轮与复跑日志位于忽略目录 `tmp/assessment-profit-db-first.log` 和 `tmp/assessment-profit-db.log`。
+- 已核对本机运行包哈希、前后端健康、登录和守护状态，数据库保持 V35。旧包备份位于 `tmp/assessment-profit-20261109/before-install-092232`。浏览器只读核对了单输入核损页和东莞地区自动筛选，实际入账流程在隔离测试库验证。本阶段完成。
+
+## 2026-11-10 价格批量导入与全国筛选
+
+- 在参考查询页加入独立价格工作簿导入。预览可查看两类报价、原 Excel 行号、地区、排除与异常状态。确认按当前文件和选项写入价格及来源依据，历史档案页只办理归档。相同文件按 Excel 行和报价类型去重，兼容此前的历史档案来源。
+- 地区空白归为“全国”。筛选具体地区同时包含全国报价，筛选全国查询全部地区，查看记录仍严格按当前组显示。
+- 管理端 `npm.cmd run lint`、`typecheck`、`test`、`build` 通过，261 项测试通过。Java 21 离线 `mvnw.cmd -Ppostgres-it verify` 通过，99 项单元和 9 项 PostgreSQL 集成通过，包含分步确认、重复上传、双向跨入口去重、地区和明细口径，以及十万条参考价分页和旧库兼容。首轮测试构建的 Spring 请求构造器类型问题已修正并复跑。
+- 本机已更新至验证包，沿用 V35，前后端、代理、登录和守护正常。旧包备份位于 `tmp/workbook-price-20261110/before-install-142653`。用用户样表做浏览器只读预览，识别 156 条已有报价、19 行排除或跳过、0 条待新增。地区筛选联动通过。本阶段完成。
+
+## 2026-11-11 经营看板三视图实施与教学交付
+
+- 接续检查确认此前已完成价格库和单案盈利，本阶段按用户确认的三张设计完成资金经营看板。资金默认进入经营看板，管理员提供平台、网点、客服视图，客服进入“我的经营”。保留原平台导航、顶部背景和组件风格；筛选自动查询，隐藏看板顶部案件搜索，平台盈利后展示毛利率，支持排名选择、趋势日期下钻、客服网点分布和分页工单明细。
+- V36 新增只读事实视图及索引，复用最新完成事件及完成时的金额、派单证据。仅统计当前已完成正式工单；冲销撤出，重新完成进入新日期。新单使用确认快照中的应收和应付，旧单使用原资金目标；缺依据仍计完成量并显示待核算，金额合计不混入猜测值。金额、负盈利、零分母和中国日期边界统一在服务端处理。客服范围服务端强制限定创建者本人，网点和车主拒绝访问。
+- 管理端最终执行 `npm.cmd run lint`、`npm.cmd run typecheck`、`npm.cmd test`、`npm.cmd run build`，全部通过。264 项测试通过，失败、取消、跳过均为 0。新增 3 项组件行为测试覆盖自动筛选、明细下钻范围、过期响应隔离、错误恢复和客服请求维度。日志为 `tmp/analytics-lint-final.log`、`analytics-typecheck-final.log`、`analytics-tests-final.log`、`analytics-build-final.log`。
+- 后端使用 Java 21 和独立构建目录执行离线 Maven verify。最终命令由 `tmp/verify-analytics.ps1` 执行，主要参数为 `mvnw.cmd -o -B -ntp -Dvalidation.build.directory=../tmp/analytics-verified-build -Dspring.test.context.cache.maxSize=1 -Dit.test=QuotationPostgresIT#analytics* verify -Ppostgres-it`，并显式加载 Mockito javaagent。99 项单元测试与 2 项本轮定向 PostgreSQL 集成测试通过，编译、打包和 Flyway 迁移验证通过。集成案例覆盖正常确认完成、金额快照与旧目标、缺依据、负盈利、零分母、跨月、冲销重完成、分页及角色越权。日志 `tmp/analytics-verify-elevated.log`。最终复验为定向集成，不以此宣称全库集成通过。
+- 初次后端默认 target 目录发生访问错误，改用隔离构建目录。受限运行环境中的 Java/Mockito 执行未完成，改用显式 javaagent 后的验证产物；没有通过跳过测试规避。最终 Status 在沙箱内因 CIM 访问限制失败，使用获准的只读进程检查后通过。
+- 本机已备份数据库及旧包，安装通过验证的后台，public 从 V35 升到 V36，旧 V25 兼容迁移链保留。备份目录 `tmp/analytics-backup-20261111-162523`、`tmp/analytics-backup-20261111-204222`。`powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Manage-LocalWebsite.ps1 -Action Status` 显示 Backend、Admin、AdminApi、LoginApi、WatchRunning、AutoRecoveryEnabled 均为 True。PreviewApi 为 False，此文档预览服务不属于本轮看板功能。
+- 浏览器验收平台、网点和客服三页，确认日期自动查询、对象联动、网点分布、只看待核算仅影响明细、日期下钻保留总览。管理员与客服测试账号分别验收，客服无跨人员筛选。1440×1024 三页截图和客服权限截图位于 `docs/design/business-analytics/`；1280×720 无横向溢出。客服验收页面控制台未记录错误。本机 7 张完成测试工单集中在 2026-10-29，选择 2026-10-01 至 2026-11-11 可见应收 3608.00、应付 3478.00、盈利 130.00、毛利率 3.60%；默认本月为空是正常结果。
+- 相关变更 `git diff --check` 通过，仅有 Git LF/CRLF 提示。未改 H5 或 Compose，因此未重复执行其门禁；未做十万完成工单性能测试。生产构建成功但看板懒加载包约 650 kB、gzip 213 kB，保留 Vite 大包提示，没有通过放宽阈值隐藏。未提交、推送 Git 或部署生产。
+- 更新 REQUIREMENTS、DECISIONS、计划书实施状态，新增 `ANALYTICS_API.md`、`LEARNING_BUSINESS_ANALYTICS.md` 和根目录 `design-qa.md`。教学要点包括统计口径先行、金额精确聚合、总毛利率算法、Vue 状态驱动、旧请求隔离、后端权限和三层验证。按用户要求，后续每项工程完成时继续提供“做了什么、为什么、如何验证、学到什么”的总结。本阶段完成并停止。
+
+## 2026-11-12 经营看板回归与查询基准
+
+- 按上次交付的两项验证缺口补做后端全量集成回归和查询基准。此次唯一代码改动为旧 V25 兼容测试：更新升级目标到 V36，保留既有工单及校验和断言，并确认升级后看板视图可读，两个未完成工单不进入统计。已应用的 Flyway 文件未修改。
+- 使用 Java 21、现有测试库及独立构建目录执行 `mvnw.cmd -o -B -ntp -Dvalidation.build.directory=../tmp/analytics-full-regression-build -Dspring.test.context.cache.maxSize=1 verify -Ppostgres-it`，显式加载 Mockito javaagent。99 项单元通过；集成共 183 项，95 通过、3 断言失败、85 初始化错误、0 跳过。报价与资金组 51 项全部通过，包含两项看板用例。日志 `tmp/analytics-full-regression-20261112.log`。
+- 修正旧 V25 升级断言后，按同一配置执行 `mvnw.cmd -o -B -ntp -Dvalidation.build.directory=../tmp/analytics-full-regression-build -Dit.test=LocalLegacyMigrationPostgresIT test-compile failsafe:integration-test failsafe:verify -Ppostgres-it`，1 项通过。日志 `tmp/analytics-migration-regression-20261112.log`。全量门禁仍未通过：85 项初始化错误来自 V31.2 开发区划迁移在新 schema 缺少深圳父级区划时违反约束；其余两项 OCR 失败分别是旧迁移版本断言和预期 HTTP 403 实际 409。未改这些独立模块或跳过用例。
+- 查询基准使用 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File tmp/run-analytics-benchmark-20261112.ps1`。仅在 `ev_insurance_test` 的事务临时表中复制表结构和索引，构造 100,000 张已完成工单、120,000 条状态事件、50 个客服、100 个网点，新旧金额依据各占一半。断言合计 100,000 单、盈利 2,000,000.00、毛利率 20%，查询后回滚。先前两次基准脚本的 UTF-8 读取和 MyBatis XML 分支展开问题均修正后复跑。
+- PostgreSQL 17.6 单次 `EXPLAIN (ANALYZE, BUFFERS)` 结果如下（SQL 执行时间，毫秒）。不是页面延迟或并发吞吐测试；暂无已确认性能阈值。完整计划在 `tmp/analytics-benchmark-20261112.log`。
+
+| 查询 | 平台全年 | 单个客服单月 |
+| --- | ---: | ---: |
+| 指标汇总 | 3055 | 42 |
+| 趋势 | 3172 | 46 |
+| 首页明细 | 3403 | 45 |
+| 排名总数 | 1626 | 38 |
+| 网点排名 | 3213 | 42 |
+
+- 全年查询使用了完成事件、确认和资金目标索引，仍在多条 SQL 中为 10 万张工单重复关联证据；优化时优先减少宽范围内的重复读取，并保留金额和冲销回归。此轮是补测，不修改统计实现或本机运行包。相关 `git diff --check` 通过。
+
+## 2026-11-12 工单流程优化第 1 阶段：现有改派入口
+
+- 先更新 REQUIREMENTS，新增 WORK_ORDER_WORKFLOW_UPGRADE，记录客服转交、完成归属、分步回撤与材料清理、整单删除、确认无额外勾选的约定及后续验收范围。
+- 管理端详情菜单改为“工单管理”。现有“已到店、未开修”的管理员改派入口移到当前网点旁，使用侧边抽屉，填写新网点、原因、车辆交接信息后直接点击红色确认。原网点不可选，缺项或派单版本变化不可提交。继续使用原接车地址、候选网点、重复工单及服务端派单校验；到店前流程保持原行为。
+- 管理端执行 npm.cmd run lint、npm.cmd run typecheck、npm.cmd test、npm.cmd run build 均通过，原有 264 项测试通过。新增 node --test tests/work-order-reassign.test.mjs 3 项通过，覆盖不经勾选直接提交、交接信息及版本送达、同网点、缺项、旧派单、维修中和非管理员。最终 lint 含新增测试通过。日志位于 tmp/work-order-drawer-*.log。构建仍有现有大包提示。
+- 本轮未修改服务端、H5、Flyway 或基础设施；未执行对应门禁或写入真实工单，未部署运行包。浏览器交互未单独验收。git diff --check 通过，仅有换行转换提示。
+- 本阶段完成。下一阶段为客服转交、写权限和完成业绩归属；报价后改派、回撤清理、删除审批尚未实现。
+
+## 2026-11-12 后端集成回归修复
+
+- 在测试专用 Flyway 位置添加广东省、深圳市的父级区划数据，先于 V31.2 执行。使用开发迁移的隔离测试库现在可以完整启动，已有迁移文件和本机运行数据库保持原样。旧 V25 兼容测试仍使用原链路。
+- 网点报价 OCR 用例在第二版派单上传有效到店照后，再提交引用第一版 OCR 的报价。接口返回 403，数据库无报价记录。正常 OCR 流程保留业务、审计与 Flyway 校验，移除固定最新版本为 32 的断言。身份及地图测试同步调整相同的历史版本假设，保留指定迁移与业务约束验证。
+- 补齐区划后修正三个进一步暴露的测试假设。材料测试核对城市集合及区县层级，地图迁移测试按原始版本核对历史坐标，价格目录测试按已关联区域核对总量及分页。
+- 使用 Java 21 执行离线 `mvnw.cmd verify -Ppostgres-it`（独立构建目录、现有测试库和 Mockito javaagent）。全量运行 99 项单元通过，183 项集成中有 3 项测试断言或前置数据问题。修正后用 `mvnw.cmd test-compile failsafe:integration-test failsafe:verify -Ppostgres-it -Dit.test=...` 复跑材料、地图迁移、价格目录。按各测试类最新报告核对，15 个集成测试类共 183 项均通过，零跳过，未重复执行单次全量。日志位于 `tmp/postgres-regression-fix-full.log`、`tmp/postgres-regression-fix-targeted.log`、`tmp/postgres-regression-fix-map-pricing.log`。
+- 教学要点是让测试先满足业务前置条件，然后验证目标规则及数据库结果。集成测试的固定数据数量和最新迁移版本应当与被验证的功能有关，避免新增基础数据后误报。相关差异检查通过。本轮只改测试代码与测试资源，本阶段完成。
+
+## 2026-11-12 经营看板历史完单与双向导航
+
+- 本机 7 张已完成工单归期为 10 月 29 日，原默认日期从 11 月 1 日开始。看板默认和重置改为中国时区最近 90 个自然日，含当天。日期仍可按需筛选，空结果给出扩大范围或重置提示。
+- 经营看板和案件收支复用同一页内导航，当前页高亮，客服保留资金导入入口。图表、筛选、明细继续读取已有工单和归属，开发客服及模拟网点由数据自然产生。
+- 本机浏览器验收了 8 月 15 日至 11 月 12 日的默认范围、两页往返、当前页高亮、切至 11 月为空后重置恢复，以及平台、网点、客服和客服网点分布。已核算 7 单，保险应收 3608.00，网点应付 3478.00，盈利 130.00，毛利率 3.60%。截图位于 `tmp/analytics-history-*.png`。
+- 管理端 `npm.cmd run lint`、`npm.cmd run typecheck`、`npm.cmd test`、`npm.cmd run build` 通过，268 项测试通过。首次全量 lint 遇到工作区工单详情页的两项错误，本次改动文件的 lint 通过，随后全量复验也通过。差异检查通过，构建保留既有包体提示。本轮为前端改动，使用本机服务读回数据验收，本阶段完成。

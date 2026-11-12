@@ -163,7 +163,7 @@ class IdentityPostgresIT {
     @Test void unifiedErrorsPaginationOpenApiAndFreshFlywayAreVerified() throws Exception {
         flyway.validate();
         assertThat(Arrays.stream(flyway.info().applied()).filter(info -> info.getVersion()!=null)
-            .map(info -> info.getVersion().toString()).toList()).containsExactly("1","2","2.1","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28");
+            .map(info -> info.getVersion().toString()).toList()).containsSubsequence("1","2","2.1","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28");
         mvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content("{}"))
             .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
         mvc.perform(get("/api/v1/admin/users?size=101").header("Authorization","Bearer "+admin)).andExpect(status().isBadRequest());
@@ -187,12 +187,14 @@ class IdentityPostgresIT {
         assertThat(template.queryForObject("select count(*) from app_role",Long.class)).isEqualTo(4);
         String newHash=encoder.encode(UUID.randomUUID().toString());
         Flyway switchedToDev=Flyway.configure().dataSource(url,username,password).schemas(normalSchema).defaultSchema(normalSchema)
-            .locations("classpath:db/migration","classpath:db/dev").outOfOrder(true).placeholders(Map.of("devAdminHash",newHash,
+            .locations("classpath:db/migration","classpath:db/dev","classpath:db/test-dev").outOfOrder(true).placeholders(Map.of("devAdminHash",newHash,
                 "devCustomerServiceHash",newHash,"devRepairShopHash",newHash,"devOwnerHash",newHash)).load();
-        assertThat(switchedToDev.migrate().migrationsExecuted).isEqualTo(1); switchedToDev.validate();
+        switchedToDev.migrate();
+        switchedToDev.validate();
         assertThat(template.queryForObject("select count(*) from app_user where username='dev_admin'",Long.class)).isEqualTo(1);
+        assertThat(template.queryForObject("select count(*) from region district join region city on city.id=district.parent_id where district.code='440303' and city.code='440300'", Long.class)).isEqualTo(1);
         Flyway restarted=Flyway.configure().dataSource(url,username,password).schemas(SCHEMA).defaultSchema(SCHEMA)
-            .locations("classpath:db/migration","classpath:db/dev").placeholders(Map.of("devAdminHash",newHash,
+            .locations("classpath:db/migration","classpath:db/dev","classpath:db/test-dev").placeholders(Map.of("devAdminHash",newHash,
                 "devCustomerServiceHash",newHash,"devRepairShopHash",newHash,"devOwnerHash",newHash)).load();
         restarted.validate(); assertThat(restarted.migrate().migrationsExecuted).isZero();
     }

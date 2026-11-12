@@ -133,7 +133,10 @@ class CataloguePostgresIT {
   request(get("/api/v1/pricing/parts?size=101"),null).andExpect(status().isBadRequest());
   request(get("/api/v1/pricing/parts?page=0"),null).andExpect(status().isBadRequest());
   long shop=db.queryForObject("select id from repair_shop where code='DEV-SHOP'",Long.class);
-  request(get("/api/v1/pricing/shops/"+shop+"/service-regions?size=1"),null).andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(2)).andExpect(jsonPath("$.data.records[0].code").isNotEmpty());
+  int assignedRegions = db.queryForObject("select count(*) from shop_service_region where shop_id=?", Integer.class, shop);
+  request(get("/api/v1/pricing/shops/"+shop+"/service-regions?size=1"),null)
+      .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(assignedRegions))
+      .andExpect(jsonPath("$.data.records.length()").value(1)).andExpect(jsonPath("$.data.records[0].code").isNotEmpty());
   request(get("/api/v1/pricing/shops"),null).andExpect(status().isOk()).andExpect(jsonPath("$.data.records[0].contactPhone").doesNotExist());
   flyway.validate();
   mvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andExpect(jsonPath("$.paths['/api/v1/pricing/parts'].get.responses['403']").exists());

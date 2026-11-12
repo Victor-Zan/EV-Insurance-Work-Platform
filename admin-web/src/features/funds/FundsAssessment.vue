@@ -30,6 +30,11 @@ onUnmounted(()=>{generation++;release()})
  <section class="funds-assessment" data-reading="核损确认金额">
   <header><h3>最终确认价格</h3><button v-if="preview&&!error" @click="enlarged=true">放大查看</button></header>
   <div class="confirmed-price"><span>最终确认金额</span><strong>{{ confirmed?quote?.confirmedAmount:'未确认' }}<small v-if="confirmed"> 元</small></strong></div>
+  <dl v-if="confirmed && quote?.financialBasis" class="funds-breakdown">
+    <div><dt>网点应付</dt><dd>{{ quote.financialBasis.shopAmount }} 元</dd></div>
+    <div><dt>平台盈利</dt><dd>{{ quote.financialBasis.profitAmount }} 元</dd></div>
+    <div><dt>利润率</dt><dd>{{ quote.financialBasis.profitRate === null ? '—' : quote.financialBasis.profitRate + '%' }}</dd></div>
+  </dl>
   <p v-if="quote&&!confirmed" class="source-note">当前记录缺少有效的客服最终确认。</p>
   <div v-if="loading" class="document-loading" aria-busy="true" aria-label="正在加载核损金额"/>
   <p v-else-if="error" role="alert" class="document-error">{{ error }} <button @click="load">重新加载</button></p>
@@ -40,5 +45,8 @@ onUnmounted(()=>{generation++;release()})
  </section>
 </template>
 <style scoped>
+.funds-breakdown{display:flex;flex-wrap:wrap;gap:12px 28px;margin:0 0 16px}
+.funds-breakdown dt{font-size:12px;color:#536a6b}
+.funds-breakdown dd{margin:4px 0 0;font-size:16px;font-weight:600;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .funds-assessment{min-width:0}.funds-assessment header{display:flex;align-items:center;justify-content:space-between;gap:12px}.funds-assessment h3{font-size:16px;margin:0}.funds-assessment button{font:inherit;font-size:12px}.confirmed-price{display:grid;gap:8px;margin:20px 0;padding:16px 0;border-block:1px solid #dce5e4}.confirmed-price span,.source-note{font-size:12px;color:#536b70}.confirmed-price strong{font-size:27px;font-weight:600;color:#275c44;font-variant-numeric:tabular-nums}.confirmed-price small{font-size:12px;font-weight:400}.document-viewport{max-height:480px;overflow:auto;background:#f3f6f5;border:1px solid #dce5e4}.document-viewport img,.enlarged-document{display:block;width:100%;height:auto}.document-loading{height:360px;background:#e8eeee;border-radius:6px}.document-error{font-size:13px;color:#a7313c;line-height:1.7}.funds-assessment nav{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;margin-top:10px}.funds-assessment a{display:inline-block;margin-top:12px;font-size:12px;color:#365c53;text-underline-offset:3px}
 </style>

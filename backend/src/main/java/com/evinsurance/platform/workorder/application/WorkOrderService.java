@@ -128,9 +128,12 @@ public class WorkOrderService {
             String duplicateReason=requireDuplicateDecision(duplicates,request.confirmPossibleDuplicate(),request.duplicateReason());
             Long owner=matchOwner(row.getOwnerPhone());
             String binding=owner==null?"PENDING":"BOUND";
-            LocalDate date=LocalDate.now(BUSINESS_ZONE);
-            int sequence=mapper.nextBusinessSequence(date);
-            String businessNo="EVR-"+date.format(DateTimeFormatter.BASIC_ISO_DATE)+"-"+String.format("%06d",sequence);
+            String businessNo=row.getRecalledBusinessNo();
+            if(businessNo==null) {
+                LocalDate date=LocalDate.now(BUSINESS_ZONE);
+                int sequence=mapper.nextBusinessSequence(date);
+                businessNo="EVR-"+date.format(DateTimeFormatter.BASIC_ISO_DATE)+"-"+String.format("%06d",sequence);
+            }
             var now=Instant.now();
             if(mapper.submit(id,row.getVersion(),businessNo,owner,binding,actor.id(),now)!=1) throw state("Draft changed concurrently");
             history(id,WorkOrderStatus.DRAFT.name(),WorkOrderStatus.PENDING_DISPATCH.name(),"SUBMIT",duplicateReason,actor,null,now);
@@ -653,7 +656,7 @@ public class WorkOrderService {
 
     private void requireDraftOwner(WorkOrderEntity row,CurrentUser actor) {
         requireStatus(row,WorkOrderStatus.DRAFT);
-        if(!actor.roles().contains(Role.ADMIN)&&row.getCreatedBy()!=actor.id()) throw ApiException.denied();
+        if(!actor.roles().contains(Role.ADMIN)&&!Objects.equals(row.isResponsibilityTransferred()?row.getCurrentResponsibleId():row.getCreatedBy(),actor.id())) throw ApiException.denied();
     }
 
     private WorkOrderEntity requireVisible(UUID id,CurrentUser actor,boolean lock) {
@@ -666,7 +669,8 @@ public class WorkOrderService {
     private void requireVisibleRow(WorkOrderEntity row,CurrentUser actor) {
         if(actor.roles().contains(Role.ADMIN)) return;
         if(actor.roles().contains(Role.CUSTOMER_SERVICE)) {
-            if(!WorkOrderStatus.DRAFT.name().equals(row.getStatus())||row.getCreatedBy()==actor.id()) return;
+            if(!WorkOrderStatus.DRAFT.name().equals(row.getStatus())||row.getCreatedBy()==actor.id()||
+                Objects.equals(row.getCurrentResponsibleId(),actor.id())) return;
             throw ApiException.denied();
         }
         if(actor.roles().contains(Role.REPAIR_SHOP)&&actor.shopId()!=null&&actor.shopId().equals(row.getShopId())) return;
@@ -677,6 +681,7 @@ public class WorkOrderService {
     private WorkOrderEntity lock(UUID id) {
         var row=mapper.lock(id);
         if(row==null) throw ApiException.missing("Work order");
+        WorkOrderWriteAccess.require(row,CurrentUser.require());
         return row;
     }
 

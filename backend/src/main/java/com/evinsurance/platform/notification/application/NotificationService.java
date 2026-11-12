@@ -17,7 +17,7 @@ public class NotificationService {
     public NotificationService(NotificationMapper mapper,NotificationProjector projector,FileAccess access,ComplaintMapper complaints,AuditService audit,ObjectMapper json){this.mapper=mapper;this.projector=projector;this.access=access;this.complaints=complaints;this.audit=audit;this.json=json;}
     private String time(Object value){if(value==null)return null;if(value instanceof java.sql.Timestamp stamp)return stamp.toInstant().toString();if(value instanceof OffsetDateTime offset)return offset.toInstant().toString();return value.toString();}
     private String title(String kind){return switch(kind){
-        case "CASE_CANCELLED"->"工单已取消";case "DISPATCHED","ACCEPT_SHOP"->"新派单待接单";case "ARRIVED"->"车辆已到店";case "ARRIVE_SHOP"->"待确认车辆到店";
+        case "WORK_ORDER_TRANSFERRED"->"工单已转交给你";case "CASE_CANCELLED"->"工单已取消";case "DISPATCHED","ACCEPT_SHOP"->"新派单待接单";case "ARRIVED"->"车辆已到店";case "ARRIVE_SHOP"->"待确认车辆到店";
         case "QUOTE_REVIEW","REVIEW_QUOTE"->"原始报价待客服审核";case "QUOTE_SHOP"->"待提交网点原始报价";
         case "ASSESSMENT_CONFIRM","CONFIRM_ASSESSMENT"->"核损待客服处理/确认";case "START_REPAIR_SHOP"->"授权已满足，待网点开修";case "REPAIR_SHOP"->"维修进度待更新/完工";
         case "OWNER_RECEIPT","RECEIVE_OWNER"->"维修完工待确认收车";case "OWNER_RECEIVED"->"已确认收车";case "RECEIPT_WITHDRAWN"->"收车确认已撤回";

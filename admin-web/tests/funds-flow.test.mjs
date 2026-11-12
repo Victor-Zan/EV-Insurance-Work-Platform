@@ -12,10 +12,10 @@ function fixture(roles=['CUSTOMER_SERVICE']){
  code=code.replace(/import\s*\{([^}]+)\}\s*from\s*['"]vue['"];?/g,(_,names)=>'const {'+names.replace(/\s+as\s+/g,':')+'}=__vue;').replace(/import .*from ['"].*['"];?/g,'').replace('export default','return')
  code='const {httpClient,currentUser}=__deps;const {chinaBusinessTime,fundsDirection,fundsConfirmationIssue,fundsAmount,fundsFailureMessage}=__flow;const FundsImportPanel={},FundsAssessment={},ElDialog={};const label=x=>x,localTime=x=>x;'+code
  let value={version:2,stagedFlow:true,flowStage:'WAITING_INSURER_PAYMENT',receiveConfirmed:false,payConfirmed:false,canConfirmReceive:false,canConfirmPay:false,canRecordReceive:true,canRecordPay:false,canSetPayTarget:true,receivable:{target:'10.00',net:'5.00',status:'PARTIAL'},payable:{target:'8.00',net:'0.00',status:'UNPAID'}}
- const calls=[],events=[],ledger=[],commands=new Map(),failures=new Map();let afterEntry,afterTarget,confirmedAmount='10.00'
+ const calls=[],events=[],ledger=[],commands=new Map(),failures=new Map();let afterEntry,afterTarget,financialBasis,confirmedAmount='10.00'
  const clone=value=>structuredClone(value)
  function refreshFlags(){for(const key of ['receivable','payable']){const b=value[key];b.status=b.target==null?'UNSET':BigInt(b.target.replace('.',''))===BigInt(b.net.replace('.',''))?'SETTLED':b.net==='0.00'?'UNPAID':'PARTIAL'}value.canConfirmReceive=value.flowStage==='WAITING_INSURER_PAYMENT'&&value.receivable.status==='SETTLED';value.canConfirmPay=value.flowStage==='WAITING_SHOP_SETTLEMENT'&&value.payable.status==='SETTLED'}
- const deps={currentUser:Vue.ref({roles}),httpClient:{async get(path){return {data:{data:path.startsWith('/quotations/')?{confirmedAmount:confirmedAmount??undefined,assessment:{amount:'999.00',sourceCurrent:confirmedAmount!==null},gate:{customerServiceConfirmationRecorded:confirmedAmount!==null}}:path.endsWith('/entries')?{records:clone(ledger),total:ledger.length}:path.endsWith('/targets')?{records:[],total:0}:clone(value)}}},async post(path,body,options){
+ const deps={currentUser:Vue.ref({roles}),httpClient:{async get(path){return {data:{data:path.startsWith('/quotations/')?{confirmedAmount:confirmedAmount??undefined,financialBasis,assessment:{amount:'999.00',sourceCurrent:confirmedAmount!==null},gate:{customerServiceConfirmationRecorded:confirmedAmount!==null}}:path.endsWith('/entries')?{records:clone(ledger),total:ledger.length}:path.endsWith('/targets')?{records:[],total:0}:clone(value)}}},async post(path,body,options){
   const key=options.headers['Idempotency-Key'],kind=path.split('/').at(-1),failure=failures.get(kind)
   calls.push({path,body:clone(body),key})
   if(commands.has(key))return clone(commands.get(key))
@@ -39,7 +39,7 @@ function fixture(roles=['CUSTOMER_SERVICE']){
 
  const component=new Function('__vue','__deps','__flow',code)({...Vue,onMounted(){},watch(){}},deps,{...flow,chinaBusinessTime:()=>flow.chinaBusinessTime(new Date('2026-10-16T16:30:00Z'))})
  const context=component.setup({caseId:'synthetic-funds-case'},{emit(...args){events.push(args)},expose(){}})
- return {context,calls,events,ledger,confirmed(value){confirmedAmount=value},afterEntry(fn){afterEntry=fn},afterTarget(fn){afterTarget=fn},failNext(kind,when='before'){failures.set(kind,when)},set(valueNext){value={...value,...valueNext}}}
+ return {context,calls,events,ledger,confirmed(value){confirmedAmount=value},basis(value){financialBasis=value},afterEntry(fn){afterEntry=fn},afterTarget(fn){afterTarget=fn},failNext(kind,when='before'){failures.set(kind,when)},set(valueNext){value={...value,...valueNext}}}
 }
 function elements(f){
  const {code}=compile(descriptor.template.content,{mode:'function',prefixIdentifiers:true,expressionPlugins:['typescript']}),render=new Function('Vue',ts.transpileModule(code,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText)(Vue),nodes=[]
@@ -60,17 +60,18 @@ test('receivable is read only and adopts the final confirmed amount within the e
  assert.equal(f.context.direction.value,'PAY')
 })
 
-test('shop settlement adopts the same final amount and completes without a manual payable confirmation',async()=>{
- const f=fixture();f.set({flowStage:'WAITING_SHOP_SETTLEMENT',receiveConfirmed:true,payable:{target:'8.00',net:'0.00',status:'UNPAID'}});await f.context.load()
+test('shop settlement adopts the reviewed unmarked-up amount and completes without a manual payable confirmation',async()=>{
+ const f=fixture();f.basis({insuranceAmount:'10.00',shopAmount:'7.00'})
+ f.set({flowStage:'WAITING_SHOP_SETTLEMENT',receiveConfirmed:true,payable:{target:'8.00',net:'0.00',status:'UNPAID'}});await f.context.load()
  assert.equal(f.calls.length,0)
  assert.equal(elements(f).filter(n=>n.type==='input'&&n.props.inputmode==='decimal').length,1)
  assert.equal(buttons(f).some(n=>n.children==='确认应付金额'),false)
- assert.equal(f.context.confirmedAmount.value,'10.00')
- f.context.amount.value='10.00';f.context.number.value='AUTO-PAY';await f.context.run(f.context.confirmEntry)
+ assert.equal(f.context.confirmedAmount.value,'7.00')
+ f.context.amount.value='7.00';f.context.number.value='AUTO-PAY';await f.context.run(f.context.confirmEntry)
  assert.deepEqual(f.calls.map(c=>c.path.split('/').at(-1)),['targets','entries','confirmations'])
- assert.equal(f.calls[0].body.amount,'10.00');assert.equal(f.calls[0].body.direction,'PAY')
+ assert.equal(f.calls[0].body.amount,'7.00');assert.equal(f.calls[0].body.direction,'PAY')
  assert.equal(f.calls[1].body.expectedVersion,3);assert.equal(f.calls[2].body.expectedVersion,4)
- assert.equal(f.context.data.value.flowStage,'COMPLETED');assert.equal(f.ledger[0].amount,'10.00')
+ assert.equal(f.context.data.value.flowStage,'COMPLETED');assert.equal(f.ledger[0].amount,'7.00')
 })
 
 test('shop settlement requires a final confirmation, completed receipts and a current shop assignment',async()=>{

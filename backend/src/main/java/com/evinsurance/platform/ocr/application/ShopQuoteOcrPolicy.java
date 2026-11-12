@@ -18,7 +18,7 @@ public class ShopQuoteOcrPolicy {
     public Map<String,Object> scope(UUID job){var rows=db.queryForList("SELECT * FROM shop_quote_ocr_scope WHERE job_id=?",job);return rows.isEmpty()?null:rows.getFirst();}
     public WorkOrderEntity shopCase(UUID id,Integer version,boolean lock){
         var actor=CurrentUser.require();if(!actor.roles().contains(Role.REPAIR_SHOP)||actor.shopId()==null)throw ApiException.denied();
-        var order=lock?orders.lock(id):orders.find(id);if(order==null)throw ApiException.missing("Work order");
+        var order=lock?orders.lock(id):orders.find(id);if(order==null)throw ApiException.missing("Work order");if(lock)com.evinsurance.platform.workorder.application.WorkOrderWriteAccess.require(order,actor);
         var assignment=orders.activeAssignment(id);
         if(!actor.shopId().equals(order.getShopId())||assignment==null||!actor.shopId().equals(assignment.getShopId())||!"ACCEPTED".equals(assignment.getStatus())||!Objects.equals(version,assignment.getAssignmentVersion()))throw ApiException.denied();
         if(!QuotationLifecycle.EDITABLE.contains(order.getStatus()))throw ApiException.conflict("QUOTE_READ_ONLY","当前案件不允许报价识别或采用旧结果");return order;
@@ -35,7 +35,7 @@ public class ShopQuoteOcrPolicy {
     }
     public boolean eligible(OcrRow job,boolean lock){
         var scope=scope(job.id());if(scope==null)return false;UUID caseId=(UUID)scope.get("work_order_id");
-        var order=lock?orders.lock(caseId):orders.find(caseId);if(order==null||!QuotationLifecycle.EDITABLE.contains(order.getStatus()))return false;
+        var order=lock?orders.lock(caseId):orders.find(caseId);if(order==null||order.isDeletionPending()||!QuotationLifecycle.EDITABLE.contains(order.getStatus()))return false;
         var assignment=orders.activeAssignment(caseId);long shop=((Number)scope.get("shop_id")).longValue();
         if(!Objects.equals(order.getShopId(),shop)||assignment==null||!Objects.equals(assignment.getShopId(),shop)||!"ACCEPTED".equals(assignment.getStatus())||assignment.getAssignmentVersion()!=((Number)scope.get("assignment_version")).intValue())return false;
         if(lock)db.queryForList("SELECT id FROM app_user WHERE id=? FOR SHARE",job.createdBy());

@@ -6,11 +6,20 @@ import java.util.UUID;
 public class WorkOrderEntity {
     private UUID id;
     private String businessNo;
+    private String recalledBusinessNo;
+    public String getRecalledBusinessNo(){return recalledBusinessNo;}
+    public void setRecalledBusinessNo(String value){recalledBusinessNo=value;}
     private String insuranceCompany;
     private String claimNo;
     private Instant claimReportedAt;
     private String dataSource;
     private Long currentResponsibleId;
+    private boolean responsibilityTransferred;
+    private boolean deletionPending;
+    public boolean isResponsibilityTransferred(){return responsibilityTransferred;}
+    public void setResponsibilityTransferred(boolean value){responsibilityTransferred=value;}
+    public boolean isDeletionPending(){return deletionPending;}
+    public void setDeletionPending(boolean value){deletionPending=value;}
     private Long ownerUserId;
     private String ownerBindingStatus;
     private String ownerName;

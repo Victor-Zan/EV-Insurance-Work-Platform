@@ -23,7 +23,15 @@ public class ComplaintService {
     public ComplaintService(ComplaintMapper mapper,FileAccess access,FileMapper files,WorkOrderMapper orders,RepairMapper repairs,AuditService audit,ObjectMapper json){this.mapper=mapper;this.access=access;this.files=files;this.orders=orders;this.repairs=repairs;this.audit=audit;this.json=json;}
     private String text(String value,String field){if(value==null||value.isBlank()||value.length()>2000)throw ApiException.invalid(field+" must be 1..2000 characters");return value.trim();}
     private Map<String,Object> visible(UUID id,boolean lock){
-        var row=lock?mapper.lock(id):mapper.find(id);if(row==null)throw ApiException.missing("Complaint");UUID caseId=(UUID)row.get("work_order_id");access.order(caseId,false);var a=CurrentUser.require();
+        var row=mapper.find(id);
+        if(row==null)throw ApiException.missing("Complaint");
+        UUID caseId=(UUID)row.get("work_order_id");
+        access.order(caseId,lock);
+        if(lock) {
+            row=mapper.lock(id);
+            if(row==null)throw ApiException.missing("Complaint");
+        }
+        var a=CurrentUser.require();
         if(access.staff(a))return row;
         if(a.roles().contains(Role.OWNER)&&((Number)row.get("owner_id")).longValue()==a.id())return row;
         var assignment=orders.activeAssignment(caseId);

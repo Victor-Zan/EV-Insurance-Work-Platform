@@ -17,7 +17,7 @@ class MapMigrationPostgresIT {
         String hash=new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder().encode(UUID.randomUUID().toString());
         var placeholders=java.util.Map.of("devAdminHash",hash,"devCustomerServiceHash",hash,"devRepairShopHash",hash,"devOwnerHash",hash);
         var before=Flyway.configure().dataSource(scoped,user,password).schemas(schema).defaultSchema(schema)
-            .locations("classpath:db/migration","classpath:db/dev").placeholders(placeholders).target("24").load();
+            .locations("classpath:db/migration","classpath:db/dev","classpath:db/test-dev").placeholders(placeholders).target("24").load();
         before.migrate();
         var db=new JdbcTemplate(new DriverManagerDataSource(scoped,user,password));
         long actor=db.queryForObject("select id from app_user where username='dev_admin'",Long.class);
@@ -30,18 +30,23 @@ class MapMigrationPostgresIT {
         db.update("insert into work_order(id,current_responsible_id,created_by,updated_by) values(?,?,?,?)",caseId,actor,actor,actor);
         db.update("insert into map_recommendation_query(id,actor_id,work_order_id,idempotency_key,fingerprint,model_id,direction,strategy,status,expires_at) values(?,?,?,'synthetic-old',?,?,'VEHICLE_TO_SHOP',32,'READY',now()+interval '1 minute')",queryId,actor,caseId,"0".repeat(64),model);
         var after=Flyway.configure().dataSource(scoped,user,password).schemas(schema).defaultSchema(schema)
-            .locations("classpath:db/migration","classpath:db/dev").placeholders(placeholders).load();
-        assertThat(after.migrate().migrationsExecuted).isEqualTo(6);after.validate();
+            .locations("classpath:db/migration","classpath:db/dev","classpath:db/test-dev").placeholders(placeholders).load();
+        after.migrate();
+        after.validate();
+        assertThat(java.util.Arrays.stream(after.info().applied())
+            .filter(info -> info.getVersion() != null)
+            .map(info -> info.getVersion().toString()).toList()).containsSubsequence("25","26","27","28","29","30");
         assertThat(db.queryForObject("select work_order_version from map_recommendation_query where id=?",Long.class,queryId)).isEqualTo(-1);
-        assertThat(db.queryForObject("select source from shop_map_location where shop_id=?",String.class,shop)).isEqualTo("ADMIN_CONFIRMED_GCJ02");
-        assertThat(db.queryForObject("select longitude from shop_map_location where shop_id=?",java.math.BigDecimal.class,shop)).isEqualByComparingTo("113.1");
+        assertThat(db.queryForObject("select source from shop_map_location where shop_id=? and version=1",String.class,shop)).isEqualTo("ADMIN_CONFIRMED_GCJ02");
+        assertThat(db.queryForObject("select longitude from shop_map_location where shop_id=? and version=1",java.math.BigDecimal.class,shop)).isEqualByComparingTo("113.1");
         assertThat(db.queryForObject("select activated from app_user where id=?",Boolean.class,actor)).isTrue();
         assertThat(db.queryForObject("select count(*) from map_call_budget_run",Long.class)).isZero();
         assertThat(db.queryForObject("select count(*) from map_call_budget_slot",Long.class)).isZero();
         assertThat(db.queryForObject("select count(*) from map_call_budget_extra_attempt",Long.class)).isZero();
-        assertThatThrownBy(()->db.update("insert into shop_map_location(shop_id,version,district_id,address_snapshot,coordinate_system,source,created_by) values(?,2,?,'合成','GCJ-02','ADMIN_CONFIRMED_GCJ02',?)",shop,district,actor)).isInstanceOf(org.springframework.dao.DataAccessException.class);
-        db.update("insert into shop_map_location(shop_id,version,district_id,address_snapshot,coordinate_system,source,created_by,session_id,expires_at) values(?,2,?,'合成测试入口','GCJ-02','AMAP_TEST_SESSION',?,?,now()+interval '10 minutes')",shop,district,actor,UUID.randomUUID());
-        assertThat(db.queryForObject("select longitude is null and latitude is null from shop_map_location where shop_id=? and version=2",Boolean.class,shop)).isTrue();
+        int nextVersion = db.queryForObject("select max(version)+1 from shop_map_location where shop_id=?", Integer.class, shop);
+        assertThatThrownBy(()->db.update("insert into shop_map_location(shop_id,version,district_id,address_snapshot,coordinate_system,source,created_by) values(?,?,?,'合成','GCJ-02','ADMIN_CONFIRMED_GCJ02',?)",shop,nextVersion,district,actor)).isInstanceOf(org.springframework.dao.DataAccessException.class);
+        db.update("insert into shop_map_location(shop_id,version,district_id,address_snapshot,coordinate_system,source,created_by,session_id,expires_at) values(?,?,?,'合成测试入口','GCJ-02','AMAP_TEST_SESSION',?,?,now()+interval '10 minutes')",shop,nextVersion,district,actor,UUID.randomUUID());
+        assertThat(db.queryForObject("select longitude is null and latitude is null from shop_map_location where shop_id=? and version=?",Boolean.class,shop,nextVersion)).isTrue();
         assertThat(after.migrate().migrationsExecuted).isZero();after.validate();
         assertThat(db.queryForObject("select count(*) from map_call_budget_run",Long.class)).isZero();
         db.update("insert into map_call_budget_run(id) values('opaque-subject-migration-test')");

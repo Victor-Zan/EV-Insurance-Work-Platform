@@ -18,7 +18,7 @@ class PublicWorkshopMigrationPostgresIT {
         String hash=new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder().encode(UUID.randomUUID().toString());
         var placeholders=Map.of("devAdminHash",hash,"devCustomerServiceHash",hash,"devRepairShopHash",hash,"devOwnerHash",hash);
         var business=Flyway.configure().dataSource(scoped,user,password).schemas(schema).defaultSchema(schema)
-            .locations("classpath:db/migration","classpath:db/dev").placeholders(placeholders).load();
+            .locations("classpath:db/migration","classpath:db/dev","classpath:db/test-dev").placeholders(placeholders).load();
         business.migrate();
         var db=new JdbcTemplate(new DriverManagerDataSource(scoped,user,password));
         long actor=db.queryForObject("select id from app_user where username='dev_admin'",Long.class);

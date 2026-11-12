@@ -17,7 +17,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.*;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.test.web.servlet.request.AbstractMockHttpServletRequestBuilder;
 import org.flywaydb.core.Flyway;
 import tools.jackson.databind.*;
 import com.evinsurance.platform.pricing.application.SampleService;
@@ -59,7 +59,7 @@ class SamplePostgresIT {
             .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         return json.readTree(result).path("data").path("accessToken").asText();
     }
-    private JsonNode ok(MockHttpServletRequestBuilder request,Object body) throws Exception {
+    private JsonNode ok(AbstractMockHttpServletRequestBuilder<?> request,Object body) throws Exception {
         request.header("Authorization","Bearer "+token);
         if(body!=null)request.contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body));
         return json.readTree(mvc.perform(request).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data");
@@ -223,6 +223,9 @@ class SamplePostgresIT {
         assertThat(detail.path("full_record").path("details").get(0).path("correctedSupplierAmount").asText()).isEqualTo("95");
         assertThat(ok(post(path+"/prices"),null).path("importedPrices").asInt()).isEqualTo(4);
         assertThat(ok(post(path+"/prices"),null).path("existingPrices").asInt()).isEqualTo(4);
+        var priceOnly=ok(multipart("/api/v1/pricing/samples/workbook/preview").file(file).param("excludeRows","7"),null);
+        assertThat(priceOnly.path("duplicates").asInt()).isEqualTo(4);
+        assertThat(priceOnly.path("ready").asInt()).isZero();
         var groups=ok(get("/api/v1/pricing/samples/groups").param("sourceKind","HISTORICAL_ARCHIVE").param("priceNature","SUPPLIER_QUOTED"),null);
         assertThat(groups.path("total").asInt()).isEqualTo(2);
         assertThat(groups.path("records").valueStream().map(r->r.path("minimum").asText())).containsExactlyInAnyOrder("95.00","22.00");
@@ -241,7 +244,70 @@ class SamplePostgresIT {
         assertThat(download.getResponse().getContentAsByteArray()).isEqualTo(source);
     }
 
+    @Test void workbookPricesImportIndependentlyAndGroupRegionalAndNationalQuotes() throws Exception {
+        var file=new MockMultipartFile("file","standalone-pricing.xlsx","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            fullHistoricalFixture(true));
+        String workbook="/api/v1/pricing/samples/workbook";
+        long archives=db.queryForObject("SELECT count(*) FROM historical_case",Long.class);
+        var rejected=multipart(workbook+"/preview").file(file).header("Authorization","Bearer "+login("repair_shop"));
+        mvc.perform(rejected).andExpect(status().isForbidden());
+        var initial=ok(multipart(workbook+"/preview").file(file).param("excludeRows","7-7").param("size","1"),null);
+        assertThat(initial.path("ready").asInt()).isEqualTo(3);
+        assertThat(initial.path("invalid").asInt()).isEqualTo(1);
+        assertThat(initial.path("rows").path("total").asInt()).isEqualTo(4);
+        assertThat(initial.path("rows").path("records").size()).isEqualTo(1);
+        assertThat(initial.path("rows").path("records").get(0).path("supplier").path("status").asText()).isEqualTo("INVALID");
+        var corrected=ok(multipart(workbook+"/preview").file(file).param("excludeRows","7")
+            .param("correctionRow","5").param("correctionNature","SUPPLIER_QUOTED").param("correctionAmount","95"),null);
+        assertThat(corrected.path("ready").asInt()).isEqualTo(4);
+        assertThat(corrected.path("skippedRows").asInt()).isEqualTo(2);
+        assertThat(db.queryForObject("SELECT count(*) FROM price_sample_batch WHERE file_name='standalone-pricing.xlsx'",Long.class)).isZero();
+        var stale=multipart(workbook+"/confirm").file(file).param("excludeRows","7").param("fingerprint",corrected.path("fingerprint").asText())
+            .header("Authorization","Bearer "+token);
+        mvc.perform(stale).andExpect(status().isConflict());
+        for(int i=0;i<2;i++){
+            var imported=ok(multipart(workbook+"/confirm").file(file).param("excludeRows","7")
+                .param("correctionRow","5").param("correctionNature","SUPPLIER_QUOTED").param("correctionAmount","95")
+                .param("fingerprint",corrected.path("fingerprint").asText()),null);
+            assertThat(imported.path("imported").asInt()).isEqualTo(i==0?4:0);
+            assertThat(imported.path("duplicates").asInt()).isEqualTo(i==0?0:4);
+        }
+        assertThat(db.queryForObject("SELECT count(*) FROM historical_case",Long.class)).isEqualTo(archives);
+        String groupsPath="/api/v1/pricing/samples/groups",samplesPath="/api/v1/pricing/samples";
+        for(String region:List.of("东莞","全国","深圳")){
+            var groups=ok(get(groupsPath).param("query","独立导入合成泵").param("priceNature","SUPPLIER_QUOTED").param("region",region),null);
+            assertThat(groups.path("records").valueStream().map(group->group.path("region").asText()))
+                .containsExactlyInAnyOrderElementsOf(region.equals("深圳")?List.of("全国"):List.of("全国","东莞"));
+        }
+        var matches=ok(get(samplesPath).param("query","独立导入合成泵").param("region","东莞").param("reference","true"),null).path("records");
+        assertThat(matches.size()).isEqualTo(4);
+        var supplier=matches.valueStream().filter(record->record.path("region").asText().equals("全国")&&
+            record.path("priceNature").asText().equals("SUPPLIER_QUOTED")).findFirst().orElseThrow();
+        assertThat(supplier.path("modelName").asText()).isEqualTo("合成明示车型");
+        var nationalGroup=ok(get(samplesPath).param("query","独立导入合成泵").param("reference","true").param("exactGroup","true")
+            .param("region","全国").param("partId",supplier.path("partId").asText()).param("modelId",supplier.path("modelId").asText())
+            .param("priceNature","SUPPLIER_QUOTED").param("unit","个"),null);
+        assertThat(nationalGroup.path("records").size()).isEqualTo(1);
+        var record=ok(get(samplesPath+"/"+supplier.path("id").asText()),null);
+        assertThat(record.path("record").path("original").path("sheetName").asText()).isEqualTo("导入文档");
+        assertThat(record.path("record").path("original").has("historicalCaseId")).isFalse();
+        assertThat(record.path("relatedQuotes").valueStream().map(item->item.path("amount").asText())).containsExactly("95.00","95.00");
+        assertThat(record.path("record").path("original").path("amount").asText()).isEqualTo("0");
+
+        var history=ok(multipart("/api/v1/historical-cases/imports/full").file(file).param("excludeRows","7")
+            .param("supplierCorrectionRow","5").param("supplierCorrectionAmount","95"),null);
+        String archiveBatch="/api/v1/historical-cases/imports/"+history.path("id").asText();
+        assertThat(ok(post(archiveBatch+"/confirm"),null).path("imported_count").asInt()).isEqualTo(2);
+        var existing=ok(post(archiveBatch+"/prices"),null);
+        assertThat(existing.path("importedPrices").asInt()).isZero();
+        assertThat(existing.path("existingPrices").asInt()).isEqualTo(4);
+    }
+
     private byte[] fullHistoricalFixture() throws Exception {
+        return fullHistoricalFixture(false);
+    }
+
+    private byte[] fullHistoricalFixture(boolean standalone) throws Exception {
         try(var book=new org.apache.poi.xssf.usermodel.XSSFWorkbook();var output=new java.io.ByteArrayOutputStream()) {
             var sheet=book.createSheet("导入文档");
             sheet.createRow(0).createCell(0).setCellValue("合成历史档案");
@@ -251,16 +317,18 @@ class SamplePostgresIT {
             for(int i=0;i<4;i++) {
                 var row=sheet.createRow(4+i);
                 String suffix=i<2?"01":i==2?"SKIP":"02";
-                row.createCell(0).setCellValue("TEST-ORDER-"+suffix);
+                row.createCell(0).setCellValue((standalone?"STANDALONE-ORDER-":"TEST-ORDER-")+suffix);
                 row.createCell(5).setCellValue("13800000000");
                 row.createCell(6).setCellValue("合成车主");
-                row.createCell(7).setCellValue("TEST-CASE-"+suffix);
-                row.createCell(9).setCellValue("合成品牌"+suffix);
-                row.createCell(13).setCellValue(i==1?"工时费":"合成泵");
+                row.createCell(7).setCellValue((standalone?"STANDALONE-CASE-":"TEST-CASE-")+suffix);
+                row.createCell(9).setCellValue((standalone?"独立导入合成品牌":"合成品牌")+suffix);
+                if(standalone&&i==0)row.createCell(10).setCellValue("合成明示车型");
+                row.createCell(13).setCellValue(i==1?"工时费":standalone?"独立导入合成泵":"合成泵");
                 row.createCell(14).setCellValue(i==1?"/":"个");
                 row.createCell(15).setCellValue(i==0?0:22);
                 row.createCell(16).setCellValue(i==0?95:30);
                 if(i==0||i==3)row.createCell(17).setCellValue("合成维修网点"+suffix);
+                if(standalone&&i==3)row.createCell(19).setCellValue("东莞");
             }
             book.write(output);return output.toByteArray();
         }

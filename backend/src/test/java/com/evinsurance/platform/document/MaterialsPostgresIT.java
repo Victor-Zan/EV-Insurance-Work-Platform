@@ -99,7 +99,9 @@ class MaterialsPostgresIT {
         Long province=db.queryForObject("insert into region(code,name,level) values('440000','广东省',1) on conflict(code) do update set enabled=true returning id",Long.class);
         Long city=db.queryForObject("insert into region(code,name,level,parent_id) values('440100','广州市',2,?) on conflict(code) do update set enabled=true returning id",Long.class,province);
         Long district=db.queryForObject("insert into region(code,name,level,parent_id) values('440106','天河区',3,?) on conflict(code) do update set enabled=true returning id",Long.class,city);
-        mvc.perform(get("/api/v1/maps/locations/regions").header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andExpect(jsonPath("$.data.records[0].adcode").value("440100"));
+        mvc.perform(get("/api/v1/maps/locations/regions").header("Authorization","Bearer "+customerService))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.records[*].adcode").value(org.hamcrest.Matchers.containsInAnyOrder("440100", "440300")));
         mvc.perform(get("/api/v1/maps/locations/regions?cityId="+city).header("Authorization","Bearer "+customerService)).andExpect(status().isOk()).andExpect(jsonPath("$.data.records[0].adcode").value("440106"));
         // Explicit Mock remains labelled and cannot pretend to perform real geocoding.
         mvc.perform(post("/api/v1/maps/locations/resolve").header("Authorization","Bearer "+customerService).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("districtId",district,"detail","合成街道10号")))).andExpect(status().isOk()).andExpect(jsonPath("$.data[0].candidate.mock").value(true));

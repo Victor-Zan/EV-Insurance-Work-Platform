@@ -35,6 +35,7 @@ public class RepairService {
     private boolean staff(CurrentUser a){return a.roles().contains(Role.ADMIN)||a.roles().contains(Role.CUSTOMER_SERVICE);}
     private WorkOrderEntity visible(UUID id,boolean lock){
         var row=lock?orders.lock(id):orders.find(id);if(row==null)throw ApiException.missing("Work order");
+        if(lock)com.evinsurance.platform.workorder.application.WorkOrderWriteAccess.require(row,CurrentUser.require());
         var a=CurrentUser.require();if("DRAFT".equals(row.getStatus()))throw ApiException.denied();
         if(staff(a) || (a.roles().contains(Role.OWNER)&&Objects.equals(row.getOwnerUserId(),a.id()))
             || (a.roles().contains(Role.REPAIR_SHOP)&&a.shopId()!=null&&a.shopId().equals(row.getShopId())))return row;

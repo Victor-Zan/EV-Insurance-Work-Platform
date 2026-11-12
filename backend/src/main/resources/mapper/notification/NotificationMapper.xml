@@ -35,7 +35,7 @@
    LEFT JOIN quotation_context q ON q.work_order_id=w.id
    LEFT JOIN LATERAL(SELECT * FROM funds_target r WHERE r.work_order_id=w.id AND r.direction='RECEIVE' ORDER BY id DESC LIMIT 1) r ON true
    LEFT JOIN LATERAL(SELECT * FROM funds_target p WHERE p.work_order_id=w.id AND p.direction='PAY' ORDER BY id DESC LIMIT 1) p ON true
-   WHERE w.status NOT IN ('DRAFT','CANCELLED','CLOSED') <if test="caseId != null">AND w.id=#{caseId}</if>
+   WHERE NOT w.deletion_pending AND w.status NOT IN ('DRAFT','CANCELLED','CLOSED') <if test="caseId != null">AND w.id=#{caseId}</if>
   ), tasks AS (
    SELECT id work_order_id,state_kind kind,id::text||':'||state_kind||':'||coalesce(assignment_version,0)::text||':'||extract(epoch from status_started_at)::text task_key,
     CASE WHEN state_kind='PAY_SHOP' THEN 'CS' WHEN state_kind LIKE '%SHOP' THEN 'SHOP' WHEN state_kind='RECEIVE_OWNER' THEN 'OWNER_CS' ELSE 'CS' END role_scope,created_at FROM states WHERE state_kind IS NOT NULL
@@ -43,7 +43,7 @@
    UNION ALL SELECT id,'COLLECT_FUNDS',id::text||':COLLECT_FUNDS:'||receive_target_id::text,'CS',created_at FROM states WHERE status&lt;&gt;'WAITING_INSURER_PAYMENT' AND receive_target IS NOT NULL AND net_receive&lt;receive_target
    UNION ALL SELECT id,'SET_PAYABLE',id::text||':SET_PAYABLE:'||coalesce(pay_target_id,0)::text,'CS',created_at FROM states WHERE status IN ('COMPLETED','WAITING_SHOP_SETTLEMENT') AND pay_target IS NULL
    UNION ALL SELECT id,'PAY_SHOP',id::text||':PAY_SHOP:'||pay_target_id::text,'CS',created_at FROM states WHERE status='COMPLETED' AND pay_target IS NOT NULL AND net_pay&lt;pay_target AND receive_target IS NOT NULL AND net_receive=receive_target
-   UNION ALL SELECT work_order_id,'HANDLE_COMPLAINT','COMPLAINT:'||id::text||':'||status,'ADMIN',created_at FROM complaint WHERE status&lt;&gt;'CLOSED' <if test="caseId != null">AND work_order_id=#{caseId}</if>
+   UNION ALL SELECT work_order_id,'HANDLE_COMPLAINT','COMPLAINT:'||id::text||':'||status,'ADMIN',created_at FROM complaint WHERE status&lt;&gt;'CLOSED' AND EXISTS(SELECT 1 FROM work_order w WHERE w.id=complaint.work_order_id AND NOT w.deletion_pending) <if test="caseId != null">AND work_order_id=#{caseId}</if>
   )
  </sql>
  <sql id="taskScope">

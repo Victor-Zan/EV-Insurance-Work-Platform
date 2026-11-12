@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.evinsurance.platform.funds.infrastructure.AnalyticsMapper">
+ <sql id="filter">
+ FROM funds_analytics_fact WHERE completed_at &gt;= #{start} AND completed_at &lt; #{end}
+ <if test="creator != null">AND created_by=#{creator}</if>
+ <if test="shop != null">AND shop_id=#{shop}</if>
+ <if test="pending">AND pending_reason IS NOT NULL</if>
+ </sql>
+ <sql id="totals">
+ count(*) completed,count(*) FILTER(WHERE pending_reason IS NULL) accounted,
+ coalesce(sum(insurance) FILTER(WHERE pending_reason IS NULL),0)::text insurance,
+ coalesce(sum(payable) FILTER(WHERE pending_reason IS NULL),0)::text payable,
+ coalesce(sum(profit) FILTER(WHERE pending_reason IS NULL),0)::text profit,
+ (round(100*sum(profit) FILTER(WHERE pending_reason IS NULL)/nullif(sum(insurance) FILTER(WHERE pending_reason IS NULL),0),2))::text margin
+ </sql>
+ <select id="summary" resultType="map">SELECT <include refid="totals"/><include refid="filter"/></select>
+ <select id="trend" resultType="map">
+ SELECT to_char(date_trunc(#{grain},completed_at AT TIME ZONE 'Asia/Shanghai'),'YYYY-MM-DD') bucket,
+ <include refid="totals"/><include refid="filter"/> GROUP BY bucket ORDER BY bucket
+ </select>
+ <sql id="groupKey"><choose><when test="dimension == 'shop'">shop_id</when><otherwise>created_by</otherwise></choose></sql>
+ <sql id="groupName"><choose><when test="dimension == 'shop'">shop_name</when><otherwise>creator_name</otherwise></choose></sql>
+ <select id="groupCount" resultType="long">SELECT count(*) FROM (SELECT <include refid="groupKey"/><include refid="filter"/> GROUP BY <include refid="groupKey"/>) g</select>
+ <select id="groups" resultType="map">
+ SELECT <include refid="groupKey"/> id,min(<include refid="groupName"/>) name,<include refid="totals"/>
+ <include refid="filter"/> GROUP BY <include refid="groupKey"/>
+ ORDER BY <choose><when test="metric == 'completed'">count(*)</when><otherwise>coalesce(sum(profit) FILTER(WHERE pending_reason IS NULL),0)</otherwise></choose> DESC,
+ <include refid="groupKey"/> NULLS LAST LIMIT #{size} OFFSET #{offset}
+ </select>
+ <select id="details" resultType="map">
+ SELECT id,business_no,creator_name,shop_name,to_char(completed_at AT TIME ZONE 'Asia/Shanghai','YYYY-MM-DD HH24:MI') completed_at,
+ CASE WHEN pending_reason IS NULL THEN insurance::text END insurance,
+ CASE WHEN pending_reason IS NULL THEN payable::text END payable,
+ CASE WHEN pending_reason IS NULL THEN profit::text END profit,pending_reason,
+ completion_id,confirmation_id,receive_target_id,pay_target_id
+ <include refid="filter"/> ORDER BY completed_at DESC,completion_id DESC LIMIT #{size} OFFSET #{offset}
+ </select>
+</mapper>

@@ -98,7 +98,8 @@ public class WorkflowService {
                 default -> { }
             }
         }
-        boolean canAct=!terminal&&switch(role) {
+        boolean writable=WorkOrderWriteAccess.canWrite(row,actor);
+        boolean canAct=writable&&!terminal&&switch(role) {
             case "ADMIN_OR_CUSTOMER_SERVICE" -> true;
             case "CUSTOMER_SERVICE","REPAIR_SHOP_OR_CUSTOMER_SERVICE","OWNER_OR_CUSTOMER_SERVICE" -> actor.roles().contains(Role.CUSTOMER_SERVICE);
             default -> false;
@@ -136,7 +137,7 @@ public class WorkflowService {
                 ||(category==FileCategory.SCENE_PHOTO&&(current==WorkflowNode.CREATE||current==WorkflowNode.QUOTE_REVIEW))
                 ||(category==FileCategory.COMPLETION_PHOTO&&current==WorkflowNode.REPAIR&&"REPAIRING".equals(displayStatus));
             boolean exception=category==FileCategory.NOTICE&&!present&&!blank(files.missingReason(id));
-            materials.add(new Material(category.name(),required,present,eligible(counts,category)||exception,exception,allowed&&(actor.roles().contains(Role.CUSTOMER_SERVICE)||(category==FileCategory.SCENE_PHOTO&&actor.roles().contains(Role.ADMIN))),counts.containsKey(category)&&counts.get(category).shopUploadedCount()>0));
+            materials.add(new Material(category.name(),required,present,eligible(counts,category)||exception,exception,writable&&allowed&&(actor.roles().contains(Role.CUSTOMER_SERVICE)||(category==FileCategory.SCENE_PHOTO&&actor.roles().contains(Role.ADMIN))),counts.containsKey(category)&&counts.get(category).shopUploadedCount()>0));
         }
         boolean legacy=current==null||(assessment!=null&&!currentFormal&&!terminal)
             ||(current.ordinal()>=WorkflowNode.REPAIR.ordinal()&&(!currentFormal||!currentAmount));

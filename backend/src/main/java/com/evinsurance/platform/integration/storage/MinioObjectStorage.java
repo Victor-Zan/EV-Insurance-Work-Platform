@@ -46,5 +46,25 @@ public class MinioObjectStorage implements ObjectStorageService {
         try { client().removeObject(RemoveObjectArgs.builder().bucket(bucket).object(key).build()); }
         catch(Exception e) { org.slf4j.LoggerFactory.getLogger(getClass()).error("Uncommitted upload compensation failed; reconciliation required"); }
     }
+    @Override
+    public void delete(String key) {
+        try {
+            var client=client();
+            var listing=ListObjectsArgs.builder().bucket(bucket).prefix(key).recursive(true).includeVersions(true).build();
+            var versions=new java.util.ArrayList<String>();
+            for(var result:client.listObjects(listing)) {
+                var item=result.get();
+                if(key.equals(item.objectName()))versions.add(item.versionId());
+            }
+            for(String version:versions) {
+                var removal=RemoveObjectArgs.builder().bucket(bucket).object(key);
+                if(version!=null)removal.versionId(version);
+                client.removeObject(removal.build());
+            }
+            for(var result:client.listObjects(listing))
+                if(key.equals(result.get().objectName()))throw unavailable();
+        }
+        catch(Exception e) { throw unavailable(); }
+    }
     private ApiException unavailable() { return new ApiException(HttpStatus.SERVICE_UNAVAILABLE,"STORAGE_UNAVAILABLE","Private object storage is unavailable"); }
 }

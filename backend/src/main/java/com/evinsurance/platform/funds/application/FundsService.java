@@ -8,6 +8,7 @@ import com.evinsurance.platform.workorder.infrastructure.*;
 import com.evinsurance.platform.identity.domain.*;
 import com.evinsurance.platform.foundation.api.*;
 import com.evinsurance.platform.audit.application.AuditService;
+import com.evinsurance.platform.quotation.application.QuotationService;
 import com.evinsurance.platform.foundation.web.TraceContext;
 import java.util.*;
 import java.math.BigDecimal;
@@ -22,7 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class FundsService {
     private final FundsMapper mapper;private final FileAccess access;private final WorkOrderMapper orders;private final AuditService audit;private final ObjectMapper json;
-    public FundsService(FundsMapper mapper,FileAccess access,WorkOrderMapper orders,AuditService audit,ObjectMapper json){this.mapper=mapper;this.access=access;this.orders=orders;this.audit=audit;this.json=json;}
+    private final QuotationService quotations;
+    public FundsService(FundsMapper mapper,FileAccess access,WorkOrderMapper orders,AuditService audit,ObjectMapper json,QuotationService quotations){this.mapper=mapper;this.access=access;this.orders=orders;this.audit=audit;this.json=json;this.quotations=quotations;}
     public void writer(){access.customerService(CurrentUser.require());}
     private WorkOrderEntity visible(UUID id,boolean lock){
         var actor=CurrentUser.require();if(actor.roles().contains(Role.OWNER)&&!access.staff(actor))throw ApiException.denied();
@@ -36,6 +38,13 @@ public class FundsService {
     private String text(String value,String name,int limit,boolean required){if(value==null||value.isBlank()){if(required)throw ApiException.invalid(name+" is required");return "";}if(value.length()>limit)throw ApiException.invalid(name+" is too long");return value.trim();}
     private BigDecimal target(UUID id,String dir){var row=mapper.target(id,dir);return row==null?null:(BigDecimal)row.get("amount");}
     private BigDecimal net(UUID id,String dir){return mapper.net(id,dir,null,null).setScale(2);}
+    private void requireConfirmedTarget(UUID id,String direction,BigDecimal target){
+        var basis=quotations.financialBasis(id);
+        if(basis==null)return;
+        var amount=FundsMoney.parse(basis.path(direction.equals("PAY")?"shopAmount":"insuranceAmount"),false);
+        if(target==null||target.compareTo(amount)!=0)
+            throw ApiException.conflict("FUNDS_QUOTE_TARGET_CHANGED","请按当前确认依据核对保险应收和网点应付金额");
+    }
     private String basis(UUID id,String dir){
         var target=mapper.target(id,dir);var receive=dir.equals("PAY")?mapper.confirmation(id,"RECEIVE"):null;
         return FileService.hash((mapper.receiptId(id)+":"+(target==null?"unset":target.get("id"))+":"+mapper.ledgerBasis(id,dir)+":"+(receive==null?"":receive.get("id"))).getBytes(StandardCharsets.UTF_8));
@@ -69,6 +78,7 @@ public class FundsService {
         writer();var order=visible(id,true);return command(id,"CONFIRM",key,request,()->{
             expected(id,request.expectedVersion());String dir=direction(request.direction());
             if(!canConfirm(order,dir))throw ApiException.conflict("FUNDS_CONFIRMATION_BLOCKED","请先确认收车，按顺序补齐目标金额与流水，再确认该笔资金完成");
+            requireConfirmedTarget(id,dir,target(id,dir));
             mapper.confirm(id,dir,basis(id,dir),version(id),CurrentUser.require().id());advance(id);refreshStage(order);
             audit.record(CurrentUser.require(),AuditService.Action.FUNDS_CONFIRM,"WORK_ORDER",id,"Manually confirmed "+dir+"; amount="+net(id,dir).toPlainString()+"; receipt="+mapper.receiptId(id)+"; immutable target and entry snapshot retained; no real transfer");return view(order);
         });
@@ -114,6 +124,7 @@ public class FundsService {
         writer();var order=visible(id,true);return command(id,"TARGET",key,request,()->{
             expected(id,request.expectedVersion());if("CANCELLED".equals(order.getStatus()))throw ApiException.conflict("FUNDS_READ_ONLY","Cancelled targets are read-only");String dir=direction(request.direction());
             BigDecimal amount=request.amount()==null||request.amount().isNull()?null:FundsMoney.parse(request.amount(),false);BigDecimal net=net(id,dir);
+            requireConfirmedTarget(id,dir,amount);
             if((amount==null&&(dir.equals("RECEIVE")||net.signum()!=0))||(amount!=null&&amount.compareTo(net)<0))throw ApiException.conflict("FUNDS_TARGET_CONFLICT","Reverse historical entries before reducing below net or clearing a paid target");
             var assignment=orders.activeAssignment(id);if(dir.equals("PAY")&&(assignment==null||!"ACCEPTED".equals(assignment.getStatus())))throw ApiException.conflict("FUNDS_ASSIGNMENT_REQUIRED","Payable requires a current accepted shop");
             mapper.targetSave(id,dir,amount,dir.equals("PAY")?assignment.getShopId():null,dir.equals("PAY")?assignment.getAssignmentVersion():null,text(request.reason(),"Target version reason",2000,true),CurrentUser.require().id());advance(id);refreshStage(order);
@@ -129,6 +140,7 @@ public class FundsService {
             if(duplicate!=null){if(!hash.equals(duplicate.get("content_hash")))throw ApiException.conflict("TRANSACTION_CONFLICT","Direction and transaction number already belong to different content");return json.createObjectNode().put("entryId",duplicate.get("id").toString()).put("duplicate",true).set("funds",view(order));}
             expected(id,request.expectedVersion());if("CANCELLED".equals(order.getStatus()))throw ApiException.conflict("FUNDS_READ_ONLY","Cancelled cases cannot receive new entries");
             BigDecimal target=target(id,dir);if(target==null)throw ApiException.conflict("FUNDS_TARGET_UNSET","Set a manual target first");
+            requireConfirmedTarget(id,dir,target);
             if(net(id,dir).add(amount).compareTo(target)>0)throw ApiException.conflict("FUNDS_EXCESS","Actual entry would exceed the target");
             var assignment=orders.activeAssignment(id);
             if(dir.equals("RECEIVE")&&mapper.staged(id)&&!"WAITING_INSURER_PAYMENT".equals(order.getStatus()))throw ApiException.conflict("FUNDS_SEQUENCE_REQUIRED","先回到保险到账步骤再补记到账流水");
