@@ -78,7 +78,7 @@ onMounted(load)
             <div><h1>{{ order.businessNo||'案件' }}</h1><p>{{ caseFacts }}</p></div>
           </div>
           <div class="case-tools">
-            <Tag plain>{{ displayStatus }}</Tag>
+            <Tag v-if="order.deletionPending" type="danger" plain>工单暂停办理</Tag><Tag v-else plain>{{ displayStatus }}</Tag>
             <Button size="small" plain :loading="loading" @click="materialRevision++;load()">刷新</Button>
             <details class="more-menu"><summary>更多</summary><div><button v-for="section in moduleSections" :key="section.key" type="button" @click="goSection(section.key)">{{ section.label }}</button><button v-if="!isShop" type="button" @click="goSection('complaint')">投诉</button></div></details>
           </div>
@@ -102,18 +102,18 @@ onMounted(load)
         <section class="task-context-card"><p>当前任务</p><h2>{{ activeModuleLabel }}</h2><span><i aria-hidden="true"></i>{{ activeSection===currentTaskSection?'当前阶段':'查看业务资料' }}</span></section>
         <section v-if="activeSection==='task'" class="case-module-card action-panel">
           <h2>{{ order.status==='PENDING_ACCEPTANCE'?'接单处理':order.status==='PENDING_ARRIVAL'?'车辆到店':order.status==='ARRIVAL_EXCEPTION'?'到店异常处理':'当前阶段' }}</h2>
-          <template v-if="isShop&&['PENDING_ACCEPTANCE','PENDING_ARRIVAL','ARRIVAL_EXCEPTION'].includes(order.status)">
+          <template v-if="!order.deletionPending&&isShop&&['PENDING_ACCEPTANCE','PENDING_ARRIVAL','ARRIVAL_EXCEPTION'].includes(order.status)">
             <Field v-model="reason" :label="order.status==='PENDING_ACCEPTANCE'?'拒绝原因':'处理说明'" type="textarea" :placeholder="order.status==='PENDING_ACCEPTANCE'?'拒绝时必填':'异常时填写原因'"/>
             <Button v-if="order.status==='PENDING_ACCEPTANCE'" block plain :loading="busy" @click="action('reject')">拒绝接单</Button><Button v-if="order.status==='PENDING_ACCEPTANCE'" block type="primary" :loading="busy" @click="action('accept')">接受案件</Button>
             <Button v-if="order.status==='PENDING_ARRIVAL'" block plain :loading="busy" @click="action('exception')">记录到店异常</Button><Button v-if="order.status==='ARRIVAL_EXCEPTION'" block plain :loading="busy" @click="action('continue')">继续等待</Button><Button v-if="['PENDING_ARRIVAL','ARRIVAL_EXCEPTION'].includes(order.status)" block type="primary" :loading="busy" @click="action('arrive')">确认车辆到店</Button>
           </template>
-          <p v-else>当前没有需要在移动端执行的操作，可查看案件资料或记录。</p>
+          <p v-else-if="order.deletionPending">工单暂停办理，可查看案件资料和记录。</p><p v-else>当前没有需要在移动端执行的操作，可查看案件资料或记录。</p>
         </section>
-        <QuotationPanel v-if="isShop&&['quotation','quote-records'].includes(activeSection)" :records-only="activeSection==='quote-records'" :case-id="id" :refresh-token="materialRevision" @changed="materialRevision++;load()"/>
-        <MaterialsPanel v-if="activeSection==='materials'||activeSection==='photos'" @changed="materialRevision++;load()" :case-id="id" :status="order.status" :assignment-version="order.currentAssignment?.assignmentVersion"/>
-        <RepairPanel :receipt-mode="activeSection==='receipt'" v-if="activeSection==='repair'||activeSection==='progress'||activeSection==='receipt'" :case-id="id" :refresh-token="materialRevision" @changed="materialRevision++;load()"/>
+        <QuotationPanel v-if="isShop&&['quotation','quote-records'].includes(activeSection)" :readonly="order.deletionPending" :records-only="activeSection==='quote-records'" :case-id="id" :refresh-token="materialRevision" @changed="materialRevision++;load()"/>
+        <MaterialsPanel v-if="activeSection==='materials'||activeSection==='photos'" :readonly="order.deletionPending" @changed="materialRevision++;load()" :case-id="id" :status="order.status" :assignment-version="order.currentAssignment?.assignmentVersion"/>
+        <RepairPanel :readonly="order.deletionPending" :receipt-mode="activeSection==='receipt'" v-if="activeSection==='repair'||activeSection==='progress'||activeSection==='receipt'" :case-id="id" :refresh-token="materialRevision" @changed="materialRevision++;load()"/>
         <FundsPanel v-if="isShop&&activeSection==='settlement'" :case-id="id" :refresh-token="materialRevision"/>
-        <ComplaintPanel v-if="activeSection==='complaint'" :case-id="id" :status="order.status" :refresh-token="materialRevision"/>
+        <ComplaintPanel v-if="activeSection==='complaint'" :readonly="order.deletionPending" :case-id="id" :status="order.status" :refresh-token="materialRevision"/>
       </template>
 
       <section v-if="activeSection==='data'" class="case-module-card case-data-card">

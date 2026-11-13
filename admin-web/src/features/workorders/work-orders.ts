@@ -12,6 +12,7 @@ export interface Assignment {
   assignedAt?:string;shopName?:string;shopAddress?:string;destinationShopId?:number;destinationName?:string;destinationAddress?:string;locationPrecision?:'ROAD'|'PRECISE'
 }
 export interface WorkOrder {
+  deletionPending?: boolean
   workflowNode?:string
   workflowActor?:string
   id: string

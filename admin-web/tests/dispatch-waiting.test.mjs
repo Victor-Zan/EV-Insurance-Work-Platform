@@ -29,7 +29,8 @@ test('older assignments retain their real receiving shop without inventing a des
 test('parent switches by persisted pending-acceptance status and applies the successful response before refreshing',()=>{
  const source=readFileSync(new URL('../src/features/workorders/WorkOrderDetailView.vue',import.meta.url),'utf8')
  assert.match(source,/waitingForShop=computed\(\(\)=>order\.value\?\.status==='PENDING_ACCEPTANCE'\)/)
- assert.match(source,/<WorkflowTimeline :workflow="workflow"\/><\/header><template v-if="waitingForShop">/ )
+ assert.match(source,/<WorkflowTimeline :workflow="workflow"\/><\/header>/)
+ assert.match(source,/<template v-if="waitingForShop&&!deletionPending">/)
  assert.match(source,/<DispatchWaitingPanel :order="order"\/><\/template><template v-else>/)
  assert.match(source,/if\(updated\)order\.value=updated;await load\(\)/)
  assert.match(source,/@changed="dispatchChanged"/)

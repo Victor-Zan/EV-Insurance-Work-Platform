@@ -4,14 +4,14 @@ import {Popup,showImagePreview} from 'vant'
 import {label} from '@/shared/ui/presentation'
 import { currentUser, httpClient } from '@/shared/http/client'
 const emit=defineEmits<{changed:[]}>()
-const props=defineProps<{caseId:string;status:string;assignmentVersion?:number;recordsOnly?:boolean;filterCategories?:string[]}>()
+const props=defineProps<{caseId:string;status:string;readonly?:boolean;assignmentVersion?:number;recordsOnly?:boolean;filterCategories?:string[]}>()
 interface Attachment {id:string;category:string;name:string;state:string;version:number;size:number;contentType:string}
 interface Job {id:string;state:string;attempts:number;candidate:unknown;reviewVersion:number;confirmed:boolean}
 const labels:Record<string,string>={NOTICE:'通知单',SHOP_QUOTE:'网点报价/明细',ASSESSMENT:'定损单',LOSS_ASSESSMENT:'核损单',ARRIVAL_PHOTO:'到店照',PROGRESS_PHOTO:'进度照',COMPLETION_PHOTO:'完工照'}
 const cs=computed(()=>currentUser.value?.roles.includes('CUSTOMER_SERVICE'))
 const staff=computed(()=>cs.value||currentUser.value?.roles.includes('ADMIN'))
 const shop=computed(()=>currentUser.value?.roles.includes('REPAIR_SHOP'))
-const writable=computed(()=>!['COMPLETED','CANCELLED'].includes(props.status))
+const writable=computed(()=>!props.readonly&&!['COMPLETED','CANCELLED'].includes(props.status))
 const categories=computed(()=>Object.keys(labels).filter(x=>cs.value||(shop.value&&(x==='SHOP_QUOTE'||x==='ASSESSMENT'||x.endsWith('_PHOTO')))))
 const rows=ref<Attachment[]>([]),page=ref(1),total=ref(0),category=ref(cs.value?'NOTICE':'ARRIVAL_PHOTO'),selected=ref<File>(),uploadKey=ref(''),replacement=ref(''),message=ref(''),busy=ref(false),reason=ref(''),notice=ref<{noticePresent:boolean;missingReason:string}>(),job=ref<Job>(),candidate=ref(''),history=ref(''),simulateFailure=ref(false),jobId=ref('')
 async function call<T>(method:'get'|'post',url:string,data?:unknown,headers?:Record<string,string>){return (await httpClient.request<{data:T}>({method,url,data,headers})).data.data}

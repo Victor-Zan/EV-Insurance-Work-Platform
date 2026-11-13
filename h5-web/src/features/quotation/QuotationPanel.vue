@@ -10,10 +10,10 @@ import {label} from '@/shared/ui/presentation'
 import {computed,onMounted,ref,watch} from 'vue'
 import {currentUser,httpClient} from '@/shared/http/client'
 import {formalPayload,quotationApi,type QuoteCase} from './quotation'
-const props=defineProps<{caseId:string;refreshToken?:number;recordsOnly?:boolean}>(),emit=defineEmits<{changed:[]}>(),api=quotationApi(httpClient,props.caseId)
+const props=defineProps<{caseId:string;readonly?:boolean;refreshToken?:number;recordsOnly?:boolean}>(),emit=defineEmits<{changed:[]}>(),api=quotationApi(httpClient,props.caseId)
 const cs=computed(()=>currentUser.value?.roles.includes('CUSTOMER_SERVICE')),staff=computed(()=>cs.value||currentUser.value?.roles.includes('ADMIN')),shop=computed(()=>currentUser.value?.roles.includes('REPAIR_SHOP'))
 const data=ref<QuoteCase>(),busy=ref(false),message=ref(''),draftLines=ref<QuoteOcrDraft[]>([{description:'',quantity:'',unitPrice:''}]),mode=ref<'FIXED_AMOUNT'|'PERCENTAGE'>('FIXED_AMOUNT'),markup=ref('0.00'),assessment=ref(''),historyType=ref(shop.value?'RAW':'EVENT'),historyPage=ref(1),historyTotal=ref(0),history=ref('')
-const editable=computed(()=>!props.recordsOnly&&data.value&&(shop.value?['ARRIVED','WAITING_QUOTE','QUOTE_REVIEWING']:['ARRIVED','WAITING_QUOTE','QUOTE_REVIEWING','WAITING_INSURER_ASSESSMENT','WAITING_REPAIR_AUTHORIZATION']).includes(data.value.status))
+const editable=computed(()=>!props.recordsOnly&&!props.readonly&&data.value&&(shop.value?['ARRIVED','WAITING_QUOTE','QUOTE_REVIEWING']:['ARRIVED','WAITING_QUOTE','QUOTE_REVIEWING','WAITING_INSURER_ASSESSMENT','WAITING_REPAIR_AUTHORIZATION']).includes(data.value.status))
 const quoteStep=ref(false),photoStep=ref(false)
 const showQuote=computed(()=>Boolean(data.value?.arrivalPhotoUploaded)&&!photoStep.value&&(quoteStep.value||Boolean(data.value?.rawQuote)))
 const draftTotal=computed(()=>candidateTotal(draftLines.value))

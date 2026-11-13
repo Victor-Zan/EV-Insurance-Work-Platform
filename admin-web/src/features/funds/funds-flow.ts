@@ -15,6 +15,22 @@ export function fundsAmount(input:string,positive=false){
  if(positive&&integer===0n&&BigInt(fraction||'0')===0n)throw Error('本次实际金额必须大于零')
  return `${integer}.${fraction.padEnd(2,'0')}`
 }
+
+export function actualGrossMargin(
+ receivable: { net: string; status: string },
+ payable: { net: string; status: string },
+): string {
+ if (receivable.status !== 'SETTLED' || payable.status !== 'SETTLED') return '—'
+ const receivedCents = BigInt(fundsAmount(receivable.net).replace('.', ''))
+ if (receivedCents === 0n) return '—'
+ const paidCents = BigInt(fundsAmount(payable.net).replace('.', ''))
+ const profit = receivedCents - paidCents
+ const absoluteProfit = profit < 0n ? -profit : profit
+ // Round the absolute percentage to hundredths, then restore its sign.
+ const hundredths = (absoluteProfit * 10_000n + receivedCents / 2n) / receivedCents
+ const sign = profit < 0n && hundredths !== 0n ? '-' : ''
+ return `${sign}${hundredths / 100n}.${String(hundredths % 100n).padStart(2, '0')}%`
+}
 export function fundsFailureMessage(error:unknown){
  const messages:Record<string,string>={FUNDS_VERSION_CONFLICT:'资金记录已有更新，已尝试刷新；请核对金额后再次确认。',TRANSACTION_CONFLICT:'该流水号 / 凭证编号已用于其他记录，请核对编号和金额。',IDEMPOTENCY_CONFLICT:'本次请求与先前提交不一致，请刷新并核对资金记录后重试。',FUNDS_TARGET_CONFLICT:'应收或应付金额与已记录流水不一致，请先核对或冲销历史流水。'}
  const code=error&&typeof error==='object'&&'code' in error?String(error.code):''

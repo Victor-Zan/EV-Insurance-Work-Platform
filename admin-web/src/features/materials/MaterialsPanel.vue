@@ -3,13 +3,13 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElDialog } from 'element-plus'
 import { currentUser, httpClient } from '@/shared/http/client'
 const emit=defineEmits<{changed:[]}>()
-const props=defineProps<{caseId:string;status:string;assignmentVersion?:number;allowedCategories:string[];compact?:boolean}>()
+const props=defineProps<{caseId:string;status:string;readonly?:boolean;assignmentVersion?:number;allowedCategories:string[];compact?:boolean}>()
 interface Attachment {id:string;category:string;name:string;state:string;version:number;size:number;contentType:string}
 const labels:Record<string,string>={SCENE_PHOTO:'现场物损照片',NOTICE:'历史通知单',SHOP_QUOTE:'网点报价/明细',ASSESSMENT:'定损单',LOSS_ASSESSMENT:'核损单',ARRIVAL_PHOTO:'到店照',PROGRESS_PHOTO:'进度照',COMPLETION_PHOTO:'完工照'}
 const cs=computed(()=>currentUser.value?.roles.includes('CUSTOMER_SERVICE'))
 const staff=computed(()=>cs.value||currentUser.value?.roles.includes('ADMIN'))
 const shop=computed(()=>currentUser.value?.roles.includes('REPAIR_SHOP'))
-const writable=computed(()=>!['COMPLETED','CANCELLED','CLOSED'].includes(props.status))
+const writable=computed(()=>!props.readonly&&!['COMPLETED','CANCELLED','CLOSED'].includes(props.status))
 const categories=computed(()=>props.allowedCategories.filter(x=>cs.value||(x==='SCENE_PHOTO'&&staff.value)||(shop.value&&(x==='SHOP_QUOTE'||x==='ASSESSMENT'||x.endsWith('_PHOTO')))))
 const rows=ref<Attachment[]>([]),page=ref(1),total=ref(0),category=ref(props.allowedCategories[0]??'NOTICE'),selected=ref<File>(),replacement=ref(''),message=ref(''),busy=ref(false),reason=ref(''),notice=ref<{noticePresent:boolean;missingReason:string}>()
 const expandedCategory=ref(''),previewOpen=ref(false),previewUrl=ref(''),previewType=ref(''),previewName=ref('')

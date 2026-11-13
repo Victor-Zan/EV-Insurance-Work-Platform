@@ -71,10 +71,10 @@ public class WorkOrderDeletion {
         var request=request(id);
         if(request==null)throw ApiException.conflict("DELETE_REQUEST_MISSING","删除申请已变化");
         if(reject?!actor.roles().contains(Role.ADMIN):request.applicant()!=actor.id())throw ApiException.denied();
-        String summary=reject?"Deletion rejected: "+reason(body.reason()):"Deletion request withdrawn";
+        var action=reject?AuditService.Action.WORK_ORDER_DELETE_REJECT:AuditService.Action.WORK_ORDER_DELETE_WITHDRAW;
+        audit.record(actor,action,"WORK_ORDER",id,reject?reason(body.reason()):"Deletion request withdrawn");
         db.update("DELETE FROM work_order_deletion_request WHERE work_order_id=?",id);
         freeze(id,false,actor);
-        audit.record(actor,AuditService.Action.WORK_ORDER_DELETE_REQUEST,"WORK_ORDER",id,summary);
     }
 
     @Transactional

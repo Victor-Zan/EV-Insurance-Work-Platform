@@ -751,7 +751,7 @@ public class WorkOrderService {
             row.getUpdatedAt(),assignment,node(row,phase),nodeActor(row,phase),row.getSurveyorName(),
             actor.roles().contains(Role.ADMIN)||actor.roles().contains(Role.CUSTOMER_SERVICE)?row.getSurveyorPhone():null,row.getVehicleColor(),row.isDispatchAddressConfirmed(),
             actor.roles().contains(Role.ADMIN)||actor.roles().contains(Role.CUSTOMER_SERVICE)?row.getParkingRegionId():null,
-            actor.roles().contains(Role.ADMIN)||actor.roles().contains(Role.CUSTOMER_SERVICE)?row.getParkingAddress():null);
+            actor.roles().contains(Role.ADMIN)||actor.roles().contains(Role.CUSTOMER_SERVICE)?row.getParkingAddress():null,row.isDeletionPending());
     }
 
     private String node(WorkOrderEntity row,WorkOrderRows.Phase phase){if(java.util.Set.of("WAITING_INSURER_ASSESSMENT","WAITING_REPAIR_AUTHORIZATION").contains(row.getStatus())&&(phase==null||!phase.formalCurrent()))return phase!=null&&phase.rawCurrent()?"QUOTE_REVIEW":"SHOP_QUOTE";var n=com.evinsurance.platform.workorder.domain.WorkflowNode.current(row.getStatus(),phase!=null&&phase.amountPresent());return n==null?"UNKNOWN":n.name();}

@@ -13,17 +13,29 @@
  <sql id="notificationFrom">
   FROM in_app_notification n JOIN notification_event e ON e.audit_id=n.event_id JOIN work_order w ON w.id=e.work_order_id
   LEFT JOIN work_order_cancellation cancellation ON cancellation.work_order_id=w.id AND e.kind='CASE_CANCELLED'
+  LEFT JOIN audit_log rejection ON rejection.id=e.audit_id AND e.kind='WORK_ORDER_DELETION_REJECTED'
   LEFT JOIN notification_read nr ON nr.notification_id=n.id AND nr.user_id=#{user}
   <include refid="assignment"/>
-  WHERE n.recipient_id=#{user} AND w.status&lt;&gt;'DRAFT'
+  WHERE n.recipient_id=#{user} AND (w.status&lt;&gt;'DRAFT' OR e.kind IN ('WORK_ORDER_DELETION_REQUESTED','WORK_ORDER_DELETION_REJECTED'))
    AND EXISTS(SELECT 1 FROM app_user u JOIN user_role ur ON ur.user_id=u.id JOIN app_role r ON r.id=ur.role_id WHERE u.id=#{user} AND u.enabled AND r.code=n.recipient_role)
    AND (n.recipient_role IN ('ADMIN','CUSTOMER_SERVICE') OR (n.recipient_role='OWNER' AND w.owner_user_id=#{user})
     OR (n.recipient_role='REPAIR_SHOP' AND ((e.kind='CASE_CANCELLED' AND cancellation.notify_shop AND cancellation.shop_id=e.shop_id AND cancellation.assignment_version=e.assignment_version) OR (e.kind&lt;&gt;'CASE_CANCELLED' AND a.assignment_version=e.assignment_version AND a.shop_id=e.shop_id AND w.shop_id=e.shop_id)) AND EXISTS(SELECT 1 FROM shop_account sa WHERE sa.user_id=#{user} AND sa.shop_id=e.shop_id)))
  </sql>
  <select id="count" resultType="long">SELECT count(*) <include refid="notificationFrom"/></select>
  <select id="unreadCount" resultType="long">SELECT count(*) <include refid="notificationFrom"/> AND nr.notification_id IS NULL</select>
- <select id="inbox" resultType="map">SELECT n.id,e.work_order_id,e.kind,n.created_at,nr.read_at,CASE WHEN e.kind='CASE_CANCELLED' THEN w.business_no ELSE NULL END business_no,cancellation.public_reason cancellation_reason <include refid="notificationFrom"/> ORDER BY n.id DESC LIMIT #{size} OFFSET #{offset}</select>
- <select id="visible" resultType="map">SELECT n.id,e.work_order_id,e.kind,n.created_at,nr.read_at,CASE WHEN e.kind='CASE_CANCELLED' THEN w.business_no ELSE NULL END business_no,cancellation.public_reason cancellation_reason <include refid="notificationFrom"/> AND n.id=#{id}</select>
+ <insert id="readAll">
+  INSERT INTO notification_read(notification_id,user_id)
+  SELECT n.id,#{user} <include refid="notificationFrom"/> AND nr.notification_id IS NULL
+  ON CONFLICT DO NOTHING
+ </insert>
+ <sql id="noticeFields">
+  n.id,e.work_order_id,e.kind,n.created_at,nr.read_at,
+  CASE WHEN e.kind IN ('CASE_CANCELLED','WORK_ORDER_DELETION_REQUESTED','WORK_ORDER_DELETION_REJECTED') THEN coalesce(w.business_no,w.recalled_business_no) END business_no,
+  coalesce(cancellation.public_reason,rejection.summary) reason,
+  CASE WHEN e.kind='WORK_ORDER_DELETION_REQUESTED' THEN e.created_at END requested_at
+ </sql>
+ <select id="inbox" resultType="map">SELECT <include refid="noticeFields"/> <include refid="notificationFrom"/> ORDER BY n.id DESC LIMIT #{size} OFFSET #{offset}</select>
+ <select id="visible" resultType="map">SELECT <include refid="noticeFields"/> <include refid="notificationFrom"/> AND n.id=#{id}</select>
  <sql id="tasks">
   WITH states AS (
    SELECT w.*,a.assignment_version,
@@ -44,18 +56,25 @@
    UNION ALL SELECT id,'SET_PAYABLE',id::text||':SET_PAYABLE:'||coalesce(pay_target_id,0)::text,'CS',created_at FROM states WHERE status IN ('COMPLETED','WAITING_SHOP_SETTLEMENT') AND pay_target IS NULL
    UNION ALL SELECT id,'PAY_SHOP',id::text||':PAY_SHOP:'||pay_target_id::text,'CS',created_at FROM states WHERE status='COMPLETED' AND pay_target IS NOT NULL AND net_pay&lt;pay_target AND receive_target IS NOT NULL AND net_receive=receive_target
    UNION ALL SELECT work_order_id,'HANDLE_COMPLAINT','COMPLAINT:'||id::text||':'||status,'ADMIN',created_at FROM complaint WHERE status&lt;&gt;'CLOSED' AND EXISTS(SELECT 1 FROM work_order w WHERE w.id=complaint.work_order_id AND NOT w.deletion_pending) <if test="caseId != null">AND work_order_id=#{caseId}</if>
+   UNION ALL SELECT work_order_id,'REVIEW_WORK_ORDER_DELETION','WORK_ORDER_DELETION:'||work_order_id::text||':'||extract(epoch from requested_at)::text,'DELETION_ADMIN',requested_at
+   FROM work_order_deletion_request <if test="caseId != null">WHERE work_order_id=#{caseId}</if>
   )
  </sql>
  <sql id="taskScope">
   FROM tasks t JOIN work_order w ON w.id=t.work_order_id LEFT JOIN todo_deadline d ON d.task_key=t.task_key
   WHERE true <if test="key != null">AND t.task_key=#{key}</if>
+  AND (t.role_scope&lt;&gt;'DELETION_ADMIN' OR EXISTS(
+   SELECT 1 FROM app_user u JOIN user_role ur ON ur.user_id=u.id JOIN app_role r ON r.id=ur.role_id
+   WHERE u.id=#{user} AND u.enabled AND r.code='ADMIN'))
   <if test="!all">AND EXISTS(
    SELECT 1 FROM app_user u JOIN user_role ur ON ur.user_id=u.id JOIN app_role r ON r.id=ur.role_id LEFT JOIN shop_account sa ON sa.user_id=u.id
-   WHERE u.id=#{user} AND u.enabled AND ((r.code='ADMIN' AND t.role_scope='ADMIN')
+   WHERE u.id=#{user} AND u.enabled AND ((r.code='ADMIN' AND t.role_scope IN ('ADMIN','DELETION_ADMIN'))
     OR (r.code='CUSTOMER_SERVICE' AND t.role_scope IN ('CS','OWNER_CS') AND u.id=w.current_responsible_id)
     OR (r.code='OWNER' AND t.role_scope='OWNER_CS' AND u.id=w.owner_user_id)
     OR (r.code='REPAIR_SHOP' AND t.role_scope='SHOP' AND sa.shop_id=w.shop_id)))</if>
  </sql>
  <select id="todoCount" resultType="long"><include refid="tasks"/> SELECT count(*) <include refid="taskScope"/></select>
- <select id="todos" resultType="map"><include refid="tasks"/> SELECT t.task_key,t.work_order_id,t.kind,t.created_at,d.deadline,coalesce(d.version,0) version <include refid="taskScope"/> ORDER BY t.created_at DESC,t.task_key LIMIT #{size} OFFSET #{offset}</select>
+ <select id="todos" resultType="map"><include refid="tasks"/> SELECT t.task_key,t.work_order_id,t.kind,t.created_at,d.deadline,coalesce(d.version,0) version,
+  CASE WHEN t.role_scope='DELETION_ADMIN' THEN coalesce(w.business_no,w.recalled_business_no) END business_no
+  <include refid="taskScope"/> ORDER BY t.created_at DESC,t.task_key LIMIT #{size} OFFSET #{offset}</select>
 </mapper>

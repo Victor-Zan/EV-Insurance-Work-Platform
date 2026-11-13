@@ -8,6 +8,7 @@ export type WorkOrderStatus =
   | 'COMPLETED' | 'CANCELLED' | 'CLOSED'
 export interface Assignment { id: number; assignmentVersion: number; shopId: number; status: string }
 export interface WorkOrder {
+  deletionPending?: boolean
   id: string; businessNo?: string; insuranceCompany?: string; claimNo?: string; ownerName?: string; ownerPhone?: string
   vehicleBrand?: string; vehicleModel?: string; vehiclePlate?: string; accidentAt?: string; accidentAddress?: string; accidentDescription?: string
   status: WorkOrderStatus; shopId?: number; currentAssignment?: Assignment; workflowNode?: string

@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { ElButton, ElInput } from 'element-plus'
+import { ElButton } from 'element-plus'
 import { authSession, currentUser, httpClient } from '@/shared/http/client'
 import { createUnreadCounter, unreadNotificationsKey } from '@/features/notification/unread-counter'
+import WorkOrderAutocomplete from './WorkOrderAutocomplete.vue'
 import engineeringBlueprint from '@/assets/e-scooter-graphite.png'
 
 type Module = 'home' | 'cases' | 'pricing' | 'funds' | 'notices' | 'admin'
-const route = useRoute(), router = useRouter(), search = ref(''), preview = ref<Module | null>(null), opened = ref<Module | null>(null)
+const route = useRoute(), router = useRouter(), preview = ref<Module | null>(null), opened = ref<Module | null>(null)
 const desktopWide=ref(window.innerWidth>=1440)
 const unread=createUnreadCounter(async () => (await httpClient.get<{data:{count:number}}>('/notifications/unread-count')).data.data.count)
 const unreadCount=unread.count,unreadLabel=unread.label
@@ -37,8 +38,8 @@ const visible = computed(() => preview.value ?? opened.value)
 const links = computed(() => {
   switch (visible.value) {
     case 'home': return [{ label: '工作台', to: '/' }, { label: '我的待办', to: '/notifications?tab=todos' }]
-    case 'cases': return [{ label: '全部案件', to: '/work-orders' }, { label: '历史档案', to: '/historical-cases' }, { label: '投诉跟踪', to: '/complaints' }, { label: '我的待办', to: '/notifications?tab=todos' }, { label: '案件草稿', to: '/work-orders?status=DRAFT' }]
-    case 'funds': return [{ label: '经营看板', to: '/funds/analytics' }, { label: '案件收支', to: '/funds/workbench' }, ...(isService.value ? [{ label: '资金导入', to: '/funds/imports' }] : []), { label: '案件资金记录', to: '/work-orders' }]
+    case 'cases': return [{ label: '全部案件', to: '/work-orders' }, { label: '历史档案', to: '/historical-cases' }, { label: '投诉跟踪', to: '/complaints' }, { label: '案件草稿', to: '/work-orders?status=DRAFT' }]
+    case 'funds': return [{ label: '经营看板', to: '/funds/analytics' }, { label: '案件收支', to: '/funds/workbench' }, ...(isService.value ? [{ label: '资金导入', to: '/funds/imports' }] : [])]
     case 'notices': return [{ label: '我的待办', to: '/notifications?tab=todos' }, { label: '站内通知', to: '/notifications?tab=notices' }]
     case 'admin': return [{ label: '用户与角色', to: '/admin/users' }, { label: '区域', to: '/admin/regions' }, { label: '网点', to: '/admin/shops' }, { label: '审计日志', to: '/admin/audit-logs' }, { label: '重复判断配置', to: '/admin/settings/work-orders' }]
     default: return []
@@ -49,8 +50,25 @@ watch(()=>route.path,path=>{if(path==='/funds/analytics'){opened.value=null;prev
 function activate(id: Module, path: string) { opened.value = id==='pricing'?null:id; preview.value = null; void router.push(path) }
 function previewModule(id: Module) { cancelPreviewClose(); preview.value = id==='pricing'?null:id }
 function close() { preview.value = null; opened.value = null }
-function submitSearch() { if (search.value.trim()) void router.push({ path: '/work-orders', query: { query: search.value.trim() } }) }
+
 function logout() { authSession.clear(); void router.replace('/login') }
+const previousPage = computed(() => {
+  // Reading the current route keeps the history lookup in sync after navigation.
+  const current = route.fullPath
+  const previous = router.options.history.state.back
+  return typeof previous === 'string' && previous.startsWith('/') &&
+    previous !== current && !['/login', '/activate'].includes(router.resolve(previous).path)
+})
+function goBack() {
+  if (previousPage.value) {
+    router.back()
+    return
+  }
+  const fallback = route.params.id && route.path.startsWith('/work-orders/')
+    ? route.query.section === 'funds' ? '/funds/workbench' : '/work-orders'
+    : '/'
+  void router.replace(fallback)
+}
 </script>
 
 <template>
@@ -77,7 +95,7 @@ function logout() { authSession.clear(); void router.replace('/login') }
       <nav><RouterLink v-for="link in links" :key="link.to" :to="link.to" @click="opened=visible;preview=null">{{ link.label }}</RouterLink></nav>
     </aside></Transition>
     <div class="app-main-wrap" @click="preview=null;opened=null">
-      <header class="context-header"><img class="context-blueprint" :src="engineeringBlueprint" alt="" aria-hidden="true"><form v-if="route.path!=='/funds/analytics'" class="global-search" role="search" @submit.prevent="submitSearch"><ElInput v-model="search" clearable placeholder="搜索案件号、报案号或手机号" aria-label="搜索案件"/><ElButton native-type="submit">搜索</ElButton></form><div class="header-actions" :style="route.path==='/funds/analytics'?{marginLeft:'auto'}:undefined"><RouterLink class="notification-link" to="/notifications?tab=notices" :aria-label="unreadCount?`站内通知，${unreadCount}条未读`:'站内通知'">站内通知<span v-if="unreadCount>0" class="unread-badge" aria-hidden="true">{{ unreadLabel }}</span></RouterLink><span>{{ currentUser?.displayName }}</span><ElButton text @click="logout">退出</ElButton></div></header>
+      <header class="context-header"><img class="context-blueprint" :src="engineeringBlueprint" alt="" aria-hidden="true"><div class="header-start"><ElButton :disabled="route.path === '/' && !previousPage" @click="goBack"><span aria-hidden="true">←</span> 返回</ElButton><WorkOrderAutocomplete v-if="route.path!=='/funds/analytics'" class="global-search" placeholder="搜索案件号、报案号或手机号" @select="order => router.push(`/work-orders/${order.id}`)"/></div><div class="header-actions" :style="route.path==='/funds/analytics'?{marginLeft:'auto'}:undefined"><RouterLink class="notification-link" to="/notifications?tab=notices" :aria-label="unreadCount?`站内通知，${unreadCount}条未读`:'站内通知'">站内通知<span v-if="unreadCount>0" class="unread-badge" aria-hidden="true">{{ unreadLabel }}</span></RouterLink><span>{{ currentUser?.displayName }}</span><ElButton text @click="logout">退出</ElButton></div></header>
       <main id="main-content" class="app-content" tabindex="-1"><slot /></main>
     </div>
   </div>

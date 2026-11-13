@@ -51,6 +51,7 @@ FLOW-001,RECEIVE,CLAIM-001,WORK-001,100.00,2026-10-10T10:00:00+08:00,合成样�
 | GET / | 本人、当前仍有权限的历史通知分页 |
 | GET /unread-count | 当前登录用户仍可见且未读的通知数，返回 `{count: number}`；复用通知列表数据范围，不接受他人用户ID |
 | POST /{id}/read | 个人已读；重复调用只保留一次记录；他人/失去权限403 |
+| POST /read-all | 将当前登录用户所有仍可见的未读通知标记为已读，不限当前页；无需请求体，返回 `{markedCount: number}`，重复请求只处理仍未读的通知 |
 | GET /todos | 当前有效待办分页；可选caseId查看有权案件 |
 | POST /deadlines | 客服taskKey,expectedVersion,deadline,reason；deadline为ISO +08:00或null清除 |
 | GET /deadlines/history?taskKey=... | 客服/管理员有权案件的分页变更历史 |
@@ -59,6 +60,10 @@ FLOW-001,RECEIVE,CLAIM-001,WORK-001,100.00,2026-10-10T10:00:00+08:00,合成样�
 无caseId时只取本人角色/责任范围待办。客服带caseId可查看有权案件全部待办以维护期限；管理员接收独立投诉处理待办。网点仅当前派单，车主仅当前绑定。待办key含业务阶段/派单或金额版本，状态处理及改派后原待办失效，旧deadline历史保留。修改已失效待办409。deadline可设过去时间，仅返回overdue标签，不自动通知或升级。
 
 事件通知覆盖派单、到店、报价审核、核损确认、完工待收车、收车撤回、投诉和资金；客服接收当前负责案件，管理员接收投诉，绑定车主只接收可见的非资金事件，网点仅当前派单及本店付款事件。输出固定标题、案件及事件标识，不拷贝审计原文、金额或内部说明；每次读取重验权限。Worker只投影事件，并非超时提醒任务。
+
+删除申请待审时，`GET /work-orders` 和 `GET /work-orders/{id}` 返回 `deletionPending: true`，已有案件读取权限保持有效。业务写入返回 HTTP 409、`WORK_ORDER_FROZEN`。申请处理使用 `/work-orders/{id}/management/deletion` 下的既有接口。
+
+删除待审生成仅管理员可见的 `REVIEW_WORK_ORDER_DELETION` 待办，包含 `businessNo`（有编号时）和 `requestedAt`。客服提交后向启用的管理员发送 `WORK_ORDER_DELETION_REQUESTED` 通知；驳回向原申请客服发送 `WORK_ORDER_DELETION_REJECTED` 通知，`reason` 为驳回原因。申请通知带 `requestedAt` 以定位该次申请。撤回和驳回时待办失效，批准时按工单删除规则清理关联待办和通知。上线前仍待审的申请由待办查询直接读取。
 
 Swagger沿用/swagger-ui/index.html；具体请求字段以控制器/DTO与本文为准。验证面板挂在现有案件详情及登录后站内通知折叠面板，不替代后端权限验证。
 

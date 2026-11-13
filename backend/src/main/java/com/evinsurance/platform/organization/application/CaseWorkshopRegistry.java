@@ -3,6 +3,8 @@ package com.evinsurance.platform.organization.application;
 import com.evinsurance.platform.audit.application.AuditService;
 import com.evinsurance.platform.foundation.api.*;
 import com.evinsurance.platform.identity.domain.*;
+import com.evinsurance.platform.workorder.application.WorkOrderWriteAccess;
+import com.evinsurance.platform.workorder.infrastructure.WorkOrderMapper;
 import com.evinsurance.platform.workorder.infrastructure.WorkOrderRows;
 import java.time.Instant;
 import java.util.*;
@@ -17,9 +19,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Service
 public class CaseWorkshopRegistry {
     private final JdbcTemplate db;private final AuditService audit;private final TransactionTemplate tx;
+    private final WorkOrderMapper workOrders;
     private final boolean enabled;
-    public CaseWorkshopRegistry(JdbcTemplate db,PlatformTransactionManager manager,AuditService audit,Environment env){
-        this.db=db;this.audit=audit;tx=new TransactionTemplate(manager);enabled=env.getProperty("PUBLIC_WORKSHOP_ENABLED",Boolean.class,false);
+    public CaseWorkshopRegistry(JdbcTemplate db,PlatformTransactionManager manager,AuditService audit,Environment env,WorkOrderMapper workOrders){
+        this.db=db;this.audit=audit;this.workOrders=workOrders;tx=new TransactionTemplate(manager);enabled=env.getProperty("PUBLIC_WORKSHOP_ENABLED",Boolean.class,false);
         if(enabled){
             String schema=db.queryForObject("SELECT current_schema()",String.class);
             if(schema==null||!schema.matches("[a-z][a-z0-9_]{0,62}"))throw new IllegalArgumentException("Invalid workshop business schema");
@@ -54,11 +57,12 @@ public class CaseWorkshopRegistry {
     public record TemporaryShop(long shopId,String name,String address,UUID caseId,String notice){}
     public TemporaryShop create(UUID caseId,long version,long accidentRegion,String name,String address,String source,String identity,String key){
         return tx.execute(status->{
+            var order=workOrders.lock(caseId);
+            if(order==null)throw ApiException.missing("Work order");
+            WorkOrderWriteAccess.require(order,CurrentUser.require());
             var begun=begin(caseId,"INTAKE",key,identity);var op=begun.operation();
             if(!begun.created()){if(op.resultShopId()!=null)return view(op.resultShopId(),caseId);throw ApiException.conflict("WORKSHOP_INTAKE_IN_PROGRESS","本次临时网点登记尚未完成，请读取或重试原操作键");}
-            var orders=db.queryForList("SELECT version,status,accident_region_id,dispatch_address_confirmed FROM work_order WHERE id=? FOR UPDATE",caseId);
-            if(orders.isEmpty())throw ApiException.missing("Work order");var order=orders.getFirst();
-            if(((Number)order.get("version")).longValue()!=version||!Set.of("PENDING_DISPATCH","PENDING_ACCEPTANCE","PENDING_ARRIVAL","ARRIVAL_EXCEPTION").contains(order.get("status"))||!Boolean.TRUE.equals(order.get("dispatch_address_confirmed"))||!Objects.equals(order.get("accident_region_id"),accidentRegion))throw ApiException.conflict("WORKSHOP_CASE_CHANGED","案件、事故区县或停车位置已变化，请刷新并重新核实");
+            if(order.getVersion()!=version||!Set.of("PENDING_DISPATCH","PENDING_ACCEPTANCE","PENDING_ARRIVAL","ARRIVAL_EXCEPTION").contains(order.getStatus())||!order.isDispatchAddressConfirmed()||!Objects.equals(order.getAccidentRegionId(),accidentRegion))throw ApiException.conflict("WORKSHOP_CASE_CHANGED","案件、事故区县或停车位置已变化，请刷新并重新核实");
             Long district=db.queryForObject("SELECT count(*) FROM region r JOIN region c ON c.id=r.parent_id JOIN region p ON p.id=c.parent_id WHERE r.id=? AND r.level=3 AND c.level=2 AND p.code='440000' AND r.enabled AND c.enabled AND p.enabled",Long.class,accidentRegion);
             if(district==null||district!=1)throw ApiException.invalid("请先核实启用的广东事故服务区县");
             var existing=db.queryForList("SELECT shop_id FROM case_workshop_binding WHERE work_order_id=? AND identity_hash=?",Long.class,caseId,identity);

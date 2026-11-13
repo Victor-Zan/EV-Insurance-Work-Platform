@@ -277,13 +277,75 @@ class QuotationPostgresIT {
         request(customerService,path+"/approve",Map.of("version",version,"number",number),403);
         request(admin,path+"/approve",Map.of("version",version,"number","WRONG"),400);
         request(admin,path+"/approve",Map.of("version",version,"number",number),200);
-        for(String table:List.of("funds_entry","case_file","work_order_status_history","work_order_deletion_request"))
+        for(String table:List.of("funds_entry","case_file","work_order_status_history","work_order_deletion_request","notification_event"))
             assertThat(db.queryForObject("SELECT count(*) FROM "+table+" WHERE work_order_id=?::uuid",Long.class,id)).as(table).isZero();
         assertThat(db.queryForObject("SELECT count(*) FROM audit_log WHERE object_id=?",Long.class,id)).isZero();
         mvc.perform(get("/api/v1/work-orders/"+id).header("Authorization","Bearer "+admin)).andExpect(status().isNotFound());
         workflowRemoval.removeQueuedObjects();
         assertThat(workflowRemoval.pending(UUID.fromString(id))).isFalse();
         for(String object:objects)assertThatThrownBy(()->workflowStorage.read(object)).isInstanceOf(com.evinsurance.platform.foundation.api.ApiException.class);
+    }
+
+    @Test void managementDeletionAlertsAdministratorsAndRejectionRestoresTheOriginalStage() throws Exception {
+        var second=createUser("ADMIN",null);
+        String secondAdmin=login(second.path("username").asText(),"ADMIN");
+        String id=arrived(),order="work-orders/"+id,path=order+"/management/deletion";
+        var initial=getData(customerService,order);
+        String number=initial.path("businessNo").asText();
+        request(customerService,path,Map.of("version",initial.path("version").asLong(),"reason","合成删除待审"),200);
+        var pending=management(admin,id,"/deletion");
+        long version=pending.path("version").asLong();
+        assertThat(getData(admin,"work-orders?query="+number).path("records").get(0).path("deletionPending").asBoolean()).isTrue();
+        assertThat(getData(shop,order).path("deletionPending").asBoolean()).isTrue();
+        assertThat(getData(customerService,order+"/workflow").path("canAct").asBoolean()).isFalse();
+        assertThat(getData(customerService,"notifications/todos?caseId="+id).path("total").asInt()).isZero();
+        assertThat(getData(shop,"notifications/todos").path("records").toString()).doesNotContain("REVIEW_WORK_ORDER_DELETION");
+        for(String token:List.of(admin,secondAdmin)){
+            var task=findTask(token,id,"REVIEW_WORK_ORDER_DELETION");
+            assertThat(task.path("businessNo").asText()).isEqualTo(number);
+            assertThat(task.path("requestedAt").asText()).isEqualTo(pending.path("request").path("at").asText());
+            var notice=findDeletionNotice(token,id,"WORK_ORDER_DELETION_REQUESTED");
+            assertThat(notice.path("requestedAt").asText()).isEqualTo(task.path("requestedAt").asText());
+            assertThat(notice.path("title").asText()).contains(number);
+            request(token,"notifications/"+notice.path("id").asLong()+"/read",Map.of(),200);
+            assertThat(findTask(token,id,"REVIEW_WORK_ORDER_DELETION").path("taskKey").asText()).isEqualTo(task.path("taskKey").asText());
+        }
+        assertThat(getData(shop,"notifications?size=100").path("records").toString()).doesNotContain("WORK_ORDER_DELETION_REQUESTED");
+        request(shop,order+"/arrive",Map.of("assignmentVersion",assignmentVersion(initial)),409);
+        request(admin,order+"/management/withdraw",Map.of("version",version,"reason","尝试回撤","materialIds",List.of()),409);
+        request(customerService,path+"/reject",Map.of("version",version,"reason","越权"),403);
+        caseStatus(id,"ARRIVED");
+        request(secondAdmin,path+"/reject",Map.of("version",version,"reason","请继续核对材料"),200);
+        for(String token:List.of(admin,secondAdmin))
+            assertThat(getData(token,"notifications/todos?caseId="+id).path("records").toString()).doesNotContain("REVIEW_WORK_ORDER_DELETION");
+        assertThat(findDeletionNotice(customerService,id,"WORK_ORDER_DELETION_REJECTED").path("reason").asText()).isEqualTo("请继续核对材料");
+        var restored=getData(customerService,order);
+        assertThat(restored.path("deletionPending").asBoolean()).isFalse();
+        assertThat(restored.path("status").asText()).isEqualTo("ARRIVED");
+        raw(id,"20.00");
+        caseStatus(id,"QUOTE_REVIEWING");
+    }
+
+    @Test void managementDeletionWithdrawalUnfreezesReceiptAndRemovesEveryReviewTask() throws Exception {
+        String id=completedRepair(),order="work-orders/"+id,path=order+"/management/deletion";
+        var view=management(customerService,id,"/deletion");
+        request(customerService,path,Map.of("version",view.path("version").asLong(),"reason","合成删除待审"),200);
+        findTask(admin,id,"REVIEW_WORK_ORDER_DELETION");
+        int repairVersion=getData(owner,"repairs/cases/"+id).path("version").asInt();
+        var receipt=Map.of("expectedVersion",repairVersion);
+        request(owner,"repairs/cases/"+id+"/receipt",receipt,409);
+        caseStatus(id,"WAITING_OWNER_CONFIRMATION");
+        long version=management(customerService,id,"/deletion").path("version").asLong();
+        request(admin,path+"/cancel",Map.of("version",version),403);
+        request(customerService,path+"/cancel",Map.of("version",version),200);
+        assertThat(getData(admin,"notifications/todos?caseId="+id).path("records").toString()).doesNotContain("REVIEW_WORK_ORDER_DELETION");
+        request(owner,"repairs/cases/"+id+"/receipt",receipt,200);
+    }
+
+    private JsonNode findDeletionNotice(String token,String id,String kind) throws Exception {
+        for(var notice:getData(token,"notifications?size=100").path("records"))
+            if(id.equals(notice.path("caseId").asText())&&kind.equals(notice.path("kind").asText()))return notice;
+        throw new AssertionError("Missing notice "+kind);
     }
 
     @Test void managementReassignmentClearsOldQuoteAndFilesAndRequiresNewAcceptance() throws Exception {
@@ -344,7 +406,7 @@ class QuotationPostgresIT {
         request(admin,path,Map.of("version",view.path("version").asLong(),"reason","纠正误操作","materialIds",files,"noRepair",true),200);
         caseStatus(id,"WAITING_INSURER_ASSESSMENT");
         var corrected=management(admin,id,"");
-        assertThat(corrected.path("withdrawal").isNull()).isTrue();
+        assertThat(corrected.hasNonNull("withdrawal")).isFalse();
         assertThat(corrected.path("canChangeShop").asBoolean()).isFalse();
     }
 
@@ -1231,6 +1293,53 @@ class QuotationPostgresIT {
         db.update("update work_order set owner_user_id=? where id=?::uuid",stranger.path("id").asLong(),id);request(owner,"notifications/"+noticeId+"/read",Map.of(),403);
         assertThat(getData(owner,"notifications/unread-count").path("count").asLong()).isEqualTo(beforeRead-caseUnread);
         org.junit.jupiter.api.Assertions.assertThrows(org.springframework.dao.DataAccessException.class,()->db.update("update in_app_notification set recipient_role='ADMIN' where id=?",noticeId));
+    }
+    @Test void readAllMarksEveryVisiblePageWithoutChangingOtherInboxesOrTodos() throws Exception {
+        var staff=createUser("CUSTOMER_SERVICE",null);
+        long user=staff.path("id").asLong();
+        String token=login(staff.path("username").asText(),"ADMIN");
+        String id=createDraft(token,Map.of()).path("id").asText();
+        db.update("""
+            UPDATE work_order SET status='PENDING_DISPATCH',business_no=?,claim_no=?,owner_phone=?,vehicle_vin=?,
+             owner_binding_status='BOUND',owner_user_id=(SELECT id FROM app_user WHERE username='dev_owner')
+            WHERE id=?::uuid
+            ""","N-"+id.substring(0,8),id,OWNER_PHONE,id,id);
+        String hidden=createDraft(token,Map.of()).path("id").asText();
+        db.update("""
+            INSERT INTO audit_log(actor_id,actor_roles,action,object_type,object_id,summary,trace_id)
+            SELECT ?,'CUSTOMER_SERVICE','WORK_ORDER_TRANSFER','WORK_ORDER',?,'Synthetic inbox fixture',gen_random_uuid()::text
+            FROM generate_series(1,20)
+            """,user,id);
+        db.update("""
+            INSERT INTO audit_log(actor_id,actor_roles,action,object_type,object_id,summary,trace_id)
+            VALUES (?,'CUSTOMER_SERVICE','WORK_ORDER_TRANSFER','WORK_ORDER',?,'Hidden draft notification',gen_random_uuid()::text),
+                   (?,'CUSTOMER_SERVICE','WORK_ORDER_ARRIVE','WORK_ORDER',?,'Synthetic arrival',gen_random_uuid()::text)
+            """,user,hidden,user,id);
+        org.awaitility.Awaitility.await().untilAsserted(()->{
+            notificationProjector.project();
+            assertThat(db.queryForObject("SELECT count(*) FROM in_app_notification WHERE recipient_id=?",Long.class,user)).isEqualTo(22);
+        });
+        long ownerUnread=getData(owner,"notifications/unread-count").path("count").asLong();
+        var todos=getData(token,"notifications/todos");
+        assertThat(todos.path("total").asLong()).isPositive();
+        assertThat(ownerUnread).isPositive();
+        assertThat(getData(token,"notifications/unread-count").path("count").asLong()).isEqualTo(21);
+        mvc.perform(post("/api/v1/notifications/read-all")).andExpect(status().isUnauthorized());
+        assertThat(request(token,"notifications/read-all",Map.of("userId",1),200).path("markedCount").asInt()).isEqualTo(21);
+        assertThat(request(token,"notifications/read-all",Map.of(),200).path("markedCount").asInt()).isZero();
+        var secondPage=getData(token,"notifications?page=2&size=20");
+        assertThat(secondPage.path("total").asLong()).isEqualTo(21);
+        assertThat(secondPage.path("records").get(0).path("read").asBoolean()).isTrue();
+        assertThat(getData(token,"notifications/unread-count").path("count").asLong()).isZero();
+        assertThat(getData(owner,"notifications/unread-count").path("count").asLong()).isEqualTo(ownerUnread);
+        assertThat(getData(token,"notifications/todos")).isEqualTo(todos);
+        assertThat(db.queryForObject("SELECT count(*) FROM notification_read WHERE user_id=?",Long.class,user)).isEqualTo(21);
+        assertThat(db.queryForObject("SELECT count(*) FROM audit_log WHERE actor_id=? AND action='NOTIFICATION_READ' AND object_type='NOTIFICATION_INBOX'",Long.class,user)).isEqualTo(1);
+        db.update("""
+            INSERT INTO audit_log(actor_id,actor_roles,action,object_type,object_id,summary,trace_id)
+            VALUES (?,'CUSTOMER_SERVICE','WORK_ORDER_TRANSFER','WORK_ORDER',?,'New notification',gen_random_uuid()::text)
+            """,user,id);
+        assertThat(getData(token,"notifications/unread-count").path("count").asLong()).isEqualTo(1);
     }
     @Test void deadlinesAreOptionalVersionedChinaTimeAndExpireOnlyAsLabelsWhileCompletedTasksRejectChanges() throws Exception {
         String id=arrived();var task=findTask(customerService,id,"QUOTE_SHOP");String key=task.path("taskKey").asText();var body=Map.of("taskKey",key,"expectedVersion",0,"deadline","2026-01-01T12:00:00+08:00","reason","合成客服约定期限");

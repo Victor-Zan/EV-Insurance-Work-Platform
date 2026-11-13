@@ -1,27 +1,29 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElButton, ElInput, ElTag } from 'element-plus'
+import { ElButton, ElTag } from 'element-plus'
 import { currentUser, httpClient } from '@/shared/http/client'
+import { workOrderLink } from '@/features/workorders/workflow'
 import { localTime } from '@/shared/ui/presentation'
 import { statusLabels, workOrderApi, type WorkOrder } from '@/features/workorders/work-orders'
 import engineeringBlueprint from '@/assets/e-scooter-blueprint-panorama.webp'
 import emptyParts from '@/assets/e-scooter-parts-empty.webp'
 import { vMagnetic } from '@/shared/ui/magnetic'
+import WorkOrderAutocomplete from '@/shared/ui/WorkOrderAutocomplete.vue'
 import WorkbenchSpeedometer from '@/shared/ui/WorkbenchSpeedometer.vue'
 
-interface Task { taskKey: string; caseId: string; title: string; deadline: string | null; overdue: boolean }
-interface Notice { id: number; caseId: string; title: string; createdAt: string; read: boolean }
+interface Task { kind?: string; businessNo?: string; requestedAt?: string; taskKey: string; caseId: string; title: string; deadline: string | null; overdue: boolean }
+interface Notice { kind?: string; businessNo?: string; requestedAt?: string; id: number; caseId: string; title: string; createdAt: string; read: boolean }
 const router = useRouter(), api = workOrderApi(httpClient)
 const tasks = ref<Task[]>([]), notices = ref<Notice[]>([]), orders = ref<WorkOrder[]>([])
-const taskTotal = ref(0), noticeTotal = ref(0), orderTotal = ref(0), query = ref('')
+const taskTotal = ref(0), noticeTotal = ref(0), orderTotal = ref(0)
 const taskLoading = ref(true), noticeLoading = ref(true), orderLoading = ref(true)
 const taskError = ref(''), noticeError = ref(''), orderError = ref('')
 const errorText = (error: unknown) => error instanceof Error ? error.message : '读取失败，请重试'
 async function loadTasks() { taskLoading.value = true; taskError.value = ''; try { const response = await httpClient.get<{data:{records:Task[];total:number}}>('/notifications/todos', {params:{page:1,size:5}}); tasks.value = response.data.data.records; taskTotal.value = response.data.data.total } catch (error) { taskError.value = errorText(error) } finally { taskLoading.value = false } }
 async function loadNotices() { noticeLoading.value = true; noticeError.value = ''; try { const response = await httpClient.get<{data:{records:Notice[];total:number}}>('/notifications', {params:{page:1,size:4}}); notices.value = response.data.data.records; noticeTotal.value = response.data.data.total } catch (error) { noticeError.value = errorText(error) } finally { noticeLoading.value = false } }
 async function loadOrders() { orderLoading.value = true; orderError.value = ''; try { const response = await api.list(1,'','',true); orders.value = response.records.slice(0,6); orderTotal.value = response.total } catch (error) { orderError.value = errorText(error) } finally { orderLoading.value = false } }
-function searchCase() { void router.push({path:'/work-orders', query: {excludeCompleted:'true',...(query.value.trim() ? {query:query.value.trim()} : {})}}) }
+
 onMounted(() => { void loadTasks(); void loadNotices(); void loadOrders() })
 </script>
 
@@ -30,13 +32,13 @@ onMounted(() => { void loadTasks(); void loadNotices(); void loadOrders() })
     <header class="workbench-hero"><div class="hero-copy"><p class="eyebrow">INSURANCE CASE OPERATIONS</p><h1>{{ currentUser?.roles.includes('ADMIN') ? '管理工作台' : '客服工作台' }}</h1><div class="quick-links"><h2>快捷入口</h2><ElButton v-magnetic type="primary" @click="router.push('/work-orders?create=1')">新建案件草稿</ElButton><ElButton type="primary" @click="router.push('/pricing')">价格数据库</ElButton><ElButton v-if="currentUser?.roles.includes('CUSTOMER_SERVICE')" type="primary" @click="router.push('/funds/imports')">资金导入</ElButton><ElButton type="primary" @click="router.push('/notifications?tab=todos')">投诉相关待办</ElButton></div><WorkbenchSpeedometer /></div><img class="engineering-bike" :src="engineeringBlueprint" alt="" aria-hidden="true"><span class="hero-axis" aria-hidden="true"></span></header>
     <section class="wb-section" aria-labelledby="todos-title"><div class="section-heading"><div><p class="eyebrow">01 / PRIORITY</p><h2 id="todos-title">我的待办 <span v-if="!taskLoading">{{ taskTotal }}</span></h2></div><ElButton text @click="router.push('/notifications?tab=todos')">查看全部 →</ElButton></div>
       <p v-if="taskError" role="alert" class="section-error">{{ taskError }} <button @click="loadTasks">重试</button></p><div v-else-if="taskLoading" class="skeleton-rows" aria-busy="true">正在读取待办…</div><div v-else-if="!tasks.length" class="empty-copy"><img :src="emptyParts" alt="" aria-hidden="true"><p>目前没有待处理任务。</p></div>
-      <div v-else class="task-list"><button v-for="task in tasks" :key="task.taskKey" class="task-row" @click="router.push(`/work-orders/${task.caseId}`)"><span class="task-dot" :class="{ overdue: task.overdue }"/><strong>{{ task.title }}</strong><span class="mono">案件 {{ task.caseId }}</span><span :class="{ overdue: task.overdue }">{{ task.deadline ? `截止 ${localTime(task.deadline)}` : '不限期' }}</span><span class="task-action">进入处理 →</span></button></div>
+      <div v-else class="task-list"><button v-for="task in tasks" :key="task.taskKey" class="task-row" @click="router.push(workOrderLink(task.caseId,task.kind==='REVIEW_WORK_ORDER_DELETION',task.requestedAt))"><span class="task-dot" :class="{ overdue: task.overdue }"/><strong>{{ task.title }}</strong><span class="mono">案件 {{ task.businessNo || task.caseId }}</span><span :class="{ overdue: task.overdue }">{{ task.deadline ? `截止 ${localTime(task.deadline)}` : '不限期' }}</span><span class="task-action">进入处理 →</span></button></div>
     </section>
-    <div class="wb-grid"><section class="wb-section" aria-labelledby="queue-title"><div class="section-heading"><div><p class="eyebrow">02 / CASE QUEUE</p><h2 id="queue-title">案件队列</h2></div><span v-if="!orderLoading" class="section-meta">稳定排序 · 共 {{ orderTotal }} 条</span></div><form class="queue-search" @submit.prevent="searchCase"><ElInput v-model="query" clearable placeholder="案件号 / 报案号 / 手机号" aria-label="筛选案件"/><ElButton v-magnetic type="primary" native-type="submit">进入队列</ElButton></form>
+    <div class="wb-grid"><section class="wb-section" aria-labelledby="queue-title"><div class="section-heading"><div><p class="eyebrow">02 / CASE QUEUE</p><h2 id="queue-title">案件队列</h2></div><span v-if="!orderLoading" class="section-meta">稳定排序 · 共 {{ orderTotal }} 条</span></div><WorkOrderAutocomplete class="queue-search" placeholder="案件号 / 报案号 / 手机号" exclude-completed @select="order => router.push(workOrderLink(order.id,currentUser?.roles.includes('ADMIN')&&order.deletionPending))"/>
       <p v-if="orderError" role="alert" class="section-error">{{ orderError }} <button @click="loadOrders">重试</button></p><div v-else-if="orderLoading" class="skeleton-rows" aria-busy="true">正在读取案件…</div><div v-else-if="!orders.length" class="empty-copy"><img :src="emptyParts" alt="" aria-hidden="true"><p>暂无可查看的案件。</p></div>
-      <div v-else class="case-preview-list"><button v-for="order in orders" :key="order.id" class="case-preview-row" @click="router.push(`/work-orders?excludeCompleted=true&selected=${order.id}`)"><span class="mono"><strong>{{ order.businessNo || '草稿未编号' }}</strong><small>{{ order.claimNo || '暂无报案号' }} · {{ order.ownerName || '未填写车主' }}</small></span><span>{{ order.vehicleBrand }} {{ order.vehicleModel }}</span><ElTag effect="plain">{{ statusLabels[order.status] }}</ElTag><span aria-hidden="true">↗</span></button></div><div class="section-footer"><span>服务端分页，每页 20 条</span><ElButton text @click="router.push('/work-orders?excludeCompleted=true')">查看完整队列 →</ElButton></div>
+      <div v-else class="case-preview-list"><button v-for="order in orders" :key="order.id" class="case-preview-row" @click="router.push(currentUser?.roles.includes('ADMIN')&&order.deletionPending?workOrderLink(order.id,true):`/work-orders?excludeCompleted=true&selected=${order.id}`)"><span class="mono"><strong>{{ order.businessNo || '草稿未编号' }}</strong><small>{{ order.claimNo || '暂无报案号' }} · {{ order.ownerName || '未填写车主' }}</small></span><span>{{ order.vehicleBrand }} {{ order.vehicleModel }}</span><ElTag v-if="order.deletionPending" type="danger" effect="light">删除待审</ElTag><ElTag v-else effect="plain">{{ statusLabels[order.status] }}</ElTag><span aria-hidden="true">↗</span></button></div><div class="section-footer"><span>服务端分页，每页 20 条</span><ElButton text @click="router.push('/work-orders?excludeCompleted=true')">查看完整队列 →</ElButton></div>
     </section><aside class="wb-section wb-side" aria-labelledby="notices-title"><div class="section-heading"><div><p class="eyebrow">03 / INBOX</p><h2 id="notices-title">最近通知</h2></div><ElButton text @click="router.push('/notifications?tab=notices')">全部通知 →</ElButton></div>
-      <p v-if="noticeError" role="alert" class="section-error">{{ noticeError }} <button @click="loadNotices">重试</button></p><div v-else-if="noticeLoading" class="skeleton-rows" aria-busy="true">正在读取通知…</div><div v-else-if="!notices.length" class="empty-copy"><img :src="emptyParts" alt="" aria-hidden="true"><p>暂无站内通知。</p></div><template v-else><button v-for="notice in notices" :key="notice.id" class="notice-preview" @click="router.push(`/work-orders/${notice.caseId}`)"><span class="task-dot" :class="{ muted: notice.read }"/><span><strong>{{ notice.title }}</strong><small>{{ localTime(notice.createdAt) }} · 案件 {{ notice.caseId }}</small></span></button></template><p class="section-meta">共 {{ noticeTotal }} 条；仅显示您有权查看的通知。</p>
+      <p v-if="noticeError" role="alert" class="section-error">{{ noticeError }} <button @click="loadNotices">重试</button></p><div v-else-if="noticeLoading" class="skeleton-rows" aria-busy="true">正在读取通知…</div><div v-else-if="!notices.length" class="empty-copy"><img :src="emptyParts" alt="" aria-hidden="true"><p>暂无站内通知。</p></div><template v-else><button v-for="notice in notices" :key="notice.id" class="notice-preview" @click="router.push(workOrderLink(notice.caseId,notice.kind==='WORK_ORDER_DELETION_REQUESTED',notice.requestedAt))"><span class="task-dot" :class="{ muted: notice.read }"/><span><strong>{{ notice.title }}</strong><small>{{ localTime(notice.createdAt) }} · 案件 {{ notice.businessNo || notice.caseId }}</small></span></button></template><p class="section-meta">共 {{ noticeTotal }} 条；仅显示您有权查看的通知。</p>
     </aside></div>
   </div>
 </template>

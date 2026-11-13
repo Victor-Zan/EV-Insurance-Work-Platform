@@ -6,6 +6,16 @@ import {compile} from '@vue/compiler-dom'
 import ts from 'typescript'
 import * as Vue from 'vue'
 import * as flow from '../src/features/funds/funds-flow.ts'
+
+test('actual gross margin uses net receipts and requires both balances to be settled', () => {
+ const settled = net => ({ net, status: 'SETTLED' })
+ assert.equal(flow.actualGrossMargin(settled('1000.00'), settled('800.00')), '20.00%')
+ assert.equal(flow.actualGrossMargin(settled('288.00'), settled('288.00')), '0.00%')
+ assert.equal(flow.actualGrossMargin(settled('32.00'), settled('33.00')), '-3.13%')
+ assert.equal(flow.actualGrossMargin(settled('0.00'), settled('0.00')), '—')
+ assert.equal(flow.actualGrossMargin(settled('1000.00'), { net: '400.00', status: 'PARTIAL' }), '—')
+ assert.equal(flow.actualGrossMargin({ net: '400.00', status: 'PARTIAL' }, settled('300.00')), '—')
+})
 const {descriptor}=parse(readFileSync(new URL('../src/features/funds/FundsPanel.vue',import.meta.url),'utf8'))
 function fixture(roles=['CUSTOMER_SERVICE']){
  let code=ts.transpileModule(compileScript(descriptor,{id:'funds-flow-test'}).content,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText

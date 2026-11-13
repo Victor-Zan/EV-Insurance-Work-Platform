@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElButton, ElInput, ElMessage, ElMessageBox, ElOption, ElSelect, ElTag } from 'element-plus'
 import { httpClient } from '@/shared/http/client'
@@ -33,8 +33,39 @@ async function preview(){
 }
 async function confirm(){if(!selected.value)return;await ElMessageBox.confirm('仅有效且未重复的行会归档；归档后不可修改。确认继续？','确认历史归档');selected.value=(await httpClient.post<{data:Batch}>(`/historical-cases/imports/${selected.value.id}/confirm`,{},{timeout:120_000})).data.data;await Promise.all([loadBatches(),loadRows(),loadArchives()]);tab.value='imported';ElMessage.success('逐行归档完成，请核对结果')}
 async function source(id=selected.value?.id,name=selected.value?.fileName){if(!id)return;const blob=(await httpClient.get<Blob>(`/historical-cases/imports/${id}/source`,{responseType:'blob'})).data;const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=name||'历史档案原文件.xlsx';link.click();URL.revokeObjectURL(url)}
-async function loadArchives(){const page=(await httpClient.get<{data:{records:Archive[];total:number}}>('/historical-cases',{params:{page:archivePage.value,size:20,query:query.value.trim()||undefined}})).data.data;archives.value=page.records;archiveTotal.value=page.total}
-async function loadCompleted(){const page=await api.list(completedPage.value,'COMPLETED',completedQuery.value.trim());completed.value=page.records;completedTotal.value=page.total}
+const archiveKeyword = () => query.value.trim().length >= 2 ? query.value.trim() : ''
+const completedKeyword = () => completedQuery.value.trim().length >= 2 ? completedQuery.value.trim() : ''
+let archiveRequest = 0, completedRequest = 0
+async function loadArchives() {
+  const version = ++archiveRequest
+  const { data } = await httpClient.get<{data:{records:Archive[];total:number}}>('/historical-cases', {
+    params: { page: archivePage.value, size: 20, query: archiveKeyword() || undefined },
+  })
+  if (version !== archiveRequest) return
+  archives.value = data.data.records
+  archiveTotal.value = data.data.total
+}
+async function loadCompleted() {
+  const version = ++completedRequest
+  const result = await api.list(completedPage.value, 'COMPLETED', completedKeyword())
+  if (version !== completedRequest) return
+  completed.value = result.records
+  completedTotal.value = result.total
+}
+watch(completedKeyword, (keyword, _, onCleanup) => {
+  completedPage.value = 1
+  completedRequest++
+  if (!keyword) { void run(loadCompleted); return }
+  const timer = setTimeout(() => void run(loadCompleted), 250)
+  onCleanup(() => clearTimeout(timer))
+})
+watch(archiveKeyword, (keyword, _, onCleanup) => {
+  archivePage.value = 1
+  archiveRequest++
+  if (!keyword) { void run(loadArchives); return }
+  const timer = setTimeout(() => void run(loadArchives), 250)
+  onCleanup(() => clearTimeout(timer))
+})
 function toggleImport(){showImport.value=!showImport.value;if(showImport.value)void run(loadBatches)}
 function switchTab(value:'completed'|'imported'){tab.value=value;void run(value==='completed'?loadCompleted:loadArchives)}
 async function openArchive(id:string){rawRow.value=undefined;detail.value=(await httpClient.get<{data:NonNullable<typeof detail.value>}>(`/historical-cases/${id}`)).data.data}
@@ -50,11 +81,11 @@ onMounted(()=>run(async()=>{
   <div class="work-page historical-page">
     <header class="module-page-head"><p>CASES / 历史档案</p><h1>历史档案</h1><span>查阅已完成案件与导入的历史档案。</span><div class="archive-actions"><ElButton :disabled="busy" :type="tab==='completed'?'primary':'default'" :aria-pressed="tab==='completed'" @click="switchTab('completed')">已完成案件</ElButton><ElButton :disabled="busy" :type="tab==='imported'?'primary':'default'" :aria-pressed="tab==='imported'" @click="switchTab('imported')">导入档案</ElButton><ElButton :disabled="busy" @click="toggleImport">{{ showImport?'收起批量导入':'批量导入历史案件' }}</ElButton></div></header>
     <p v-if="message" role="status">{{ message }}</p>
-    <section v-if="tab==='completed'" class="archive-panel" aria-label="已完成案件"><h2>已完成案件</h2><form class="search" @submit.prevent="completedPage=1;run(loadCompleted)"><ElInput v-model="completedQuery" clearable placeholder="案件号 / 报案号 / 手机号" aria-label="搜索已完成案件"><template #append><ElButton :disabled="busy" native-type="submit">搜索</ElButton></template></ElInput></form><p>共 {{ completedTotal }} 条</p>
+    <section v-if="tab==='completed'" class="archive-panel" aria-label="已完成案件"><h2>已完成案件</h2><div class="search"><ElInput v-model="completedQuery" clearable placeholder="案件号 / 报案号 / 手机号" aria-label="搜索已完成案件"/></div><p>共 {{ completedTotal }} 条</p>
       <p v-if="busy" aria-busy="true">正在加载…</p><p v-else-if="!completed.length">暂无已完成案件。</p><template v-else><button v-for="item in completed" :key="item.id" class="archive-row" type="button" @click="router.push(`/work-orders/${item.id}`)"><strong>{{ item.claimNo||item.businessNo }}</strong><ElTag class="completed-tag" effect="plain">已完成</ElTag><span>{{ item.ownerName||item.ownerPhone||'未填写车主' }} · {{ item.vehicleBrand }} {{ item.vehicleModel }}</span><small>{{ item.businessNo }} · 查看案件详情 →</small></button></template>
       <div class="pager"><ElButton :disabled="busy||completedPage<=1" @click="completedPage--;run(loadCompleted)">上一页</ElButton><span>{{ completedPage }} / {{ Math.max(1,Math.ceil(completedTotal/20)) }}</span><ElButton :disabled="busy||completedPage*20>=completedTotal" @click="completedPage++;run(loadCompleted)">下一页</ElButton></div>
     </section>
-    <section v-if="tab==='imported'" class="archive-panel"><h2>导入档案</h2><form class="search" @submit.prevent="archivePage=1;run(loadArchives)"><ElInput v-model="query" clearable placeholder="平台工单号、案件号、车主、电话或车牌" aria-label="搜索历史档案"><template #append><ElButton :disabled="busy" native-type="submit">搜索</ElButton></template></ElInput></form><p>共 {{ archiveTotal }} 条</p>
+    <section v-if="tab==='imported'" class="archive-panel"><h2>导入档案</h2><div class="search"><ElInput v-model="query" clearable placeholder="平台工单号、案件号、车主、电话或车牌" aria-label="搜索历史档案"/></div><p>共 {{ archiveTotal }} 条</p>
       <p v-if="busy" aria-busy="true">正在加载…</p><div v-else-if="!archives.length">暂无历史档案。</div><template v-else><button v-for="item in archives" :key="item.id" class="archive-row" type="button" @click="run(()=>openArchive(item.id))"><strong>{{ item.claim_no||'无报案号' }}</strong><ElTag v-if="item.formal_history" class="completed-tag" effect="plain" type="success">正式历史导入</ElTag><span>{{ item.owner_name }} · {{ item.brand }} {{ item.model }}</span><small>{{ item.platform_order_no ? `原平台工单 ${item.platform_order_no} · ` : '' }}{{ item.repair_date||'无维修日期' }} · {{ item.shop_name||'未填维修网点' }}</small></button></template>
       <div class="pager"><ElButton :disabled="busy||archivePage<=1" @click="archivePage--;run(loadArchives)">上一页</ElButton><span>{{ archivePage }} / {{ Math.max(1,Math.ceil(archiveTotal/20)) }}</span><ElButton :disabled="busy||archivePage*20>=archiveTotal" @click="archivePage++;run(loadArchives)">下一页</ElButton></div>
       <div v-if="detail" class="detail"><h3>历史档案详情（只读）</h3>

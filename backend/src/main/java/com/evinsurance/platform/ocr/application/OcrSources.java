@@ -48,7 +48,13 @@ public class OcrSources {
     }
     public boolean eligible(OcrRow job,boolean lock){
         if(shopQuote(job))return shopPolicy.eligible(job,lock);
-        if(lock){db.queryForList("SELECT id FROM app_user WHERE id=? FOR SHARE",job.createdBy());if(job.fileId()!=null)db.queryForList("SELECT w.id FROM work_order w JOIN case_file f ON f.work_order_id=w.id WHERE f.id=? FOR UPDATE OF w",job.fileId());}
+        if(lock)db.queryForList("SELECT id FROM app_user WHERE id=? FOR SHARE",job.createdBy());
+        var caseState=db.queryForList("""
+            SELECT w.deletion_pending FROM work_order w
+            WHERE w.id=coalesce((SELECT work_order_id FROM case_file WHERE id=?),
+                (SELECT work_order_id FROM ocr_draft_link WHERE job_id=?))
+            """+(lock?" FOR UPDATE":""),Boolean.class,job.fileId(),job.id());
+        if(caseState.contains(true))return false;
         var enabled=db.queryForObject("SELECT count(*) FROM app_user u JOIN user_role ur ON ur.user_id=u.id JOIN app_role r ON r.id=ur.role_id WHERE u.id=? AND u.enabled AND (r.code='CUSTOMER_SERVICE' OR (r.code='REPAIR_SHOP' AND EXISTS(SELECT 1 FROM case_file f JOIN work_order w ON w.id=f.work_order_id JOIN work_order_assignment a ON a.work_order_id=w.id JOIN shop_account sa ON sa.user_id=u.id WHERE f.id=? AND f.category='SHOP_QUOTE' AND f.shop_id=sa.shop_id AND w.shop_id=sa.shop_id AND a.shop_id=sa.shop_id AND a.assignment_version=f.assignment_version AND a.status='ACCEPTED' AND w.status IN ('ARRIVED','WAITING_QUOTE','QUOTE_REVIEWING','WAITING_INSURER_ASSESSMENT','WAITING_REPAIR_AUTHORIZATION'))))",Long.class,job.createdBy(),job.fileId());
         if(enabled==null||enabled==0)return false;
         if(job.intakeId()!=null)return Boolean.TRUE.equals(db.queryForObject("SELECT EXISTS(SELECT 1 FROM ocr_intake_file WHERE id=? AND actor_id=?)",Boolean.class,job.intakeId(),job.createdBy()));

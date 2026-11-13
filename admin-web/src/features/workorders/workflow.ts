@@ -5,4 +5,8 @@ export function currentTaskSection(node:string,status?:string){if(node==='COMPLE
 export function safeCaseSection(requested:string,node:string,status?:string){if(node==='CREATE'&&['funds','complaint'].includes(requested))return 'overview';return ['funds','complaint','history','overview'].includes(requested)?requested:currentTaskSection(node,status)}
 export const materialNames:Record<string,string>={SCENE_PHOTO:'现场物损照片',NOTICE:'历史通知单',SHOP_QUOTE:'报价原件',ASSESSMENT:'定损资料',LOSS_ASSESSMENT:'核损单',ARRIVAL_PHOTO:'到店照',PROGRESS_PHOTO:'进度照',COMPLETION_PHOTO:'完工照'}
 
+export function workOrderLink(id:string,reviewDeletion=false,requestedAt?:string){
+  return {path:`/work-orders/${id}`,query:reviewDeletion?{reviewDeletion:requestedAt??'1'}:{}}
+}
+
 export const nodeNames:Record<string,string>={CREATE:'建单',DISPATCH_ARRIVAL:'派单到店',SHOP_QUOTE:'网点报价',QUOTE_REVIEW:'报价审核',INSURER_ASSESSMENT:'保险核损',REPAIR_AUTHORIZATION:'维修授权',REPAIR:'维修中',RECEIPT:'收车',FUNDS:'资金流动',COMPLETE:'完成'}
