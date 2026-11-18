@@ -11,6 +11,7 @@ import emptyParts from '@/assets/e-scooter-parts-empty.webp'
 import { vMagnetic } from '@/shared/ui/magnetic'
 import WorkOrderAutocomplete from '@/shared/ui/WorkOrderAutocomplete.vue'
 import WorkbenchSpeedometer from '@/shared/ui/WorkbenchSpeedometer.vue'
+import AdminAssistant from '@/features/assistant/AdminAssistant.vue'
 
 interface Task { kind?: string; businessNo?: string; requestedAt?: string; taskKey: string; caseId: string; title: string; deadline: string | null; overdue: boolean }
 interface Notice { kind?: string; businessNo?: string; requestedAt?: string; id: number; caseId: string; title: string; createdAt: string; read: boolean }
@@ -30,6 +31,7 @@ onMounted(() => { void loadTasks(); void loadNotices(); void loadOrders() })
 <template>
   <div class="workbench">
     <header class="workbench-hero"><div class="hero-copy"><p class="eyebrow">INSURANCE CASE OPERATIONS</p><h1>{{ currentUser?.roles.includes('ADMIN') ? '管理工作台' : '客服工作台' }}</h1><div class="quick-links"><h2>快捷入口</h2><ElButton v-magnetic type="primary" @click="router.push('/work-orders?create=1')">新建案件草稿</ElButton><ElButton type="primary" @click="router.push('/pricing')">价格数据库</ElButton><ElButton v-if="currentUser?.roles.includes('CUSTOMER_SERVICE')" type="primary" @click="router.push('/funds/imports')">资金导入</ElButton><ElButton type="primary" @click="router.push('/notifications?tab=todos')">投诉相关待办</ElButton></div><WorkbenchSpeedometer /></div><img class="engineering-bike" :src="engineeringBlueprint" alt="" aria-hidden="true"><span class="hero-axis" aria-hidden="true"></span></header>
+    <AdminAssistant v-if="currentUser?.roles.includes('ADMIN')" :key="currentUser.id" :user-id="currentUser.id" />
     <section class="wb-section" aria-labelledby="todos-title"><div class="section-heading"><div><p class="eyebrow">01 / PRIORITY</p><h2 id="todos-title">我的待办 <span v-if="!taskLoading">{{ taskTotal }}</span></h2></div><ElButton text @click="router.push('/notifications?tab=todos')">查看全部 →</ElButton></div>
       <p v-if="taskError" role="alert" class="section-error">{{ taskError }} <button @click="loadTasks">重试</button></p><div v-else-if="taskLoading" class="skeleton-rows" aria-busy="true">正在读取待办…</div><div v-else-if="!tasks.length" class="empty-copy"><img :src="emptyParts" alt="" aria-hidden="true"><p>目前没有待处理任务。</p></div>
       <div v-else class="task-list"><button v-for="task in tasks" :key="task.taskKey" class="task-row" @click="router.push(workOrderLink(task.caseId,task.kind==='REVIEW_WORK_ORDER_DELETION',task.requestedAt))"><span class="task-dot" :class="{ overdue: task.overdue }"/><strong>{{ task.title }}</strong><span class="mono">案件 {{ task.businessNo || task.caseId }}</span><span :class="{ overdue: task.overdue }">{{ task.deadline ? `截止 ${localTime(task.deadline)}` : '不限期' }}</span><span class="task-action">进入处理 →</span></button></div>

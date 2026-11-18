@@ -1,8 +1,44 @@
+## 2026-11-18 管理员助手精准取数及身份回答（本阶段完成）
+
+- 修复「帮我分析一下最近五单的经营情况」被当成默认整月统计。工单样本按创建或明确要求的有效完工时间取数，按支持的日期条件先筛再取；来源、实际命中单量和工单号可核对，金额仅统计所选样本，未核算有单独提示。范围不明确时请用户 明确范围。后端直接按当前配置回答模型身份及自身能力，不产生模型请求。
+- Java 21 `./mvnw.cmd -o -B -ntp -Dvalidation.build.directory=../tmp/assistant-scope/build "-Dit.test=WorkOrderPostgresIT#assistantUsesOnlyAllowedFactsAndRetainsResultsWhenProviderIsUnavailable+assistantReturnsOnlyNumericCurrentAdoptedDocumentResults+assistantStreamReportsModelOnlyWhenItIsCalled+assistantAnswersModelIdentityAndUsesOnlyTheRequestedRecentOrders" verify -Ppostgres-it` 通过，106 单元、4 隔离数据库集成，Flyway 至 V40。六单夹具验证只取五单、样本顺序、实收、完工盈利、超出范围澄清、身份本地回答和字段边界。首轮夹具缺少资金目标原因，补齐字段后通过。无新增迁移。
+- 管理端 `npm run typecheck`、`npm run lint`、`npm test`（284 项）、`npm run build` 和暂存差异检查通过。助手相关未提交代码、文档和测试一并纳入交付；本机私密配置与临时验证产物不提交。
+
+## 2026-11-18 管理员助手发送与模型状态修复（本阶段完成）
+
+- 排查发现本机 `.env` 将型号写为 `glm-4.7-flash-250414`，固定短句返回 HTTP 400／1211；运行后端早于配置编辑，仍使用原模型。只改正这一项为 `glm-4-flash-250414`，原 Key 验证 HTTP 200。助手现在区分模型不存在、模型繁忙、账号限流、额度和鉴权。
+- 实现 Enter 发送、Shift+Enter 换行、中文输入法确认保护及重复按键拦截。发送立即展示问题、等待动效与查询提示；新增流式状态接口只在实际外呼前通知模型名，最后返回回答并标注模型。本地拒答不产生模型事件，保留减少动画模式。
+- Java 21 `./mvnw.cmd -o -B -ntp -Dvalidation.build.directory=../tmp/assistant-ux/build "-Dit.test=WorkOrderPostgresIT#assistantUsesOnlyAllowedFactsAndRetainsResultsWhenProviderIsUnavailable+assistantReturnsOnlyNumericCurrentAdoptedDocumentResults+assistantStreamReportsModelOnlyWhenItIsCalled" verify -Ppostgres-it` 通过（104 单元、3 隔离库集成，Flyway 至 V40）。管理端 `npm run typecheck`、`npm run lint`、`npm test`（284 项）和 `npm run build` 通过。无迁移。
+- 本机安装前保留旧 JAR，核对应用差异限制在助手，安装哈希、后端守护、管理端代理和 OCR 状态计数复核通过。通过本机管理端开发账户实测加载正确模型，指南查询收到模型事件后取得真实生成回复；照片原件拒答只有本地回复。实测只发送手册片段，未用业务记录外呼。
+
+## 2026-11-18 管理员助手扩展：脱敏单据结果与本机启用（本阶段完成）
+
+- 最后接入当前业务版本关联且人工确认的网点报价和最终核损识别结果。只投影受控单据类别、行号、数量和金额，最多 20 项；禁止附件读取、原始识别文本、原件名称与存储路径。拒绝未采用、已撤销材料、非当前识别版和跨派单结果。工单指引使用材料状态，不读取图片。
+- Java 21 `./mvnw.cmd -o -B -ntp -Dvalidation.build.directory=../tmp/assistant-expanded/final "-Dit.test=WorkOrderPostgresIT#assistantUsesOnlyAllowedFactsAndRetainsResultsWhenProviderIsUnavailable+assistantReturnsOnlyNumericCurrentAdoptedDocumentResults" verify -Ppostgres-it` 通过，103 单元、2 PostgreSQL/MinIO 集成，Flyway 至 V40。首轮合成报价夹具缺少 V31 规定的供应商字段，补齐夹具后通过，未改迁移或生产约束。覆盖保密字段不出现在模型请求、作废和修订拦截、只读、统计口径及智谱不可用时展示权威数据。
+- 管理端 `npm run typecheck`、`npm run lint`、`npm test`（283 项）和 `npm run build` 通过，构建保留既有分包体积提示。无数据库迁移或基础设施变更。旧运行包保留，核对只涉及助手的 29 项应用资源差异后更新本机后端，哈希、守护、健康检查和 OCR 状态计数核对通过。实际管理员接口已确认手册返回、拒读照片原件和无匹配识别查询，页面已提供新示例。
+- 智谱固定短句仍返回 HTTP 429／1305，手册实测直接展示已发布指南。未用真实业务记录联调、未获得真实模型文字回答；脱敏外发、模型替身及平台结果均已验证。
+
+## 2026-11-18 管理员助手扩展：已核对业务字段（已验证）
+
+- 接入平台经营看板汇总、本期和可比期间，以及按资金发生日期排除冲销的实收实付。按工单号提供状态、办理提示、当前报价核损和应收应付核对信息；独立投影不查询车主隐私及资金流水编号。
+- Java 21 `mvnw.cmd -o -B -ntp -Dtest=AssistantGuideTest "-Dit.test=WorkOrderPostgresIT#assistantUsesOnlyAllowedFactsAndRetainsResultsWhenProviderIsUnavailable" verify -Ppostgres-it` 通过，使用隔离 schema、专用 MinIO 测试桶及供应商替身。回归验证指南、经营与现金区分、冲销、单据元数据与敏感字段边界。
+
+## 2026-11-18 管理员助手扩展：操作手册（已验证）
+
+- 按已确认顺序完成四角色功能手册，共 16 章，助手按相关问题检索至多两个章节，智谱不可用时仍显示手册。Maven Java 21 `-Dtest=AssistantGuideTest test` 通过，验证真实发布资源的查询、角色提示和不匹配的原件访问请求。继续办理已授权的下一步业务字段接入。
+
+## 2026-11-18 管理员平台助手只读试用
+
+- 管理员首页接通现有聊天窗与智谱标准接口，默认使用 `glm-4.7-flash`。单条查询支持按工单号查状态、统计状态数量、列最近工单和汇总已确认最终核损金额。平台数据与模型文字分别展示，供核对。供应商异常时保留平台数据并明确提示原因。部署仅使用本机已有配置。
+- 服务端限制 `ADMIN`，查询当前平台工单，列表最多返回 10 条。查询和外发字段见 REQUIREMENTS。后端用固定规则解析问题并构造数据，不发送输入原文或会话历史，不提供文件、对象存储、任意 SQL 或业务写入工具。只有明确发送且查到数据才请求智谱。OpenAPI 已更新。
+- Java 21：`./mvnw.cmd -o -B -ntp -Dvalidation.build.directory=../tmp/admin-assistant-20261118/verified-build "-Dit.test=WorkOrderPostgresIT#assistantUsesOnlyAllowedFactsAndRetainsResultsWhenProviderIsUnavailable" verify -Ppostgres-it` 通过（102 单元、1 PostgreSQL/MinIO 集成、Flyway 迁移至 V40、Maven 构建）。集成用独立测试库随机 schema、专用 MinIO 测试桶和模型替身，覆盖角色拒绝、外发字段、金额条件、无业务写入与失败回退。
+- 管理端 `npm run typecheck`、`npm run lint`、`npm test`（283 项）和 `npm run build` 通过；`git diff --check` 通过。没有新增业务库迁移。运行包的类、资源和依赖比较确认差异仅为助手模块，原 JAR 已备份，安装包哈希一致，守护和后端正常恢复，OCR 状态计数一致。8080、5173、5174 的服务检查通过，运行态 OpenAPI、页面模块、管理员配置状态与无匹配查询经过核对。
+- 向智谱发送两次无业务数据的固定短句，均为 HTTP 429。第二次确认业务错误码 1305，智谱文档说明为当前模型访问量过大。真实模型未取得回答，尚未验证真实生成；平台只读与供应商失败回退已验证。未切换模型或购买资源。
+
 ## 2026-11-18 OCR 分支提交与主线交付
 
 - 用户确认提交 OCR 分支、合并 main 并推送远端。获取远端 main 后与本地主线同为 `f7d583b`，合并前无分叉。
 - 交付内容为整图格线定位、页脚过滤、历史响应本地整理、失败反馈、调用配置示例和缺失数量默认 1。复用本阶段已通过的后端 24 单元和 15 集成、H5 66 项测试、类型检查、lint 及生产构建结果。管理员首页助手的既有未提交代码和文档单独保留。
-
 - 用户明确确认公开目的地后，实现提交 `e72d21f3044b03f488e6e151c1c3a54f7d5ae838` 已快进合并 main，并成功原子推送到 `Victor-Zan/EV-Insurance-Work-Platform` 的 main 和 `codex/shop-quote-ocr-stability`。远端两分支 SHA 已回读核对一致。
 
 ## 2026-11-17 网点报价 OCR 缺失数量预填（本阶段完成）
@@ -50,6 +86,15 @@
 - 供应商官方文档核查：手写接口支持单字符位置/候选/置信度；detect_direction仅检测0/90/180/270度朝向，不等于透视矫正。表格V2可返回单元格行列与四角坐标，作为后续对比选项，尚未实测其手写质量、调用权限或费用。来源：https://ai.baidu.com/ai-doc/OCR/hk3h7y2qq 、https://cloud.baidu.com/doc/OCR/s/Al1zvpylt 。
 - 验证：在backend执行 `./mvnw.cmd -o -B -ntp -Dvalidation.build.directory=../tmp/ocr-discussion-20261117/backend-build -Dtest=BaiduOcrProviderTest,ShopQuoteCandidatesTest test`；初次缺JAVA_HOME，随后JDK24在沙箱内因回环连接受限导致16项环境错误、5项通过；切至本机Corretto21.0.11并获准本机回环访问后重跑，21/21通过、0失败/错误/跳过。测试仅合成图和本机HTTP模拟，未加载百度凭据。报告在忽略目录tmp/ocr-discussion-20261117/backend-build/surefire-reports。
 - 验收建议：以完整原图人工核对的13行作为基准，分别验证区域完整性、倾斜/透视、末尾点号、数量l、空金额列与缺表头；统计漏行、错行/错列、数量/单价正确率与待人工核对数量；服务限次/超时不得覆盖已手填内容。真实改进效果未验证，需在实现后按确认样本和调用预算验收。本轮未修改业务代码/数据库/配置、未上传两张样本到供应商、未提交或推送Git；实现阶段建议分支codex/shop-quote-ocr-stability，讨论确认后再开始。
+
+## 2026-11-16：管理员首页 AI 对话界面（本阶段完成）
+
+- 按本轮确认，仅 ADMIN 首页在原待办位置新增平台助手，左侧会话记录、右侧欢迎区/输入框，原待办顺移至助手下方。客服首页和既有业务查询逻辑保持。组件按管理员 ID 重新挂载，本地草稿按账号分键保存并恢复；支持新对话、快捷问题填入、会话切换，明确标记草稿与本机保存。
+- 尚未接入任何模型 API；发送按钮禁用，表单提交不发送请求，不生成模拟回答/历史消息，不查询或修改业务数据用于 AI 分析。当前会话列表仅包含未发送草稿，不代表已具备真实 AI 问答。存储失败展示提示；本地存储分键只实现界面隔离，不替代后续服务端授权，清除浏览器数据后草稿不保留。
+- 欢迎区示例问题逐字出现、停留、删除，光标跟随文字；输入聚焦、存在草稿、页面隐藏时停止，符合减少动态效果设置，组件卸载清理计时器和监听器。窄屏可展开/收起会话侧栏。显式声明锁文件中已有的 @element-plus/icons-vue 2.3.2，未引入新的图标版本。
+- 验证通过（admin-web）：`npm run typecheck`、`npm run lint`、`npm test`（282/282，含新增7项）、`npm run build`；`npm ls @element-plus/icons-vue --depth=0` 核对依赖。新增测试覆盖按账号隔离/刷新恢复、新建切换、存储失败、动画循环/停止/恢复/清理、禁用发送和表单无副作用、ADMIN 展示及身份变化重新挂载。构建仍提示经营分析分包超过500 kB，本轮未修改该模块。
+- 浏览器使用现有 HomeView 与独立合成账号/空业务响应夹具验收，未绕过实际登录或触碰真实业务。核对草稿刷新恢复、两个会话切换、发送不可用、管理员/客服显隐、桌面位置及390px窄屏侧栏与无聊天区横向溢出；1280px下待办起点位于聊天区底部之后。截图：`local-validation/admin-assistant-20261116.jpg`（合成数据）。实际登录会话的端到端验收未验证；当前浏览器无已登录管理端会话，编辑器窗口读取超时，不将组件验收写为真实登录验收。
+- 已清理临时预览 HTML/TS，保留截图；`git diff --check` 通过。仅前端与需求/进度文档有变更，后端、Flyway、H5、基础设施检查不适用。本阶段停止，模型接入、真实历史消息和客服扩展等待后续明确需求。
 
 ## 2026-10-28：完工照表单文案
 

@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.evinsurance.platform.assistant.infrastructure.AssistantOrderReader">
+    <sql id="period">
+        <if test="start != null">AND w.created_at &gt;= #{start}</if>
+        <if test="end != null">AND w.created_at &lt; #{end}</if>
+    </sql>
+    <select id="counts" resultType="com.evinsurance.platform.assistant.infrastructure.AssistantOrderReader$StatusCount">
+        SELECT w.status, COUNT(*) AS count FROM work_order w WHERE TRUE
+        <include refid="period"/>
+        <if test="status != null">AND w.status = #{status}</if>
+        GROUP BY w.status ORDER BY w.status
+    </select>
+    <select id="orders" resultType="com.evinsurance.platform.assistant.infrastructure.AssistantOrderReader$OrderFact">
+        SELECT w.business_no, w.status, w.updated_at, COUNT(*) OVER () AS matched_count
+        FROM work_order w WHERE w.business_no ~ '^EVR-[0-9]{8}-[0-9]{6}$'
+        <include refid="period"/>
+        <if test="number != null">AND w.business_no = #{number}</if>
+        <if test="status != null">AND w.status = #{status}</if>
+        ORDER BY w.updated_at DESC, w.id DESC LIMIT 10
+    </select>
+    <select id="confirmedAmount" resultType="com.evinsurance.platform.assistant.infrastructure.AssistantOrderReader$AmountTotal">
+        SELECT COUNT(*) AS count, COALESCE(SUM(a.amount), 0) AS total_cny
+        FROM work_order w
+        JOIN quotation_context q ON q.work_order_id = w.id AND q.insurer_confirmed AND q.service_confirmed
+        JOIN quote_assessment a ON a.id = q.assessment_id AND a.work_order_id = w.id AND a.source_formal_id = q.formal_quote_id
+        WHERE TRUE
+        <include refid="period"/>
+    </select>
+    <sql id="netAmounts">
+        COALESCE(SUM(e.amount) FILTER (WHERE e.direction = 'RECEIVE'), 0) AS received,
+        COALESCE(SUM(e.amount) FILTER (WHERE e.direction = 'PAY'), 0) AS paid
+    </sql>
+    <sql id="notReversed">
+        NOT EXISTS (SELECT 1 FROM funds_reversal reversal WHERE reversal.entry_id = e.id)
+    </sql>
+    <sql id="uploadedByShop">
+        EXISTS (SELECT 1 FROM audit_log upload WHERE upload.object_type = 'CASE_FILE' AND upload.object_id = CAST(f.id AS text)
+          AND upload.action = 'FILE_UPLOAD' AND upload.actor_id = f.uploaded_by AND 'REPAIR_SHOP' = ANY(string_to_array(upload.actor_roles, ',')))
+    </sql>
+    <select id="cash" resultType="com.evinsurance.platform.assistant.infrastructure.AssistantOrderReader$CashTotal">
+        SELECT <include refid="netAmounts"/>
+        FROM funds_entry e
+        WHERE e.occurred_at &gt;= #{start} AND e.occurred_at &lt; #{end} AND <include refid="notReversed"/>
+    </select>
+    <sql id="recentOrderTime">
+        <choose><when test="completed">completion.occurred_at</when><otherwise>w.created_at</otherwise></choose>
+    </sql>
+    <select id="recentFinance" resultType="com.evinsurance.platform.assistant.infrastructure.AssistantOrderReader$RecentFinance">
+        WITH selected AS (
+            SELECT w.id, w.business_no, w.status, <include refid="recentOrderTime"/> AS selected_at
+            FROM work_order w
+            <if test="completed">
+                JOIN LATERAL (SELECT h.occurred_at FROM work_order_status_history h
+                    WHERE h.work_order_id = w.id AND h.to_status = 'COMPLETED'
+                    ORDER BY h.occurred_at DESC, h.id DESC LIMIT 1) completion ON true
+            </if>
+            WHERE w.business_no ~ '^EVR-[0-9]{8}-[0-9]{6}$'
+            <if test="completed">AND w.status = 'COMPLETED'</if>
+            <if test="start != null">AND <include refid="recentOrderTime"/> &gt;= #{start}</if>
+            <if test="end != null">AND <include refid="recentOrderTime"/> &lt; #{end}</if>
+            ORDER BY selected_at DESC, w.id DESC LIMIT #{limit}
+        )
+        SELECT selected.business_no, selected.status, selected.selected_at,
+            formal.total AS formal_quote, a.amount AS assessment,
+            completed.insurance, completed.payable, completed.profit, net.received, net.paid
+        FROM selected
+        LEFT JOIN quotation_context q ON q.work_order_id = selected.id
+        LEFT JOIN quote_formal formal ON formal.id = q.formal_quote_id
+            AND formal.work_order_id = selected.id AND formal.raw_quote_id = q.raw_quote_id
+        LEFT JOIN quote_assessment a ON a.id = q.assessment_id AND a.work_order_id = selected.id
+            AND a.source_formal_id = formal.id AND q.insurer_confirmed AND q.service_confirmed
+        LEFT JOIN funds_analytics_fact completed ON completed.id = selected.id AND completed.pending_reason IS NULL
+        CROSS JOIN LATERAL (SELECT <include refid="netAmounts"/> FROM funds_entry e
+            WHERE e.work_order_id = selected.id AND <include refid="notReversed"/>) net
+        ORDER BY selected.selected_at DESC, selected.id DESC
+    </select>
+    <select id="caseDetails" resultType="com.evinsurance.platform.assistant.infrastructure.AssistantOrderReader$CaseRow">
+        SELECT w.status, w.deletion_pending, w.dispatch_address_confirmed,
+          EXISTS (SELECT 1 FROM case_file f WHERE f.work_order_id = w.id AND f.state = 'ACTIVE' AND f.category = 'SCENE_PHOTO') scene_photo_present,
+          EXISTS (SELECT 1 FROM case_file f WHERE f.work_order_id = w.id AND f.state = 'ACTIVE' AND f.category = 'ARRIVAL_PHOTO'
+            AND f.shop_id = assignment.shop_id AND f.assignment_version = assignment.assignment_version
+            AND f.content_type IN ('image/jpeg', 'image/png') AND <include refid="uploadedByShop"/>) arrival_photo_present,
+          EXISTS (SELECT 1 FROM case_file f WHERE f.work_order_id = w.id AND f.state = 'ACTIVE' AND f.category = 'COMPLETION_PHOTO'
+            AND f.shop_id = assignment.shop_id AND f.assignment_version = assignment.assignment_version
+            AND f.content_type IN ('image/jpeg', 'image/png') AND <include refid="uploadedByShop"/>) completion_photo_present,
+          raw.total AS raw_total, formal.total AS formal_total, a.amount AS assessed,
+          COALESCE(q.insurer_confirmed, false) insurer_confirmed, COALESCE(q.service_confirmed, false) service_confirmed,
+          COALESCE(q.authorized, false) AND w.status NOT IN ('CANCELLED', 'COMPLETED', 'CLOSED') authorized,
+          receiver.amount receive_target, payee.amount pay_target, net.received, net.paid,
+          CASE WHEN q.insurer_confirmed AND q.service_confirmed AND a.id IS NOT NULL
+            AND confirmation.file_snapshot::jsonb #&gt;&gt; '{financialBasis,profitAmount}' ~ '^-?[0-9]{1,36}([.][0-9]{1,2})?$'
+            THEN (confirmation.file_snapshot::jsonb #&gt;&gt; '{financialBasis,profitAmount}')::numeric(38,2) END profit
+        FROM work_order w
+        LEFT JOIN work_order_assignment assignment ON assignment.work_order_id = w.id AND assignment.status = 'ACCEPTED'
+        LEFT JOIN quotation_context q ON q.work_order_id = w.id
+        LEFT JOIN quote_raw raw ON raw.id = q.raw_quote_id AND raw.work_order_id = w.id
+          AND raw.shop_id = assignment.shop_id AND raw.assignment_version = assignment.assignment_version
+        LEFT JOIN quote_formal formal ON formal.id = q.formal_quote_id AND formal.work_order_id = w.id AND formal.raw_quote_id = raw.id
+        LEFT JOIN quote_assessment a ON a.id = q.assessment_id AND a.work_order_id = w.id AND a.source_formal_id = formal.id
+        LEFT JOIN quotation_confirmation confirmation ON confirmation.work_order_id = w.id AND confirmation.kind = 'CUSTOMER_SERVICE'
+          AND confirmation.basis_version = q.basis_version AND confirmation.assessment_id = a.id
+        LEFT JOIN LATERAL (SELECT amount FROM funds_target WHERE work_order_id = w.id AND direction = 'RECEIVE' ORDER BY id DESC LIMIT 1) receiver ON true
+        LEFT JOIN LATERAL (SELECT amount FROM funds_target WHERE work_order_id = w.id AND direction = 'PAY' ORDER BY id DESC LIMIT 1) payee ON true
+        CROSS JOIN LATERAL (SELECT <include refid="netAmounts"/> FROM funds_entry e
+          WHERE e.work_order_id = w.id AND <include refid="notReversed"/>) net
+        WHERE w.business_no = #{number}
+    </select>
+    <select id="recognizedValues" resultType="com.evinsurance.platform.assistant.infrastructure.AssistantOrderReader$RecognizedValue">
+        WITH current_quote AS (
+            SELECT w.id, q.assessment_id, q.formal_quote_id, raw.id raw_id, assignment.shop_id, assignment.assignment_version
+            FROM work_order w
+            JOIN quotation_context q ON q.work_order_id = w.id
+            JOIN work_order_assignment assignment ON assignment.work_order_id = w.id AND assignment.status = 'ACCEPTED'
+              AND assignment.shop_id = w.shop_id
+            JOIN quote_raw raw ON raw.id = q.raw_quote_id AND raw.work_order_id = w.id
+              AND raw.shop_id = assignment.shop_id AND raw.assignment_version = assignment.assignment_version
+            WHERE w.business_no = #{number} AND NOT w.deletion_pending
+        ), values_only AS (
+            SELECT 'SHOP_QUOTE' AS kind, item.line_no, item.quantity, item.unit_price, item.amount
+            FROM current_quote q
+            JOIN quote_raw_item item ON item.raw_quote_id = q.raw_id
+            WHERE (
+                EXISTS (
+                    SELECT 1 FROM quote_raw_ocr_line line
+                    JOIN shop_quote_ocr_scope scope ON scope.job_id = line.job_id
+                      AND scope.work_order_id = q.id AND scope.shop_id = q.shop_id AND scope.assignment_version = q.assignment_version
+                    JOIN ocr_job j ON j.id = line.job_id AND j.state = 'SUCCEEDED' AND j.review_version = line.revision
+                    JOIN ocr_confirmation checked ON checked.job_id = j.id AND checked.revision = line.revision
+                    JOIN case_file f ON f.id = j.file_id AND f.work_order_id = q.id AND f.category = scope.category AND f.state = 'ACTIVE'
+                      AND f.shop_id = q.shop_id AND f.assignment_version = q.assignment_version
+                    WHERE line.raw_quote_id = item.raw_quote_id AND line.line_no = item.line_no
+                )
+                OR EXISTS (
+                    SELECT 1 FROM workflow_recognition_link link
+                    JOIN ocr_job j ON j.id = link.job_id AND j.file_id = link.file_id AND j.state = 'SUCCEEDED' AND j.review_version = link.revision
+                    JOIN ocr_confirmation checked ON checked.job_id = j.id AND checked.revision = link.revision
+                    JOIN case_file f ON f.id = link.file_id AND f.work_order_id = q.id AND f.category = 'SHOP_QUOTE' AND f.state = 'ACTIVE'
+                      AND f.shop_id = q.shop_id AND f.assignment_version = q.assignment_version
+                    WHERE link.business_id = q.raw_id AND link.work_order_id = q.id AND link.kind = 'QUOTE'
+                      AND link.recognition_state = 'SUCCEEDED'
+                )
+            )
+            UNION ALL
+            SELECT 'LOSS_ASSESSMENT', 0, NULL::integer, NULL::numeric, a.amount
+            FROM current_quote q
+            JOIN quote_formal formal ON formal.id = q.formal_quote_id AND formal.raw_quote_id = q.raw_id AND formal.work_order_id = q.id
+            JOIN quote_assessment a ON a.id = q.assessment_id AND a.source_formal_id = formal.id AND a.work_order_id = q.id
+            JOIN workflow_recognition_link link ON link.business_id = a.id AND link.work_order_id = q.id AND link.kind = 'ASSESSMENT'
+              AND link.recognition_state = 'SUCCEEDED'
+            JOIN ocr_job j ON j.id = link.job_id AND j.file_id = link.file_id AND j.state = 'SUCCEEDED' AND j.review_version = link.revision
+            JOIN ocr_confirmation checked ON checked.job_id = j.id AND checked.revision = link.revision
+            JOIN ocr_review reviewed ON reviewed.job_id = j.id AND reviewed.revision = link.revision
+            WHERE reviewed.candidate_json::jsonb -&gt; 'originalReviewed' = 'true'::jsonb
+              AND jsonb_typeof(reviewed.candidate_json::jsonb -&gt; 'adopted') = 'string'
+              AND CASE WHEN reviewed.candidate_json::jsonb -&gt;&gt; 'adopted' ~ '^[0-9]{1,36}([.][0-9]{1,2})?$'
+                THEN (reviewed.candidate_json::jsonb -&gt;&gt; 'adopted')::numeric(38,2) = a.amount ELSE false END
+              AND link.file_id = (SELECT f.id FROM case_file f
+                WHERE f.work_order_id = q.id AND f.category = 'LOSS_ASSESSMENT' AND f.state = 'ACTIVE'
+                ORDER BY f.created_at DESC, f.id DESC LIMIT 1)
+        )
+        SELECT kind, line_no, quantity, unit_price, amount, COUNT(*) OVER () AS matched_count
+        FROM values_only
+        <if test="kind != null">WHERE kind = #{kind}</if>
+        ORDER BY kind, line_no LIMIT 20
+    </select>
+</mapper>

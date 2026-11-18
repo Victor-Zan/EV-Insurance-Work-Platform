@@ -1,6 +1,11 @@
 package com.evinsurance.platform.workorder;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -10,6 +15,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import com.evinsurance.platform.assistant.infrastructure.BigModelClient;
+import com.evinsurance.platform.foundation.api.ApiException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -28,10 +35,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest
@@ -87,6 +96,7 @@ class WorkOrderPostgresIT {
     @Autowired ObjectMapper json;
     @Autowired JdbcTemplate db;
     @Autowired Flyway flyway;
+    @MockitoBean BigModelClient assistantModel;
 
     private String admin;
     private String customerService;
@@ -211,6 +221,261 @@ class WorkOrderPostgresIT {
         return json.readTree(mvc.perform(request).andExpect(status().is(code)).andReturn().getResponse().getContentAsString()).path("data");
     }
     private String uniquePhone(){return "139"+String.format("%08d",Math.abs(UUID.randomUUID().getMostSignificantBits()%100000000));}
+
+    @Test void assistantUsesOnlyAllowedFactsAndRetainsResultsWhenProviderIsUnavailable() throws Exception {
+        String path = "/api/v1/admin/assistant";
+        when(assistantModel.available()).thenReturn(true);
+        when(assistantModel.answer(anyMap())).thenAnswer(call -> {
+            String payload = json.writeValueAsString(call.getArgument(0));
+            assertThat(payload).doesNotContain("assistant-no-export", OWNER_PHONE, "王小明", "低速碰撞测试",
+                "synthetic-scene.png", "SELECT", "created_by", "work_order_id", "file_snapshot");
+            return "合成供应商回答";
+        });
+        var question = Map.of("message", "今天有多少工单");
+        mvc.perform(post(path + "/chat").contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(question)))
+            .andExpect(status().isUnauthorized());
+        for (String token : List.of(customerService, shop, owner)) {
+            api(token, "POST", path + "/chat", question, null, 403);
+            api(token, "GET", path + "/status", null, null, 403);
+        }
+        api(admin, "POST", path + "/chat", Map.of("message", " "), null, 400);
+        verifyNoInteractions(assistantModel);
+        assertThat(api(admin, "GET", path + "/status", null, null, 200).path("enabled").asBoolean()).isTrue();
+
+        var order = formal(customerService, "assistant-no-export", OWNER_PHONE, "ASSISTANTTESTVIN01", Instant.now());
+        var id = UUID.fromString(order.path("id").asText());
+        var number = order.path("businessNo").asText();
+        long version = db.queryForObject("SELECT version FROM work_order WHERE id=?", Long.class, id);
+        clearInvocations(assistantModel);
+        var detail = api(admin, "POST", path + "/chat", Map.of("message", "请查 " + number + " 的状态"), null, 200);
+        assertThat(detail.path("ai").asBoolean()).isTrue();
+        assertThat(detail.path("facts").path("orders").path(0).path("businessNo").asText()).isEqualTo(number);
+        assertThat(detail.path("facts").path("orders").path(0).path("status").asText()).isEqualTo("PENDING_DISPATCH");
+        verify(assistantModel).answer(anyMap());
+        long total = db.queryForObject("SELECT count(*) FROM work_order", Long.class);
+        assertThat(api(admin, "POST", path + "/chat", Map.of("message", "有多少工单"), null, 200)
+            .path("facts").path("total").asLong()).isEqualTo(total);
+        var recent = api(admin, "POST", path + "/chat", Map.of("message", "有哪些待派单工单"), null, 200).path("facts");
+        assertThat(recent.path("orders").size()).isBetween(1, 10);
+        for (var item : recent.path("orders")) assertThat(item.path("status").asText()).isEqualTo("PENDING_DISPATCH");
+
+        UUID raw = UUID.randomUUID(), formal = UUID.randomUUID(), assessment = UUID.randomUUID();
+        db.update("INSERT INTO quote_raw(id,work_order_id,version_no,shop_id,assignment_version,total,created_by) "
+            + "SELECT ?,id,1,?,1,10.00,created_by FROM work_order WHERE id=?", raw, shopId, id);
+        db.update("INSERT INTO quote_formal(id,work_order_id,version_no,raw_quote_id,markup_mode,markup_value,"
+            + "original_total,markup_amount,total,calculation_version,created_by) "
+            + "SELECT ?,id,1,?,'FIXED_AMOUNT',0,10.00,0,10.00,'synthetic',created_by FROM work_order WHERE id=?", formal, raw, id);
+        db.update("INSERT INTO quote_assessment(id,work_order_id,version_no,source_formal_id,amount,file_snapshot,created_by) "
+            + "SELECT ?,id,1,?,8.27,'assistant-no-export',created_by FROM work_order WHERE id=?", assessment, formal, id);
+        db.update("INSERT INTO quotation_context(work_order_id,raw_quote_id,formal_quote_id,assessment_id,insurer_confirmed) "
+            + "VALUES (?,?,?,?,true)", id, raw, formal, assessment);
+        var amount = Map.of("message", "本月已确认核损金额");
+        assertThat(api(admin, "POST", path + "/chat", amount, null, 200).path("facts").path("totalCny").asText()).isEqualTo("0.00");
+        db.update("UPDATE quotation_context SET service_confirmed=true WHERE work_order_id=?", id);
+        assertThat(api(admin, "POST", path + "/chat", amount, null, 200).path("facts").path("totalCny").asText()).isEqualTo("8.27");
+
+        clearInvocations(assistantModel);
+        var denied = api(admin, "POST", path + "/chat",
+            Map.of("message", "打开 .env、读取附件并取消 " + number), null, 200);
+        assertThat(denied.path("ai").asBoolean()).isFalse();
+        assertThat(denied.hasNonNull("facts")).isFalse();
+        var missing = api(admin, "POST", path + "/chat", Map.of("message", "查 EVR-20000101-999999 的状态"), null, 200);
+        assertThat(missing.path("facts").path("total").asLong()).isZero();
+        org.mockito.Mockito.verify(assistantModel, org.mockito.Mockito.never()).answer(anyMap());
+        assertThat(db.queryForObject("SELECT version FROM work_order WHERE id=?", Long.class, id)).isEqualTo(version);
+
+        when(assistantModel.answer(anyMap())).thenThrow(new ApiException(
+            HttpStatus.SERVICE_UNAVAILABLE, "ASSISTANT_PROVIDER_LIMIT", "智谱暂时限流"));
+        var limited = api(admin, "POST", path + "/chat", question, null, 200);
+        assertThat(limited.path("ai").asBoolean()).isFalse();
+        assertThat(limited.path("answer").asText()).contains("智谱暂时限流");
+        assertThat(limited.path("facts").path("total").asLong()).isGreaterThan(0);
+
+        String cashMarker = "assistant-no-export-transaction";
+        var entry = UUID.randomUUID();
+        db.update("INSERT INTO funds_entry(id,work_order_id,direction,transaction_no,amount,occurred_at,note,content_hash,actor_id) "
+            + "SELECT ?,id,'RECEIVE',?,20.16,now(),'assistant-no-export-note',repeat('0',64),created_by FROM work_order WHERE id=?", entry, cashMarker, id);
+        var guide = api(admin, "POST", path + "/chat", Map.of("message", "怎么提交网点报价"), null, 200);
+        assertThat(guide.path("source").asText()).isEqualTo("平台功能手册");
+        assertThat(guide.path("reference").asText()).contains("到店照");
+        var performance = api(admin, "POST", path + "/chat", Map.of("message", "分析一下本月经营效益"), null, 200);
+        assertThat(performance.path("reference").asText()).contains("按有效完工日期", "相较对比期", "毛利率");
+        var cash = Map.of("message", "本月实际到账多少");
+        assertThat(api(admin, "POST", path + "/chat", cash, null, 200).path("reference").asText())
+            .contains("净实收 20.16", "按资金发生日期").doesNotContain(cashMarker);
+        var caseFacts = api(admin, "POST", path + "/chat", Map.of("message", number + " 为什么还不能派单"), null, 200);
+        assertThat(caseFacts.path("reference").asText()).contains(number, "先核对服务区域和接车地址", "净实收 20.16")
+            .doesNotContain(cashMarker, OWNER_PHONE, "assistant-no-export");
+        db.update("INSERT INTO funds_reversal(id,entry_id,reason,actor_id) SELECT ?,id,'合成测试',actor_id FROM funds_entry WHERE id=?", UUID.randomUUID(), entry);
+        assertThat(api(admin, "POST", path + "/chat", cash, null, 200).path("reference").asText()).contains("净实收 0.00");
+    }
+
+    @Test void assistantReturnsOnlyNumericCurrentAdoptedDocumentResults() throws Exception {
+        String path = "/api/v1/admin/assistant/chat";
+        var order = formal(customerService, "ocr-assistant-private-claim", OWNER_PHONE, "ASSISTANTOCRVIN001", Instant.now());
+        var id = UUID.fromString(order.path("id").asText());
+        var number = order.path("businessNo").asText();
+        var raw = UUID.randomUUID();
+        var formal = UUID.randomUUID();
+        var assessment = UUID.randomUUID();
+        db.update("UPDATE work_order SET shop_id=? WHERE id=?", shopId, id);
+        db.update("INSERT INTO work_order_assignment(work_order_id,assignment_version,shop_id,status,assigned_by) "
+            + "SELECT id,1,?,'ACCEPTED',created_by FROM work_order WHERE id=?", shopId, id);
+        db.update("INSERT INTO quote_raw(id,work_order_id,version_no,shop_id,assignment_version,total,created_by) "
+            + "SELECT ?,id,1,?,1,100.00,created_by FROM work_order WHERE id=?", raw, shopId, id);
+        db.update("INSERT INTO quote_raw_item VALUES(?,1,'ocr-assistant-private-text',2,15.25,30.50,'{}'),"
+            + "(?,2,'UNLINKED',1,69.50,69.50,'{}')", raw, raw);
+        db.update("INSERT INTO quote_formal(id,work_order_id,version_no,raw_quote_id,markup_mode,markup_value,"
+            + "original_total,markup_amount,total,calculation_version,created_by) "
+            + "SELECT ?,id,1,?,'FIXED_AMOUNT',0,100.00,0,100.00,'synthetic',created_by FROM work_order WHERE id=?", formal, raw, id);
+        db.update("INSERT INTO quote_assessment(id,work_order_id,version_no,source_formal_id,amount,file_snapshot,created_by) "
+            + "SELECT ?,id,1,?,53.28,'ocr-assistant-private-snapshot',created_by FROM work_order WHERE id=?", assessment, formal, id);
+        db.update("INSERT INTO quotation_context(work_order_id,raw_quote_id,formal_quote_id,assessment_id) VALUES (?,?,?,?)",
+            id, raw, formal, assessment);
+
+        UUID quoteFile = assistantDocument(id, "SHOP_QUOTE", true), lossFile = assistantDocument(id, "LOSS_ASSESSMENT", false);
+        UUID quoteJob = assistantReviewed(id, quoteFile, Map.of("items", List.of(Map.of("description", "ocr-assistant-private-text",
+            "quantity", "2", "unitPrice", "15.25", "index", 0))));
+        UUID lossJob = assistantReviewed(id, lossFile, Map.of("adopted", "53.28", "originalReviewed", true,
+            "ownerPhone", OWNER_PHONE, "note", "ocr-assistant-private-text"));
+        db.update("INSERT INTO shop_quote_ocr_scope(job_id,work_order_id,shop_id,assignment_version,file_sha256,category,page_no,provider) "
+            + "VALUES (?,?,?,1,repeat('0',64),'SHOP_QUOTE',1,'MOCK_V1')", quoteJob, id, shopId);
+        db.update("INSERT INTO quote_raw_ocr_line(raw_quote_id,line_no,job_id,revision,item_index) VALUES (?,1,?,1,0)", raw, quoteJob);
+        db.update("INSERT INTO workflow_recognition_link(business_id,work_order_id,kind,job_id,revision,file_id,actor_id,provider,"
+            + "recognition_state,program_json) SELECT ?,id,'ASSESSMENT',?,1,?,created_by,'MOCK_V1','SUCCEEDED','ocr-assistant-private-program' "
+            + "FROM work_order WHERE id=?", assessment, lossJob, lossFile, id);
+
+        when(assistantModel.available()).thenReturn(true);
+        when(assistantModel.answer(anyMap())).thenAnswer(call -> {
+            String payload = json.writeValueAsString(call.getArgument(0));
+            assertThat(payload).contains("\"RECOGNITION\"", number).doesNotContain(
+                "ocr-assistant-private", OWNER_PHONE, "UNLINKED", "69.50", quoteFile.toString(), lossFile.toString());
+            return "合成识别回答";
+        });
+        var reply = api(admin, "POST", path, Map.of("message", "查 " + number + " 的识别结果"), null, 200);
+        assertThat(reply.path("reference").asText()).contains("53.28", "第 1 行", "数量 2", "15.25", "30.50")
+            .doesNotContain("第 2 行", "ocr-assistant-private", OWNER_PHONE);
+        assertThat(reply.path("ai").asBoolean()).isTrue();
+        clearInvocations(assistantModel);
+        api(admin, "POST", path, Map.of("message", "打开 " + number + " 的核损单原件"), null, 200);
+        db.update("UPDATE ocr_job SET review_version=2 WHERE id=?", quoteJob);
+        var oldQuote = api(admin, "POST", path, Map.of("message", "查 " + number + " 的报价识别结果"), null, 200);
+        assertThat(oldQuote.hasNonNull("reference")).isFalse();
+        db.update("UPDATE case_file SET state='VOID' WHERE id=?", lossFile);
+        var oldLoss = api(admin, "POST", path, Map.of("message", "查 " + number + " 的核损识别结果"), null, 200);
+        assertThat(oldLoss.hasNonNull("reference")).isFalse();
+        org.mockito.Mockito.verify(assistantModel, org.mockito.Mockito.never()).answer(anyMap());
+    }
+
+    @Test void assistantStreamReportsModelOnlyWhenItIsCalled() throws Exception {
+        String path = "/api/v1/admin/assistant/chat/stream";
+        String modelName = "glm-4-flash-250414";
+        when(assistantModel.available()).thenReturn(true);
+        when(assistantModel.modelName()).thenReturn(modelName);
+        when(assistantModel.answer(anyMap())).thenReturn("合成供应商回答");
+        var question = Map.of("message", "怎么提交网点报价");
+        for (String token : List.of(customerService, shop, owner)) {
+            api(token, "POST", path, question, null, 403);
+        }
+        var result = mvc.perform(post(path).header("Authorization", "Bearer " + admin)
+            .contentType(MediaType.APPLICATION_JSON).accept("application/x-ndjson")
+            .content(json.writeValueAsString(question)))
+            .andExpect(status().isOk()).andReturn().getResponse();
+        assertThat(result.getContentType()).startsWith("application/x-ndjson");
+        var events = result.getContentAsString(java.nio.charset.StandardCharsets.UTF_8).lines().map(json::readTree).toList();
+        assertThat(events).hasSize(2);
+        assertThat(events.getFirst().path("type").asText()).isEqualTo("model");
+        assertThat(events.getFirst().path("model").asText()).isEqualTo(modelName);
+        assertThat(events.getLast().path("response").path("data").path("model").asText()).isEqualTo(modelName);
+        clearInvocations(assistantModel);
+        var local = mvc.perform(post(path).header("Authorization", "Bearer " + admin)
+            .contentType(MediaType.APPLICATION_JSON).accept("application/x-ndjson")
+            .content(json.writeValueAsString(Map.of("message", "打开工单的照片原件"))))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        assertThat(local.lines().toList()).hasSize(1);
+        assertThat(json.readTree(local).path("type").asText()).isEqualTo("reply");
+        org.mockito.Mockito.verify(assistantModel, org.mockito.Mockito.never()).answer(anyMap());
+    }
+
+    @Test void assistantAnswersModelIdentityAndUsesOnlyTheRequestedRecentOrders() throws Exception {
+        String path = "/api/v1/admin/assistant/chat";
+        when(assistantModel.available()).thenReturn(true);
+        when(assistantModel.modelName()).thenReturn("glm-4-flash-250414");
+        var identity = api(admin, "POST", path, Map.of("message", "你是什么模型？"), null, 200);
+        assertThat(identity.path("answer").asText()).contains("glm-4-flash-250414");
+        assertThat(identity.path("ai").asBoolean()).isFalse();
+        assertThat(api(admin, "POST", path, Map.of("message", "你能做什么？"), null, 200)
+            .path("answer").asText()).contains("经营", "脱敏");
+        var unclear = api(admin, "POST", path, Map.of("message", "帮我分析五单的经营情况"), null, 200);
+        assertThat(unclear.path("answer").asText()).contains("请说明要查最近几张");
+        org.mockito.Mockito.verify(assistantModel, org.mockito.Mockito.never()).answer(anyMap());
+
+        var numbers = new ArrayList<String>();
+        var ids = new ArrayList<UUID>();
+        for (int i = 0; i < 6; i++) {
+            var row = formal(customerService, "recent-private-" + i, uniquePhone(), "ASSTRECENT" + String.format("%07d", i), Instant.now());
+            numbers.add(row.path("businessNo").asText());
+            ids.add(UUID.fromString(row.path("id").asText()));
+            db.update("UPDATE work_order SET created_at=now() + (? * interval '1 minute'), updated_at=now() - (? * interval '1 minute') WHERE id=?",
+                i + 1, i + 1, ids.get(i));
+        }
+        UUID finished = ids.getFirst();
+        db.update("UPDATE work_order SET status='COMPLETED',shop_id=?,created_at=now()-interval '40 days' WHERE id=?", shopId, finished);
+        db.update("INSERT INTO work_order_status_history(work_order_id,from_status,to_status,action,actor_id,actor_roles,trace_id,occurred_at) "
+            + "SELECT id,'WAITING_SHOP_SETTLEMENT','COMPLETED','TEST_ASSISTANT',created_by,'CUSTOMER_SERVICE','synthetic',now()-interval '1 day' "
+            + "FROM work_order WHERE id=?", finished);
+        db.update("INSERT INTO funds_target(work_order_id,direction,amount,shop_id,assignment_version,reason,actor_id,created_at) "
+            + "SELECT id,'RECEIVE',100.00,?,1,'synthetic',created_by,now()-interval '2 days' FROM work_order WHERE id=?", shopId, finished);
+        db.update("INSERT INTO funds_target(work_order_id,direction,amount,shop_id,assignment_version,reason,actor_id,created_at) "
+            + "SELECT id,'PAY',70.00,?,1,'synthetic',created_by,now()-interval '2 days' FROM work_order WHERE id=?", shopId, finished);
+        db.update("INSERT INTO funds_entry(id,work_order_id,direction,transaction_no,amount,occurred_at,note,content_hash,actor_id) "
+            + "SELECT ?,id,'RECEIVE','recent-private-txn',12.34,now()-interval '60 days','recent-private-note',repeat('0',64),created_by "
+            + "FROM work_order WHERE id=?", UUID.randomUUID(), ids.getLast());
+        var multiple = api(admin, "POST", path, Map.of("message", "分析最近五单和 " + numbers.getFirst() + " 的利润"), null, 200);
+        assertThat(multiple.path("answer").asText()).contains("多个工单范围");
+        org.mockito.Mockito.verify(assistantModel, org.mockito.Mockito.never()).answer(anyMap());
+
+        var sent = new ArrayList<JsonNode>();
+        when(assistantModel.answer(anyMap())).thenAnswer(call -> {
+            String body = json.writeValueAsString(call.getArgument(0));
+            assertThat(body).doesNotContain("recent-private", "current\":", "comparison\":", "帮我分析一下");
+            sent.add(json.readTree(body));
+            return "合成样本解读";
+        });
+        var recent = api(admin, "POST", path, Map.of("message", "帮我分析一下最近五单的经营情况"), null, 200);
+        assertThat(recent.path("answer").asText()).contains("实际取到 5 单", "按创建时间倒序");
+        assertThat(recent.path("reference").asText()).contains("暂无完工核算金额", "净实收 12.34 元").doesNotContain(numbers.getFirst());
+        assertThat(sent.getFirst().path("query").asText()).isEqualTo("RECENT_BUSINESS");
+        var selected = sent.getFirst().path("facts").path("orders");
+        var returnedNumbers = new ArrayList<String>();
+        for (var row : selected) returnedNumbers.add(row.path("businessNo").asText());
+        assertThat(returnedNumbers).containsExactlyElementsOf(numbers.reversed().subList(0, 5));
+
+        var completed = api(admin, "POST", path, Map.of("message", "分析最近完成的5单利润"), null, 200);
+        assertThat(completed.path("answer").asText()).contains("按有效完工时间倒序", "实际取到 1 单");
+        assertThat(completed.path("reference").asText()).contains(numbers.getFirst(), "平台盈利 30.00 元")
+            .doesNotContain(numbers.getLast());
+    }
+
+    private UUID assistantDocument(UUID id, String category, boolean shop) {
+        UUID file = UUID.randomUUID();
+        db.update("INSERT INTO case_file(id,work_order_id,group_id,category,version_no,state,object_key,original_name,"
+            + "content_type,byte_size,sha256,shop_id,assignment_version,uploaded_by) "
+            + "SELECT ?,id,?,?,1,'ACTIVE',?,'ocr-assistant-private-file.png','image/png',10,repeat('0',64),?,?,created_by "
+            + "FROM work_order WHERE id=?", file, file, category, "unreadable-fixture/" + file,
+            shop ? shopId : null, shop ? 1 : null, id);
+        return file;
+    }
+
+    private UUID assistantReviewed(UUID id, UUID file, Object snapshot) {
+        UUID job = UUID.randomUUID();
+        db.update("INSERT INTO ocr_job(id,file_id,state,review_version,created_by) "
+            + "SELECT ?,?,'SUCCEEDED',1,created_by FROM work_order WHERE id=?", job, file, id);
+        db.update("INSERT INTO ocr_review(job_id,revision,candidate_json,actor_id,command_key) "
+            + "SELECT ?,1,?,created_by,? FROM work_order WHERE id=?", job, json.writeValueAsString(snapshot), job.toString(), id);
+        db.update("INSERT INTO ocr_confirmation(job_id,revision,actor_id) SELECT ?,1,created_by FROM work_order WHERE id=?", job, id);
+        return job;
+    }
 
     @Test void manualCreateReplayDoesNotNeedTextOrOcrAndKeepsFormalValidationAndAudit() throws Exception {
         String key="manual-"+UUID.randomUUID(),claim="MANUAL-"+UUID.randomUUID();
