@@ -55,6 +55,7 @@ class ShopQuoteOcrPostgresIT {
         db.update("DELETE FROM account_rate_limit");
         db.update("UPDATE app_user SET enabled=true WHERE username='dev_repair_shop'");
         when(provider.id()).thenReturn("BAIDU_HANDWRITING_V1");when(provider.api()).thenReturn("ocr/v1/handwriting");when(provider.version()).thenReturn("offline-shop-test");
+        doCallRealMethod().when(provider).recognizeShopQuote(anyString(),any(byte[].class),anyBoolean());
         raw="{\"log_id\":18446744073709551615,\"words_result\":[{\"words\":\"配件名称：合成轮胎 数量：2 单位：条 单价：12.50 金额：25.00\",\"location\":{\"left\":5,\"top\":5,\"width\":200,\"height\":20},\"probability\":{\"average\":0.8}},{\"words\":\"人工费：30.00\"},{\"words\":\"合计：55.00\"}]}".getBytes(StandardCharsets.UTF_8);
         doAnswer(invocation->new OcrProvider.Result(new HandwritingCandidates().extract(json.readTree(raw),"SHOP_QUOTE"),raw,"18446744073709551615")).when(provider).recognize(anyString(),any(byte[].class),anyBoolean());
         image=image(3);admin=login("dev_admin","ADMIN");cs=login("dev_customer_service","ADMIN");shop=login("dev_repair_shop","H5");owner=login("dev_owner","H5");shopId=db.queryForObject("SELECT id FROM repair_shop WHERE code='DEV-SHOP'",Long.class);region=db.queryForObject("SELECT id FROM region WHERE code='DEV-DISTRICT'",Long.class);
@@ -187,6 +188,44 @@ class ShopQuoteOcrPostgresIT {
         var body=rawRequest(0,j2,1);var line=new HashMap<>((Map<String,Object>)((List<?>)body.get("lines")).getFirst());line.put("unitPrice","99.00");post(shop,"quotations/cases/"+c2+"/raw-quotes",Map.of("expectedVersion",0,"assignmentVersion",1,"lines",List.of(line)),409);
         post(shop,"quotations/cases/"+c2+"/raw-quotes",Map.of("expectedVersion",0,"assignmentVersion",1,"lines",List.of(body.get("lines") instanceof List<?> list?list.getFirst():Map.of(),body.get("lines") instanceof List<?> list?list.getFirst():Map.of())),409);
         assertThat(db.queryForObject("SELECT count(*) FROM quote_raw WHERE work_order_id=?::uuid",Long.class,c2)).isZero();
+    }
+    @Test void failedTaskWaitsForExplicitRerunAcrossWorkerTicksReadsAndDuplicateUploads() throws Exception {
+        String c=arrived(),j=upload(c);doThrow(new OcrFailure("BAIDU_EMPTY_RESULT")).when(provider).recognize(anyString(),any(byte[].class),anyBoolean());
+        tick();tick();tick();var failed=get(shop,base(c)+"/"+j,200);
+        assertThat(failed.path("state").asString()).isEqualTo("FAILED");assertThat(failed.path("errorCode").asString()).isEqualTo("BAIDU_EMPTY_RESULT");assertThat(failed.path("attempts").asInt()).isEqualTo(1);
+        get(shop,base(c)+"?assignmentVersion=1&page=1&size=20",200);assertThat(upload(c)).isEqualTo(j);tick();verify(provider,times(1)).recognize(anyString(),any(byte[].class),anyBoolean());
+        post(shop,base(c)+"/"+j+"/retry",Map.of("expectedVersion",0),200);tick();tick();
+        verify(provider,times(2)).recognize(anyString(),any(byte[].class),anyBoolean());assertThat(get(shop,base(c)+"/"+j,200).path("rerunsUsed").asInt()).isEqualTo(1);flyway.validate();
+    }
+    @Test void oldProgramReextractsFromPrivateSourcesWithoutAnotherRecognition() throws Exception {
+        String c=arrived(),j=upload(c);
+        var claim=tasks.claim(3,180);
+        var legacy=json.createObjectNode().put("quoteRuleVersion","SHOP_QUOTE_LABELS_1");
+        legacy.putArray("items").addObject().put("description","拾");
+        String rawKey="ocr/test/"+UUID.randomUUID();
+        storage.put(rawKey,new ByteArrayInputStream(raw),raw.length,"application/json");
+        assertThat(tasks.finishResult(claim,json.writeValueAsString(legacy),null,rawKey,
+            com.evinsurance.platform.document.application.FileService.hash(raw),"18446744073709551615",raw.length)).isTrue();
+        String endpoint=base(c)+"/"+j+"/reextract",key=UUID.randomUUID().toString();
+        var request=Map.of("expectedVersion",0);
+        post(owner,endpoint,request,key,403);
+        post(cs,endpoint,request,key,403);
+        post(shop,base(arrived())+"/"+j+"/reextract",request,key,403);
+        assertThat(get(shop,base(c)+"/"+j+"/program",200).path("items").get(0).path("description").asString()).isEqualTo("拾");
+        var result=post(shop,endpoint,request,key,200);
+        assertThat(result.path("reviewVersion").asInt()).isEqualTo(1);
+        assertThat(result.path("attempts").asInt()).isEqualTo(1);
+        assertThat(result.path("rerunsUsed").asInt()).isZero();
+        var program=get(shop,base(c)+"/"+j+"/program",200);
+        assertThat(program.path("quoteRuleVersion").asString()).isEqualTo(ShopQuoteCandidates.RULE_VERSION);
+        assertThat(program.at("/items/0/unitPrice").asString()).isEqualTo("12.50");
+        assertThat(program.path("items").toString()).doesNotContain("拾");
+        assertThat(post(shop,endpoint,request,key,200).path("reviewVersion").asInt()).isEqualTo(1);
+        post(shop,endpoint,request,409);
+        assertThat(post(shop,endpoint,Map.of("expectedVersion",1),200).path("reviewVersion").asInt()).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT candidate_json FROM ocr_review WHERE job_id=?::uuid AND revision=0",String.class,j)).isEqualTo(json.writeValueAsString(legacy));
+        assertThat(get(shop,base(c)+"/"+j+"/raw",200).path("text").asString()).isEqualTo(new String(raw,StandardCharsets.UTF_8));
+        tick();verify(provider,never()).recognize(anyString(),any(byte[].class),anyBoolean());
     }
     @Test void workerRechecksSourceDuringCallAndLeaseExpiryNeverCallsAgain() throws Exception {
         String c=arrived(),j=upload(c);doAnswer(invocation->{db.update("UPDATE case_file SET state='VOID' WHERE id=(SELECT file_id FROM ocr_job WHERE id=?::uuid)",j);return new OcrProvider.Result(Map.of("items",List.of()),raw,"1");}).when(provider).recognize(anyString(),any(byte[].class),anyBoolean());tick();assertThat(get(cs,base(c)+"/"+j,200).path("errorCode").asString()).isEqualTo("SOURCE_ACCESS_CHANGED");assertThat(db.queryForObject("SELECT count(*) FROM ocr_raw_result WHERE job_id=?::uuid",Long.class,j)).isZero();

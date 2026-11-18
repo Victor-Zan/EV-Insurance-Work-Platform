@@ -4,6 +4,8 @@ import com.evinsurance.platform.document.application.*;
 import com.evinsurance.platform.document.domain.FileCategory;
 import com.evinsurance.platform.foundation.api.*;
 import com.evinsurance.platform.identity.domain.CurrentUser;
+import com.evinsurance.platform.integration.ocr.HandwritingCandidates;
+import com.evinsurance.platform.integration.ocr.ShopQuoteCandidates;
 import com.evinsurance.platform.audit.application.AuditService;
 import com.evinsurance.platform.audit.application.AuditService.Action;
 import tools.jackson.databind.*;
@@ -71,6 +73,48 @@ public class OcrService {
         String command="SYSTEM-REEXTRACT-"+FileService.hash(key.getBytes(java.nio.charset.StandardCharsets.UTF_8));if(jobs.reviewCommand(id,command)!=null)return view(jobs.find(id));
         var raw=sources.raw(r);var result=new com.evinsurance.platform.integration.ocr.HandwritingCandidates().extract(json.readTree(raw.text()),sources.source(r,true).category());result.put("rawAttempt",raw.attempt());String text=json.writeValueAsString(result);if(text.length()>50000)throw ApiException.invalid("Program candidate exceeds 50000 characters");
         if(jobs.review(id,expected,text)!=1)throw ApiException.conflict("OCR_VERSION_CONFLICT","Candidate changed concurrently");jobs.appendReview(id,expected+1,text,CurrentUser.require().id(),command);audit.record(CurrentUser.require(),Action.OCR_REVIEW,"OCR_JOB",id,"Program extraction V2 from retained raw attempt="+raw.attempt()+"; revision="+(expected+1)+"; no external OCR call");return view(jobs.find(id));
+    }
+    @Transactional public View reextractShopQuote(UUID id, int expected, String key) {
+        var job = accessible(id, true);
+        mutable(job);
+        FileService.checkKey(key);
+        if (!sources.shopQuote(job)) throw ApiException.denied();
+        if (!job.provider().equals("BAIDU_HANDWRITING_V1") || !job.state().equals("SUCCEEDED")) {
+            throw ApiException.conflict("OCR_NOT_READY", "只有已成功的百度识别结果可以重新整理");
+        }
+        String command = "SYSTEM-REEXTRACT-" + FileService.hash(key.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        var prior = jobs.reviewCommand(id, command);
+        if (prior != null) {
+            if (((Number) prior.get("revision")).intValue() != (long) expected + 1) {
+                throw ApiException.conflict("IDEMPOTENCY_CONFLICT", "该请求已用于其他识别版本");
+            }
+            return view(job);
+        }
+        if (job.reviewVersion() != expected) throw ApiException.conflict("OCR_VERSION_CONFLICT", "识别结果已更新，请刷新后核对");
+        if (ShopQuoteCandidates.RULE_VERSION.equals(retainedProgram(id).path("quoteRuleVersion").asString(""))) return view(job);
+
+        var raw = sources.raw(job);
+        var source = sources.source(job, true);
+        byte[] original;
+        try (var stream = sources.image(job)) {
+            original = stream.readNBytes(10485761);
+        } catch (java.io.IOException e) {
+            throw ApiException.conflict("OCR_SOURCE_UNAVAILABLE", "无法读取原图，请手工录入或联系管理员");
+        }
+        if (original.length != source.size() || original.length > 10485760 || !FileService.hash(original).equals(source.sha256())) {
+            throw ApiException.conflict("SOURCE_HASH_MISMATCH", "原图校验失败，无法重新整理");
+        }
+        byte[] rawBytes = raw.text().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        var candidates = new HandwritingCandidates().extract(json.readTree(rawBytes), source.category());
+        var result = new ShopQuoteCandidates().organize(json.valueToTree(candidates), json, original, rawBytes);
+        result.put("rawAttempt", raw.attempt());
+        String text = json.writeValueAsString(result);
+        if (text.length() > 50000) throw ApiException.invalid("识别内容超过可整理上限，请手工录入");
+        if (jobs.review(id, expected, text) != 1) throw ApiException.conflict("OCR_VERSION_CONFLICT", "识别结果已更新，请刷新后核对");
+        jobs.appendReview(id, expected + 1, text, CurrentUser.require().id(), command);
+        audit.record(CurrentUser.require(), Action.OCR_REVIEW, "OCR_JOB", id,
+            "Shop quotation reorganized from retained OCR attempt=" + raw.attempt() + "; revision=" + (expected + 1) + "; no external OCR call");
+        return view(jobs.find(id));
     }
     public OcrSources.Source source(UUID id){return sources.source(accessible(id,false),true);}
     public java.io.InputStream image(UUID id){return sources.image(accessible(id,false));}

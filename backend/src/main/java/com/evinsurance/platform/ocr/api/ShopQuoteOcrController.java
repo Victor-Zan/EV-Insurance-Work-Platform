@@ -26,6 +26,12 @@ public class ShopQuoteOcrController {
     public record Rerun(int expectedVersion){}
     @PostMapping("/{job}/retry") @Operation(summary="复用原图重新识别，首次之外最多3次；处理中拒绝，重复请求不重复扣次数")
     public ApiResponse<OcrService.View> retry(@PathVariable UUID caseId,@PathVariable UUID job,@RequestHeader("Idempotency-Key") String key,@RequestBody Rerun body){return ApiResponse.success(service.retry(caseId,job,body.expectedVersion(),key));}
+    @PostMapping("/{job}/reextract")
+    @Operation(summary="用已保存的百度原文和原图重新整理报价候选，不调用百度或占用重识次数")
+    public ApiResponse<OcrService.View> reextract(@PathVariable UUID caseId, @PathVariable UUID job,
+        @RequestHeader("Idempotency-Key") String key, @RequestBody Rerun body) {
+        return ApiResponse.success(service.reextract(caseId, job, body.expectedVersion(), key));
+    }
     @PostMapping("/{job}/apply") @Operation(summary="网点保存人工候选并确认快照；应用到当前表单，不自动提交报价")
     public ApiResponse<OcrService.View> apply(@PathVariable UUID caseId,@PathVariable UUID job,@RequestHeader("Idempotency-Key") String key,@RequestBody Apply body){return ApiResponse.success(service.apply(caseId,job,body.expectedVersion(),body.items(),key));}
 }

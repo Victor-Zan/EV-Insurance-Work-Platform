@@ -8,4 +8,7 @@ public interface OcrProvider {
     default Map<String,Long> requestCounts(){return Map.of("authentication",0L,"ocr",0L);}
     record Result(Map<String,Object> candidate,byte[] raw,String logId) {}
     default Result recognize(String category,byte[] content,boolean fail){return new Result(extract(category,content,fail),null,null);}
+    default Result recognizeShopQuote(String category, byte[] content, boolean fail) {
+        return recognize(category, content, fail);
+    }
 }

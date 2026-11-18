@@ -33,16 +33,28 @@ public final class BaiduOcrProvider implements OcrProvider {
     public Map<String,Long> requestCounts(){return Map.of("authentication",authenticationRequests.get(),"ocr",ocrRequests.get());}
     public Map<String,Object> extract(String category,byte[] content,boolean fail){return recognize(category,content,fail).candidate();}
     public Result recognize(String category,byte[] content,boolean fail){
+        return recognize(category,content,fail,false);
+    }
+    @Override public Result recognizeShopQuote(String category,byte[] content,boolean fail){
+        return recognize(category,content,fail,true);
+    }
+    private Result recognize(String category,byte[] content,boolean fail,boolean shopQuote){
         if(fail)throw new OcrFailure("BAIDU_SIMULATION_FORBIDDEN");
         BaiduImage.validate(content);
-        var form=new FormBody.Builder().add("image",Base64.getEncoder().encodeToString(content)).add("probability","true").build();
+        var fields=new FormBody.Builder().add("image",Base64.getEncoder().encodeToString(content)).add("probability","true");
+        if(shopQuote)fields.add("recognize_granularity","small");
+        var form=fields.build();
         if(form.contentLength()>4L*1024*1024)throw new OcrFailure("BAIDU_ENCODED_SIZE");
         String used=accessToken(null);
         for(int attempt=0;attempt<2;attempt++){
             var url=Objects.requireNonNull(HttpUrl.parse(ocrUrl)).newBuilder().addQueryParameter("access_token",used).build();
             byte[] raw=request(new Request.Builder().url(url).post(form).build(),false);
             JsonNode result=parse(raw);int code=result.path("error_code").asInt(0);
-            if(code==110||code==111){if(attempt==0&&tokenRetryEnabled){used=accessToken(used);continue;}throw new OcrFailure("BAIDU_AUTH");}
+            if(code==110||code==111){
+                if(!shopQuote&&attempt==0&&tokenRetryEnabled){used=accessToken(used);continue;}
+                if(shopQuote)expireToken(used);
+                throw new OcrFailure("BAIDU_AUTH");
+            }
             if(code!=0)throw new OcrFailure(errorCode(code));
             if(!result.path("words_result").isArray()||result.path("words_result").isEmpty())throw new OcrFailure("BAIDU_EMPTY_RESULT");
             boolean hasWords=false;for(var word:result.path("words_result"))if(!word.path("words").asString("").isBlank()){hasWords=true;break;}if(!hasWords)throw new OcrFailure("BAIDU_EMPTY_RESULT");
@@ -50,6 +62,9 @@ public final class BaiduOcrProvider implements OcrProvider {
             return new Result(new HandwritingCandidates().extract(result,category),raw,logId);
         }
         throw new OcrFailure("BAIDU_AUTH");
+    }
+    private synchronized void expireToken(String rejected){
+        if(rejected.equals(token))tokenUntil=Instant.EPOCH;
     }
     private synchronized String accessToken(String invalid){
         if(token!=null&&clock.instant().isBefore(tokenUntil)&&(invalid==null||!invalid.equals(token)))return token;

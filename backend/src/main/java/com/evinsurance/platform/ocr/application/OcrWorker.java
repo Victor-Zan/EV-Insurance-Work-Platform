@@ -18,9 +18,10 @@ public class OcrWorker {
             byte[] data;try(var source=storage.read(f.objectKey())){data=source.readNBytes(10485761);}
             if(data.length!=f.size()||!FileService.hash(data).equals(f.sha256())){tasks.finish(job,null,"SOURCE_HASH_MISMATCH");return;}
             if(!sources.eligible(job,false)){tasks.finish(job,null,"SOURCE_ACCESS_CHANGED");return;}
-            var result=provider.recognize(f.category(),data,job.simulateFailure()&&job.attempts()==1);
+            boolean shopQuote=sources.shopQuote(job),simulate=job.simulateFailure()&&job.attempts()==1;
+            var result=shopQuote?provider.recognizeShopQuote(f.category(),data,simulate):provider.recognize(f.category(),data,simulate);
             tools.jackson.databind.node.ObjectNode candidate=json.valueToTree(result.candidate());
-            if(sources.shopQuote(job))candidate=new com.evinsurance.platform.integration.ocr.ShopQuoteCandidates().organize(candidate,json);
+            if(shopQuote)candidate=new com.evinsurance.platform.integration.ocr.ShopQuoteCandidates().organize(candidate,json,data,result.raw());
             if(provider.id().equals("MOCK_V1"))candidate.putNull("confidence");
             String text=json.writeValueAsString(candidate);if(text.length()>50000)throw new com.evinsurance.platform.integration.ocr.OcrFailure("BAIDU_RESULT_TOO_LARGE");
             if(result.raw()!=null){rawKey="ocr/raw/"+job.id()+"/"+job.attempts()+"/"+java.util.UUID.randomUUID();storage.put(rawKey,new java.io.ByteArrayInputStream(result.raw()),result.raw().length,"application/json");}

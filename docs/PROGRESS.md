@@ -1,3 +1,54 @@
+## 2026-11-18 OCR 分支提交与主线交付
+
+- 用户确认提交 OCR 分支、合并 main 并推送远端。获取远端 main 后与本地主线同为 `f7d583b`，合并前无分叉。
+- 交付内容为整图格线定位、页脚过滤、历史响应本地整理、失败反馈、调用配置示例和缺失数量默认 1。复用本阶段已通过的后端 24 单元和 15 集成、H5 66 项测试、类型检查、lint 及生产构建结果。管理员首页助手的既有未提交代码和文档单独保留。
+
+## 2026-11-17 网点报价 OCR 缺失数量预填（本阶段完成）
+
+- 按用户要求，网点报价草稿采用 OCR 候选时，缺失数量默认填 1，逐行显示“默认 1 · 待核对”，编辑后解除标记。自动预填、手动添加及替换复用同一规则。明确识别的数量优先；缺数量的候选替换已填写行时保留该行原数量。单价仍按原识别值或人工录入核算。
+- 默认值只应用在草稿，原始候选和识别证据保留，手工新增空行沿用原行为。当前可采用的已保存结果可直接使用，无需重新调用百度。未写入真实报价或发起 OCR 请求。
+- H5 `npm run typecheck`、`npm run lint`、`npm test`（66 项）及 `npm run build` 通过。回归覆盖缺数量有单价时计算与提交载荷、保留已识别和手填数量、缺单价仍未补齐。只读核实本机 5174 已提供新版脚本与标记，`git diff --check` 通过。改动仅涉及 H5 与需求文档，后端、数据库、基础设施验证不适用。
+
+## 2026-11-17 历史网点 OCR 复查与零调用整理
+
+- 查询本机网点报价任务，最近成功结果为北京时间 09:00，使用 `SHOP_QUOTE_LABELS_1`，有 14 条候选，含一条“拾”，数量和单价各只有一条有值。9 条成功记录都保存了百度原文，查询时没有使用新规则生成的候选。同图在当前派单中重复上传复用原任务，原候选不会随部署自行重算。
+- 从私有存储只读读取该次留存的响应，核对响应和用户原图的 SHA-256，再用新规则离线回放。得到 13 条正确明细、13 个与原图一致的单价和 0 条“拾”。原始响应无单字符坐标，只有 1 个明确数量，另有 3 个含糊数量框，其余没有可用数量结果。新请求可能产生的实时识别质量未验证，本轮实际百度请求 0 次。
+- 报价页标出旧版结果，停止自动带入旧候选。新按钮“用已有结果重新整理”只读取本机保存的原图和响应，写入新的程序候选版本，保留历史和人工录入，重识别次数不增加。同键重放与版本校验沿用原事务，受当前网点、案件、派单和材料权限限制。OpenAPI 与报价 OCR 文档同步。
+- 验证通过。Java 21 下执行 `./mvnw.cmd -o -B -ntp -Dvalidation.build.directory=../tmp/ocr-reextract-20261117/build -Dtest=BaiduOcrProviderTest,ShopQuoteCandidatesTest,ShopQuoteGridTest -Dit.test=ShopQuoteOcrPostgresIT verify -Ppostgres-it`，24 单元及 15 PostgreSQL/MinIO 集成，Maven 构建与 Flyway 校验通过。集成使用隔离 schema、`ocr-reextract-tests-20261117` 测试桶和合成供应商，验证跨案件、角色、版本、幂等、旧记录保留及无调用。H5 `npm run typecheck`、`npm run lint`、`npm test`（66 项）、`npm run build` 通过。合成测试验证旧候选不填入、一键整理请求及无自动外呼。该阶段未在用户案件上点击整理或提交报价。
+- 核对新旧 JAR 的应用类、资源和依赖后更新本机后端，旧 JAR 留存备份。后端健康、两端代理 HTTP 200、实际 OpenAPI 的新接口和 H5 新组件均已核对。业务库 OCR 任务数、尝试次数及修订版本汇总与更新前一致，无新迁移。`git diff --check` 通过，当前阶段结束。
+
+## 2026-11-17 网点报价整图识别与数字候选（本阶段完成）
+
+- 在 `codex/shop-quote-ocr-stability` 完成固定格式表格的整图识别。网点继续直接上传原图。后端用标题锚定维修明细并追踪格线，按各条线在照片中的方向校正归属。过滤表头、页脚金额占位词（包括“拾”）及其他非明细文字。缺少金额表头和金额列为空仍能提取。其他表格沿用既有规则。H5 在任务旁明确显示已识别文字但表格整理未完成，保留原文和手填入口。
+- 网点专用请求加入百度单字符位置。字符完整、文字一致且唯一落在单元格时才拆分跨列结果。数量只接受正整数，单价为非负且最多两位小数。全角数字和明确数字末尾点号按原文给出候选，`l`、缺失、冲突仍留空。鉴权拒绝后立即报告并结束本次识别，下次手动发起时刷新令牌。没有增加识别请求或改写历史候选。
+- 将用户原图 SHA-256 与现有附件核对一致后，使用同图和保留的历史文字框离线回放。原结果14行、1行有单价，经新规则整理得13条明细、13个单价，页脚“拾”不再进入报价。旧响应只有1个明确数量，12个仍空；真实百度返回的新字符坐标和可恢复的数量尚未实测。字符拆分用合成响应验证，未发起真实百度请求。离线回放的临时坐标及脚本已移除。
+- 后端 Java 21 通过 `./mvnw.cmd -o -B -ntp -Dvalidation.build.directory=../tmp/ocr-grid-20261117/build -Dtest=BaiduOcrProviderTest,ShopQuoteCandidatesTest,ShopQuoteGridTest -Dit.test=ShopQuoteOcrPostgresIT verify -Ppostgres-it`。24项单元、14项 PostgreSQL/MinIO 集成通过，覆盖真实行列形变、金额表头缺失、合并数字、无位置不猜数、失败不自动重试、跨店权限、原件和报价版本、Flyway。测试使用 `ev_insurance_test` 隔离 schema、`ocr-grid-tests-20261117` 独立桶和模拟供应商。日志位于 `tmp/ocr-grid-20261117/verify.log`。
+- H5 `npm run typecheck`、`npm run lint`、`npm test`（65项）、`npm run build` 通过。`docker compose --env-file .env -f infra/docker-compose.yml config --quiet` 和 `git diff --check` 通过。
+- 新包与旧包的应用类和资源摘要差异仅涉及本次 OCR 类。首次换包时文件仍被占用，确认登记进程并等待 Java 退出后备份旧包并安装已验证 JAR，通过原守护启动。运行包与通过验证的包摘要一致，本机8080和两端代理均HTTP 200，历史 OCR 任务状态和尝试数摘要一致。无新增迁移，未提交或推送 Git。本阶段停止。
+
+## 2026-11-17：取消 OCR 两次限制与失败反馈（本阶段完成）
+
+- 按用户确认创建 `codex/shop-quote-ocr-stability` 分支，保留既有管理员助手及文档未提交工作。先更新本阶段需求，再修改配置/反馈；本轮未提交或推送Git。原讨论中的明细定位、倾斜矫正、数字候选和页脚“拾”过滤未在此阶段实现，仍待后续识别质量阶段。
+- 本机忽略配置 `.env` 仅将 `BAIDU_OCR_MAX_CALLS_PER_PROCESS=2` 改为0，保持 `BAIDU_OCR_TOKEN_RETRY_ENABLED=false`、`OCR_MAX_ATTEMPTS=1`。示例配置同步不重发Token失败请求，说明正数进程上限仅用于临时测试。供应商额度/计费保持，无付费开通、购买或真实百度识别调用。
+- 网点识别失败在任务卡片中持续显示来源、可读原因与错误码，本次新失败弹出一次Vant提示；同版本不反复弹出，刷新恢复历史失败只显示卡片。上传/任务创建、查询及重新识别请求失败显示对应操作提示；查询失败停止轮询，识别失败不再轮询该任务，手填内容保留。每张原件最多3次明确重新识别、同图去重、幂等与服务端权限继续沿用。未知/组合处理异常如实提示待排查，不编造更细原因。
+- H5验证：`npm run typecheck`、`npm run lint`、`npm test`（65/65）及 `npm run build` 通过。弹层样式最后调整后再次通过typecheck/lint/build，并运行 `node --test tests/quote-ocr.test.mjs tests/quote-ocr-panel.test.mjs`（15/15）；覆盖失败只弹一次、停止轮询和自动调用、保留手填、手动再次识别、历史恢复仅GET、上传/查询错误来源。全套测试的既有离线Vue渲染警告保留，未屏蔽。
+- 后端验证（Java21、合成图片/本机HTTP服务）：`./mvnw.cmd -o -B -ntp -Dvalidation.build.directory=../tmp/ocr-limit-20261117/backend-build -Dtest=BaiduOcrProviderTest,ShopQuoteCandidatesTest '-Dit.test=ShopQuoteOcrPostgresIT#failedTaskWaitsForExplicitRerunAcrossWorkerTicksReadsAndDuplicateUploads+workerRechecksSourceDuringCallAndLeaseExpiryNeverCallsAgain+fullShopFlowHumanConfirmationOriginalSubmissionAndImmutableVersionLineage' verify -Ppostgres-it` 通过，22单元+3集成，0失败/错误/跳过，Maven构建及Flyway验证通过。关闭上限后4次请求均可执行；鉴权失效/额度/服务错误/空结果每次只发1次HTTP；连续Worker轮询、读取和重复上传不会再次消费失败任务，明确重识别才增加1次调用。集成使用独立ev_insurance_test随机schema和ocr-limit-tests-20261117桶，供应商为Mockito替身，日志在tmp/ocr-limit-20261117/backend-verify.log。
+- 首次后端测试的旧150ms超时夹具因鉴权冷启动先超时而失败；修正夹具为先成功获取缓存Token，再以慢识别响应验证超时，仍严格检查识别超时错误码和只多1次OCR、鉴权仍1次，未放宽生产超时或跳过断言。修正后上述验证通过。
+- 浏览器在既有5174使用实际QuoteOcrPanel和独立合成接口夹具验证：识别失败显示来源并弹出提示，历史恢复仅2次读取/0识别请求，明确重新识别后仅增加1次模拟请求，失败后不继续调用，人工2×10.00保留。已清理本轮临时HTML/TS；合成截图tmp/ocr-limit-20261117/failure-feedback.jpg为弹层加宽前版本。最终加宽样式后的截图工具超时，最终样式视觉复核未验证，代码检查/构建通过；未将合成界面验收写为真实百度质量验收。
+- 运行配置已生效：先核对无QUEUED/RUNNING任务、登记PID/启动时间/JAR；最初时间校验因PowerShell日期对象转换差异中止，未停止任何进程，改为保持时区的核验后只重启本项目后端。原守护加载新的.env，运行JAR不替换，数据库/MinIO和前端保持；启动约48秒，超过首次45秒窗口后只读复核成功，未反复重启。后端8080、管理端5173和H5 5174健康代理均200；运行库仍V40，无新增迁移。重启前后OCR状态/错误/任务数/累计尝试摘要一致，见tmp/ocr-limit-20261117/jobs-before.txt与jobs-after.txt。
+- `docker compose --env-file .env -f infra/docker-compose.yml config --quiet` 和 `git diff --check` 通过。管理端代码、服务端业务规则/API/数据库结构未修改，对应额外管理端门禁不适用；真实百度识别效果未验证。本阶段结束，后续质量改进按阶段门禁另行推进。
+
+## 2026-11-17：网点报价 OCR 稳定性讨论与只读排查（未进入实现）
+
+- 用户要求先讨论原因和完善方案，再新建分支修改；本轮确认网点基本使用所附固定格式表格，只需提取维修明细区域。当前仍在 main，尚未创建实现分支；既有管理员助手及需求文档未提交工作保持，仅追加本次排查记录。
+- 源码核查：现用 BAIDU_HANDWRITING_V1 返回文字框，再由 HandwritingCandidates / CoordinateRepairTable / ShopQuoteCandidates 整理。原图直接传入，没有区域选择或透视矫正；列边界以表头中心划分且不随表格倾斜变化，行匹配要求文字框纵向重叠。表头要求唯一的“数量/单价/金额”，名称表头不接受图片中的字面“配件/维修项目”；空格/缺失/截断表头可能导致明细为空。数字正则不接受 140. 等末尾点号，l 保持空值符合既有不猜数规则。
+- 只读 SQL：对本机 public 作用域网点 OCR 最近30条任务（实际12条）按 provider/state/error_code 汇总，9条成功、3条 BAIDU_LOCAL_BUDGET 失败；失败记录最后更新于2026-10-29，不能推断本次所有失败均由限次导致。当前忽略配置只核对非敏感开关，BAIDU_OCR_MAX_CALLS_PER_PROCESS=2；未调整额度或重启服务。
+- 最新成功任务更新于2026-11-17 09:00（北京时间），其最新程序快照有63个文字框、14条候选，其中13条数量空、13条单价空。白名单数字/表头坐标查询证实原文已含800、500、208、191、172等价格，亦有140.、263.和l；单价/金额表头推导边界约x=799，而下部200文字框中心约x=840，会落入当前算法的金额列。此为已有返回和解析规则的核查，本轮没有重新调用供应商，未输出客户姓名/联系方式或复制完整原文。
+- 待确认方案：在网点报价范围保留原件、另存可追溯的识别区域与处理参数；固定表格先定位明细区（保留完整表头、全部明细行，允许手动调整），透视矫正后按格线/单元格归属匹配文字。兼容表头别名和空金额列，对末尾点号仅给出有原文对照的待确认候选；模糊数量不默认1、不直接把l替换为1。区分调用失败、已识别文字但无法成表、部分字段待核对；本机限次另按明确预算调整。此处为讨论提案，不作为已确认业务规则或自动切换识别接口的授权。
+- 供应商官方文档核查：手写接口支持单字符位置/候选/置信度；detect_direction仅检测0/90/180/270度朝向，不等于透视矫正。表格V2可返回单元格行列与四角坐标，作为后续对比选项，尚未实测其手写质量、调用权限或费用。来源：https://ai.baidu.com/ai-doc/OCR/hk3h7y2qq 、https://cloud.baidu.com/doc/OCR/s/Al1zvpylt 。
+- 验证：在backend执行 `./mvnw.cmd -o -B -ntp -Dvalidation.build.directory=../tmp/ocr-discussion-20261117/backend-build -Dtest=BaiduOcrProviderTest,ShopQuoteCandidatesTest test`；初次缺JAVA_HOME，随后JDK24在沙箱内因回环连接受限导致16项环境错误、5项通过；切至本机Corretto21.0.11并获准本机回环访问后重跑，21/21通过、0失败/错误/跳过。测试仅合成图和本机HTTP模拟，未加载百度凭据。报告在忽略目录tmp/ocr-discussion-20261117/backend-build/surefire-reports。
+- 验收建议：以完整原图人工核对的13行作为基准，分别验证区域完整性、倾斜/透视、末尾点号、数量l、空金额列与缺表头；统计漏行、错行/错列、数量/单价正确率与待人工核对数量；服务限次/超时不得覆盖已手填内容。真实改进效果未验证，需在实现后按确认样本和调用预算验收。本轮未修改业务代码/数据库/配置、未上传两张样本到供应商、未提交或推送Git；实现阶段建议分支codex/shop-quote-ocr-stability，讨论确认后再开始。
+
 ## 2026-10-28：完工照表单文案
 
 - 按两条页面批注，网点展开完工照表单后标题改为“上传完工照”，隐藏下方重复的维修状态文字。未展开时保留原维修任务标题，上传及完工提交逻辑保持。

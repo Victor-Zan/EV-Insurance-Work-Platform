@@ -19,6 +19,7 @@ class BaiduOcrProviderTest {
     private final ObjectMapper json=new ObjectMapper();
     private HttpServer server;private ExecutorService executor;
     private final AtomicInteger auth=new AtomicInteger(),calls=new AtomicInteger();
+    private final AtomicReference<String> lastOcrForm=new AtomicReference<>();
     private final AtomicReference<String> response=new AtomicReference<>("{\"log_id\":18446744073709551615,\"words_result\":[{\"words\":\"客户姓名：合成客户甲\",\"location\":{\"left\":10,\"top\":20,\"width\":100,\"height\":15},\"probability\":{\"average\":0.72}}]}");
     private volatile boolean rejectToken,slow;
     private final AtomicReference<Instant> now=new AtomicReference<>(Instant.parse("2026-10-13T00:00:00Z"));
@@ -26,7 +27,7 @@ class BaiduOcrProviderTest {
     @BeforeEach void start() throws Exception {
         server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);executor=Executors.newCachedThreadPool();server.setExecutor(executor);
         server.createContext("/token",e->{auth.incrementAndGet();e.getRequestBody().readAllBytes();byte[] bytes=("{\"access_token\":\""+UUID.randomUUID()+"\",\"expires_in\":120}").getBytes(StandardCharsets.UTF_8);e.sendResponseHeaders(200,bytes.length);e.getResponseBody().write(bytes);e.close();});
-        server.createContext("/ocr",e->{int n=calls.incrementAndGet();e.getRequestBody().readAllBytes();if(slow)try{Thread.sleep(300);}catch(InterruptedException interrupted){Thread.currentThread().interrupt();}String body=rejectToken?(n==1?"{\"error_code\":111}":"{\"error_code\":110}"):response.get();byte[] bytes=body.getBytes(StandardCharsets.UTF_8);try{e.sendResponseHeaders(200,bytes.length);e.getResponseBody().write(bytes);}catch(IOException ignored){}finally{e.close();}});server.start();
+        server.createContext("/ocr",e->{int n=calls.incrementAndGet();lastOcrForm.set(new String(e.getRequestBody().readAllBytes(),StandardCharsets.UTF_8));if(slow)try{Thread.sleep(3000);}catch(InterruptedException interrupted){Thread.currentThread().interrupt();}String body=rejectToken?(n==1?"{\"error_code\":111}":"{\"error_code\":110}"):response.get();byte[] bytes=body.getBytes(StandardCharsets.UTF_8);try{e.sendResponseHeaders(200,bytes.length);e.getResponseBody().write(bytes);}catch(IOException ignored){}finally{e.close();}});server.start();
     }
     @AfterEach void stop(){server.stop(0);executor.shutdownNow();}
     private BaiduOcrProvider provider(long timeout){String base="http://127.0.0.1:"+server.getAddress().getPort();return new BaiduOcrProvider(UUID.randomUUID().toString(),UUID.randomUUID().toString(),json,base+"/token",base+"/ocr",clock,new OkHttpClient.Builder().callTimeout(timeout,TimeUnit.MILLISECONDS).retryOnConnectionFailure(false).build());}
@@ -35,6 +36,16 @@ class BaiduOcrProviderTest {
         var result=provider(2000).recognize("SHOP_QUOTE",image(30,30,false),false);
         assertThat(result.logId()).isEqualTo("18446744073709551615");assertThat(new String(result.raw(),StandardCharsets.UTF_8)).isEqualTo(response.get());
         var candidate=json.valueToTree(result.candidate());assertThat(candidate.path("mock").asBoolean()).isFalse();assertThat(candidate.path("fields").path("ownerName").asString()).isEqualTo("合成客户甲");assertThat(candidate.path("lines").get(0).path("probability").path("average").asDouble()).isEqualTo(0.72);assertThat(candidate.has("confidence")).isFalse();assertThat(candidate.path("items").isEmpty()).isTrue();
+    }
+    @Test void shopRequestsCharacterLocationsOnceAndRefreshesRejectedTokenOnlyOnNextExplicitRequest() throws Exception {
+        var p=provider(4000);byte[] image=image(30,30,false);rejectToken=true;
+        assertThatThrownBy(()->p.recognizeShopQuote("ASSESSMENT",image,false)).hasMessage("BAIDU_AUTH");
+        assertThat(lastOcrForm.get()).contains("recognize_granularity=small");
+        assertThat(calls.get()).isEqualTo(1);assertThat(auth.get()).isEqualTo(1);
+        rejectToken=false;p.recognizeShopQuote("ASSESSMENT",image,false);
+        assertThat(calls.get()).isEqualTo(2);assertThat(auth.get()).isEqualTo(2);
+        p.recognize("ASSESSMENT",image,false);
+        assertThat(lastOcrForm.get()).doesNotContain("recognize_granularity");
     }
     @Test void concurrentRequestsShareTokenAndExpiryRefreshesEarly() throws Exception {
         var p=provider(4000);byte[] image=image(30,30,false);
@@ -47,13 +58,26 @@ class BaiduOcrProviderTest {
         rejectToken=true;assertThatThrownBy(()->p.extract("NOTICE",image(30,30,false),false)).hasMessage("BAIDU_AUTH");assertThat(calls.get()).isEqualTo(1);assertThat(auth.get()).isEqualTo(1);
         rejectToken=false;p.extract("NOTICE",image(30,30,false),false);assertThatThrownBy(()->p.extract("NOTICE",image(30,30,false),false)).hasMessage("BAIDU_LOCAL_BUDGET");assertThat(calls.get()).isEqualTo(2);assertThat(p.requestCounts()).containsEntry("authentication",1L).containsEntry("ocr",2L);
     }
+    @Test void uncappedNoRetryModeAllowsMoreThanTwoCallsAndReportsEachFailureOnce() throws Exception {
+        String base="http://127.0.0.1:"+server.getAddress().getPort();var p=new BaiduOcrProvider(UUID.randomUUID().toString(),UUID.randomUUID().toString(),json,base+"/token",base+"/ocr",clock,new OkHttpClient.Builder().retryOnConnectionFailure(false).build(),false,0);
+        byte[] image=image(30,30,false);for(int n=0;n<4;n++)p.extract("SHOP_QUOTE",image,false);
+        assertThat(calls.get()).isEqualTo(4);assertThat(auth.get()).isEqualTo(1);
+        for(var scenario:Map.of("{\"error_code\":111}","BAIDU_AUTH","{\"error_code\":17}","BAIDU_QUOTA","{\"error_code\":282000}","BAIDU_SYSTEM","{\"words_result\":[]}","BAIDU_EMPTY_RESULT").entrySet()){
+            response.set(scenario.getKey());int before=calls.get();assertThatThrownBy(()->p.extract("SHOP_QUOTE",image,false)).hasMessage(scenario.getValue());assertThat(calls.get()).isEqualTo(before+1);
+        }
+        assertThat(auth.get()).isEqualTo(1);assertThat(p.requestCounts().get("ocr")).isEqualTo(8L);
+    }
     @Test void quotaRateLimitMalformedAndEmptyHaveSafeDistinctFailures() throws Exception {
         var p=provider(2000);byte[] image=image(30,30,false);
         for(var scenario:Map.of("{\"error_code\":17}","BAIDU_QUOTA","{\"error_code\":18}","BAIDU_RATE_LIMIT","{\"error_code\":216201}","BAIDU_FORMAT","{}","BAIDU_EMPTY_RESULT","not-json","BAIDU_BAD_RESPONSE").entrySet()){
             response.set(scenario.getKey());assertThatThrownBy(()->p.extract("NOTICE",image,false)).hasMessage(scenario.getValue()).hasCause(null);
         }assertThat(calls.get()).isEqualTo(5);assertThat(auth.get()).isEqualTo(1);
     }
-    @Test void timeoutDoesNotAutomaticallyRepeatPotentiallyChargedRequest() throws Exception {slow=true;assertThatThrownBy(()->provider(150).extract("NOTICE",image(30,30,false),false)).hasMessage("BAIDU_TIMEOUT_POSSIBLY_CHARGED").hasCause(null);assertThat(calls.get()).isEqualTo(1);}
+    @Test void timeoutDoesNotAutomaticallyRepeatPotentiallyChargedRequest() throws Exception {
+        var p=provider(2000);byte[] image=image(30,30,false);p.extract("NOTICE",image,false);
+        // Cache the token first so this tests an OCR timeout, not cold-start authentication latency.
+        slow=true;int before=calls.get();assertThatThrownBy(()->p.extract("NOTICE",image,false)).hasMessage("BAIDU_TIMEOUT_POSSIBLY_CHARGED").hasCause(null);assertThat(calls.get()).isEqualTo(before+1);assertThat(auth.get()).isEqualTo(1);
+    }
     @Test void rejectsBlankDamagedUnsupportedAndSmallBeforeCallingVendor() throws Exception {
         var p=provider(2000);
         assertThatThrownBy(()->p.extract("NOTICE",image(30,30,true),false)).hasMessage("BAIDU_IMAGE_BLANK");

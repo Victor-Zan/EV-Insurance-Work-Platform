@@ -67,6 +67,10 @@ public class ShopQuoteOcrService {
     public OcrSources.Raw raw(UUID c,UUID j){check(c,j,false);return ocr.raw(j);}
     public PageResponse<Map<String,Object>> history(UUID c,UUID j,int page,int size){check(c,j,false);return ocr.history(j,page,size);}
     @Transactional public OcrService.View retry(UUID c,UUID j,int expected,String key){check(c,j,true);return ocr.recognizeAgain(j,expected,key);}
+    @Transactional public OcrService.View reextract(UUID c, UUID j, int expected, String key) {
+        check(c, j, true);
+        return ocr.reextractShopQuote(j, expected, key);
+    }
     @Transactional public OcrService.View apply(UUID c,UUID j,int expected,List<Item> items,String key){
         check(c,j,true);if(items==null||items.isEmpty()||items.size()>200)throw ApiException.invalid("人工候选须为1至200行");
         var prior=jobs.reviewCommand(j,key);if(prior!=null&&((Number)prior.get("revision")).intValue()!=jobs.find(j).reviewVersion())throw ApiException.conflict("OCR_VERSION_CONFLICT","原确认后已发生其他修订，请重新核对最新结果");
