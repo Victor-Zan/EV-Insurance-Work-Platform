@@ -1,7 +1,11 @@
 package com.evinsurance.platform.workorder;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -224,9 +228,9 @@ class WorkOrderPostgresIT {
 
     @Test void assistantUsesOnlyAllowedFactsAndRetainsResultsWhenProviderIsUnavailable() throws Exception {
         String path = "/api/v1/admin/assistant";
-        when(assistantModel.available()).thenReturn(true);
-        when(assistantModel.answer(anyMap())).thenAnswer(call -> {
-            String payload = json.writeValueAsString(call.getArgument(0));
+        simulatePlatformLookup();
+        when(assistantModel.finish(anyString(), anyList(), any(), anyMap())).thenAnswer(call -> {
+            String payload = json.writeValueAsString(call.getArgument(3));
             assertThat(payload).doesNotContain("assistant-no-export", OWNER_PHONE, "王小明", "低速碰撞测试",
                 "synthetic-scene.png", "SELECT", "created_by", "work_order_id", "file_snapshot");
             return "合成供应商回答";
@@ -251,7 +255,7 @@ class WorkOrderPostgresIT {
         assertThat(detail.path("ai").asBoolean()).isTrue();
         assertThat(detail.path("facts").path("orders").path(0).path("businessNo").asText()).isEqualTo(number);
         assertThat(detail.path("facts").path("orders").path(0).path("status").asText()).isEqualTo("PENDING_DISPATCH");
-        verify(assistantModel).answer(anyMap());
+        verify(assistantModel).finish(anyString(), anyList(), any(), anyMap());
         long total = db.queryForObject("SELECT count(*) FROM work_order", Long.class);
         assertThat(api(admin, "POST", path + "/chat", Map.of("message", "有多少工单"), null, 200)
             .path("facts").path("total").asLong()).isEqualTo(total);
@@ -281,10 +285,10 @@ class WorkOrderPostgresIT {
         assertThat(denied.hasNonNull("facts")).isFalse();
         var missing = api(admin, "POST", path + "/chat", Map.of("message", "查 EVR-20000101-999999 的状态"), null, 200);
         assertThat(missing.path("facts").path("total").asLong()).isZero();
-        org.mockito.Mockito.verify(assistantModel, org.mockito.Mockito.never()).answer(anyMap());
+        org.mockito.Mockito.verify(assistantModel, org.mockito.Mockito.never()).finish(anyString(), anyList(), any(), anyMap());
         assertThat(db.queryForObject("SELECT version FROM work_order WHERE id=?", Long.class, id)).isEqualTo(version);
 
-        when(assistantModel.answer(anyMap())).thenThrow(new ApiException(
+        when(assistantModel.finish(anyString(), anyList(), any(), anyMap())).thenThrow(new ApiException(
             HttpStatus.SERVICE_UNAVAILABLE, "ASSISTANT_PROVIDER_LIMIT", "智谱暂时限流"));
         var limited = api(admin, "POST", path + "/chat", question, null, 200);
         assertThat(limited.path("ai").asBoolean()).isFalse();
@@ -345,9 +349,9 @@ class WorkOrderPostgresIT {
             + "recognition_state,program_json) SELECT ?,id,'ASSESSMENT',?,1,?,created_by,'MOCK_V1','SUCCEEDED','ocr-assistant-private-program' "
             + "FROM work_order WHERE id=?", assessment, lossJob, lossFile, id);
 
-        when(assistantModel.available()).thenReturn(true);
-        when(assistantModel.answer(anyMap())).thenAnswer(call -> {
-            String payload = json.writeValueAsString(call.getArgument(0));
+        simulatePlatformLookup();
+        when(assistantModel.finish(anyString(), anyList(), any(), anyMap())).thenAnswer(call -> {
+            String payload = json.writeValueAsString(call.getArgument(3));
             assertThat(payload).contains("\"RECOGNITION\"", number).doesNotContain(
                 "ocr-assistant-private", OWNER_PHONE, "UNLINKED", "69.50", quoteFile.toString(), lossFile.toString());
             return "合成识别回答";
@@ -364,15 +368,15 @@ class WorkOrderPostgresIT {
         db.update("UPDATE case_file SET state='VOID' WHERE id=?", lossFile);
         var oldLoss = api(admin, "POST", path, Map.of("message", "查 " + number + " 的核损识别结果"), null, 200);
         assertThat(oldLoss.hasNonNull("reference")).isFalse();
-        org.mockito.Mockito.verify(assistantModel, org.mockito.Mockito.never()).answer(anyMap());
+        org.mockito.Mockito.verify(assistantModel, org.mockito.Mockito.never()).finish(anyString(), anyList(), any(), anyMap());
     }
 
     @Test void assistantStreamReportsModelOnlyWhenItIsCalled() throws Exception {
         String path = "/api/v1/admin/assistant/chat/stream";
         String modelName = "glm-4-flash-250414";
-        when(assistantModel.available()).thenReturn(true);
+        simulatePlatformLookup();
         when(assistantModel.modelName()).thenReturn(modelName);
-        when(assistantModel.answer(anyMap())).thenReturn("合成供应商回答");
+        when(assistantModel.finish(anyString(), anyList(), any(), anyMap())).thenReturn("合成供应商回答");
         var question = Map.of("message", "怎么提交网点报价");
         for (String token : List.of(customerService, shop, owner)) {
             api(token, "POST", path, question, null, 403);
@@ -392,23 +396,26 @@ class WorkOrderPostgresIT {
             .contentType(MediaType.APPLICATION_JSON).accept("application/x-ndjson")
             .content(json.writeValueAsString(Map.of("message", "打开工单的照片原件"))))
             .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
-        assertThat(local.lines().toList()).hasSize(1);
-        assertThat(json.readTree(local).path("type").asText()).isEqualTo("reply");
-        org.mockito.Mockito.verify(assistantModel, org.mockito.Mockito.never()).answer(anyMap());
+        assertThat(local.lines().map(json::readTree).map(event -> event.path("type").asText()).toList())
+            .containsExactly("model", "reply");
+        org.mockito.Mockito.verify(assistantModel, org.mockito.Mockito.never()).finish(anyString(), anyList(), any(), anyMap());
     }
 
     @Test void assistantAnswersModelIdentityAndUsesOnlyTheRequestedRecentOrders() throws Exception {
         String path = "/api/v1/admin/assistant/chat";
-        when(assistantModel.available()).thenReturn(true);
+        simulatePlatformLookup();
         when(assistantModel.modelName()).thenReturn("glm-4-flash-250414");
+        when(assistantModel.start(eq("你是什么模型？"), anyList())).thenReturn(new BigModelClient.Completion("当前模型 glm-4-flash-250414", null));
+        when(assistantModel.start(eq("你能做什么？"), anyList())).thenReturn(new BigModelClient.Completion("可以自由对话、分析经营、查询脱敏数据。", null));
         var identity = api(admin, "POST", path, Map.of("message", "你是什么模型？"), null, 200);
         assertThat(identity.path("answer").asText()).contains("glm-4-flash-250414");
-        assertThat(identity.path("ai").asBoolean()).isFalse();
+        assertThat(identity.path("ai").asBoolean()).isTrue();
+        verify(assistantModel).start("你是什么模型？", List.of());
         assertThat(api(admin, "POST", path, Map.of("message", "你能做什么？"), null, 200)
             .path("answer").asText()).contains("经营", "脱敏");
         var unclear = api(admin, "POST", path, Map.of("message", "帮我分析五单的经营情况"), null, 200);
         assertThat(unclear.path("answer").asText()).contains("请说明要查最近几张");
-        org.mockito.Mockito.verify(assistantModel, org.mockito.Mockito.never()).answer(anyMap());
+        org.mockito.Mockito.verify(assistantModel, org.mockito.Mockito.never()).finish(anyString(), anyList(), any(), anyMap());
 
         var numbers = new ArrayList<String>();
         var ids = new ArrayList<UUID>();
@@ -433,11 +440,11 @@ class WorkOrderPostgresIT {
             + "FROM work_order WHERE id=?", UUID.randomUUID(), ids.getLast());
         var multiple = api(admin, "POST", path, Map.of("message", "分析最近五单和 " + numbers.getFirst() + " 的利润"), null, 200);
         assertThat(multiple.path("answer").asText()).contains("多个工单范围");
-        org.mockito.Mockito.verify(assistantModel, org.mockito.Mockito.never()).answer(anyMap());
+        org.mockito.Mockito.verify(assistantModel, org.mockito.Mockito.never()).finish(anyString(), anyList(), any(), anyMap());
 
         var sent = new ArrayList<JsonNode>();
-        when(assistantModel.answer(anyMap())).thenAnswer(call -> {
-            String body = json.writeValueAsString(call.getArgument(0));
+        when(assistantModel.finish(anyString(), anyList(), any(), anyMap())).thenAnswer(call -> {
+            String body = json.writeValueAsString(call.getArgument(3));
             assertThat(body).doesNotContain("recent-private", "current\":", "comparison\":", "帮我分析一下");
             sent.add(json.readTree(body));
             return "合成样本解读";
@@ -455,6 +462,78 @@ class WorkOrderPostgresIT {
         assertThat(completed.path("answer").asText()).contains("按有效完工时间倒序", "实际取到 1 单");
         assertThat(completed.path("reference").asText()).contains(numbers.getFirst(), "平台盈利 30.00 元")
             .doesNotContain(numbers.getLast());
+
+        String question = "近五张工单的营收";
+        var request = Map.of("message", question, "history", List.of(Map.of("message", "上月业绩如何", "answer", "已查看上月。")));
+        when(assistantModel.start(eq(question), anyList())).thenReturn(
+            new BigModelClient.Completion(null, new BigModelClient.Lookup("revenue", "本月经营指标")));
+        var revenue = api(admin, "POST", path, request, null, 200);
+        assertThat(revenue.path("answer").asText()).contains("实际取到 5 单", "尚无已完工核算的保险应收金额", "实际净到账合计 12.34 元");
+        assertThat(revenue.path("reference").asText()).contains(numbers.getLast()).doesNotContain(numbers.getFirst());
+        assertThat(sent.getLast().path("query").asText()).isEqualTo("RECENT_BUSINESS");
+
+        String alias = "最新5张已完工的工单的营业收入";
+        when(assistantModel.start(eq(alias), anyList())).thenReturn(new BigModelClient.Completion("模型猜测的金额", null));
+        var accounted = api(admin, "POST", path, Map.of("message", alias), null, 200);
+        assertThat(accounted.path("answer").asText()).contains("实际取到 1 单", "保险应收合计 100.00 元", "实际净到账合计 0.00 元")
+            .doesNotContain("模型猜测");
+        assertThat(accounted.path("reference").asText()).contains(numbers.getFirst(), "已核算保险应收 100.00 元");
+
+        when(assistantModel.start(eq(question), anyList())).thenThrow(
+            new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "ASSISTANT_PROVIDER_BUSY", "模型繁忙"));
+        var fallback = api(admin, "POST", path, request, null, 200);
+        assertThat(fallback.path("answer").asText()).contains("模型繁忙", "实际取到 5 单", "实际净到账合计 12.34 元");
+        assertThat(fallback.path("ai").asBoolean()).isFalse();
+    }
+
+    private void simulatePlatformLookup() {
+        when(assistantModel.available()).thenReturn(true);
+        when(assistantModel.start(anyString(), anyList())).thenAnswer(call ->
+            new BigModelClient.Completion(null, new BigModelClient.Lookup("test_lookup", call.getArgument(0))));
+    }
+
+    @Test void assistantGroundsPlatformInstructionsEvenWhenGlmInitiallyGuessesAnAnswer() throws Exception {
+        String question = "怎么提交网点报价";
+        when(assistantModel.available()).thenReturn(true);
+        when(assistantModel.start(question, List.of())).thenReturn(new BigModelClient.Completion("猜测的菜单", null));
+        when(assistantModel.finish(eq(question), anyList(), org.mockito.ArgumentMatchers.isNull(), anyMap())).thenReturn("请先上传到店照。");
+        var reply = api(admin, "POST", "/api/v1/admin/assistant/chat", Map.of("message", question), null, 200);
+        assertThat(reply.path("source").asText()).isEqualTo("平台功能手册");
+        assertThat(reply.path("reference").asText()).contains("到店照");
+        assertThat(reply.path("answer").asText()).isEqualTo("请先上传到店照。");
+
+        for (var entry : Map.of("在哪里看审计日志", "追踪标识", "从哪里下载核损单原件", "下载核损单",
+                "识别结果在哪里看", "查看与识别").entrySet()) {
+            String operation = entry.getKey();
+            when(assistantModel.start(operation, List.of())).thenReturn(new BigModelClient.Completion("猜测的菜单", null));
+            when(assistantModel.finish(eq(operation), anyList(), org.mockito.ArgumentMatchers.isNull(), anyMap()))
+                .thenReturn("合成操作指引");
+            var grounded = api(admin, "POST", "/api/v1/admin/assistant/chat", Map.of("message", operation), null, 200);
+            assertThat(grounded.path("source").asText()).isEqualTo("平台功能手册");
+            assertThat(grounded.path("reference").asText()).contains(entry.getValue());
+            assertThat(grounded.hasNonNull("facts")).isFalse();
+        }
+    }
+
+    @Test void assistantBlocksKnownOwnerAndTransactionValuesBeforeEitherEndpointCallsTheProvider() throws Exception {
+        var row = formal(customerService, "private-claim", OWNER_PHONE, "PRIVATE-TEST-VIN", Instant.now());
+        db.update("INSERT INTO funds_entry(id,work_order_id,direction,transaction_no,amount,occurred_at,content_hash,actor_id) "
+            + "SELECT ?,id,'RECEIVE',?,3.14,now()-interval '2 years',repeat('0',64),created_by FROM work_order WHERE id=?",
+            UUID.randomUUID(), "Xy-local-only", UUID.fromString(row.path("id").asText()));
+        for (String value : List.of("王小明", "ｘＹ local-ONLY", OWNER_PHONE, "PRIVATE-TEST-VIN")) {
+            var denied = api(admin, "POST", "/api/v1/admin/assistant/chat", Map.of("message", "帮我看看" + value), null, 200);
+            assertThat(denied.path("blocked").asBoolean()).isTrue();
+            assertThat(denied.path("answer").asText()).contains("无法发送").doesNotContain(value);
+        }
+        String stream = mvc.perform(post("/api/v1/admin/assistant/chat/stream").header("Authorization", "Bearer " + admin)
+            .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("message", "继续",
+                "history", List.of(Map.of("message", "记一下", "answer", "Xy-local-only"))))))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        assertThat(stream.lines().toList()).hasSize(1);
+        assertThat(json.readTree(stream).path("response").path("data").path("blocked").asBoolean()).isTrue();
+        api(admin, "POST", "/api/v1/admin/assistant/chat", Map.of("message", "继续",
+            "history", java.util.Collections.nCopies(5, Map.of("message", "问题", "answer", "回答"))), null, 400);
+        verifyNoInteractions(assistantModel);
     }
 
     private UUID assistantDocument(UUID id, String category, boolean shop) {

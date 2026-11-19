@@ -198,13 +198,39 @@ test('Enter sends once, preserves IME and Shift+Enter, and shows the actual mode
   assert.equal(press(), true)
   assert.equal(press({ repeat: true }), true)
   assert.deepEqual(calls, ['怎么提交网点报价'])
-  assert.equal(nodes().find(node => node.props?.role === 'status').children[1].children, '正在查询平台资料…')
+  assert.equal(nodes().find(node => node.props?.role === 'status').children[1].children, '正在检查敏感信息…')
   reportModel('glm-4-flash-250414')
   assert.equal(nodes().find(node => node.props?.role === 'status').children[1].children, '正在调用 glm-4-flash-250414 生成回答…')
   finish({ answer: '先上传到店照。', ai: true, model: 'glm-4-flash-250414' })
   await Vue.nextTick()
   assert.equal(f.context.busy.value, false)
   assert.equal(f.context.turns.value[0].reply.model, 'glm-4-flash-250414')
+  f.unmount()
+})
+
+test('only recent accepted turns in this chat are sent and a blocked draft can be corrected', async () => {
+  const contexts = []
+  const f = fixture(storage(), 1, false, { status: async () => ({ enabled: true }),
+    chat: async (message, _signal, _model, history) => {
+      contexts.push(history)
+      return message === '敏感草稿' ? { blocked: true, ai: false, answer: '含敏感信息，无法发送' }
+        : { blocked: false, ai: true, answer: '回复' + message }
+    } })
+  await Vue.nextTick()
+  f.context.updateDraft('首问')
+  f.context.active.value.turns = [{ message: '旧版私密会话', reply: { ai: true, answer: '旧版答复' } }]
+  await f.context.send()
+  assert.deepEqual(contexts[0], [])
+  for (const text of ['二', '三', '四', '五', '敏感草稿']) { f.context.updateDraft(text); await f.context.send() }
+  assert.deepEqual(contexts.at(-1).map(turn => turn.message), ['二', '三', '四', '五'])
+  assert.equal(f.context.error.value, '含敏感信息，无法发送')
+  assert.equal(f.context.draftText.value, '敏感草稿')
+  assert.equal(f.context.turns.value.at(-1).message, '五')
+  f.context.updateDraft('已修改')
+  await f.context.send()
+  assert.ok(contexts.at(-1).every(turn => turn.message !== '敏感草稿'))
+  f.context.newConversation(); f.context.updateDraft('新问题'); await f.context.send()
+  assert.deepEqual(contexts.at(-1), [])
   f.unmount()
 })
 

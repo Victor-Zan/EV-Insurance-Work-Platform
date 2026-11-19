@@ -3,78 +3,116 @@ package com.evinsurance.platform.assistant.application;
 import com.evinsurance.platform.assistant.infrastructure.AssistantOrderReader;
 import com.evinsurance.platform.assistant.infrastructure.AssistantOrderReader.StatusCount;
 import com.evinsurance.platform.assistant.infrastructure.BigModelClient;
+import com.evinsurance.platform.assistant.infrastructure.BigModelClient.Turn;
 import com.evinsurance.platform.foundation.api.ApiException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
-import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 @Service
 public class AssistantService {
-    private static final Pattern IDENTITY = Pattern.compile("(?:请问|告诉我)?(?:你(?:是|用的是|用的|使用的是|使用的)(?:哪个|什么)(?:AI|大)?模型|你是谁|"
-        + "你用的模型是什么|你当前用什么模型|(?:当前|现在)(?:用的?是?|使用的?是?)(?:哪个|什么)模型)[吗呢？?。！!]*", Pattern.CASE_INSENSITIVE);
-    private static final Pattern CAPABILITIES = Pattern.compile("(?:请问)?你(?:能|可以|会)(?:帮我)?(?:做什么|干什么|查什么|做哪些事|回答哪些问题)[吗呢？?。！!]*");
     private final AssistantOrderReader orders;
     private final BigModelClient model;
     private final AssistantGuide guide;
     private final AssistantBusiness business;
+    private final AssistantPrivacy privacy;
 
-    public AssistantService(AssistantOrderReader orders, BigModelClient model, AssistantGuide guide, AssistantBusiness business) {
+    public AssistantService(AssistantOrderReader orders, BigModelClient model, AssistantGuide guide, AssistantBusiness business, AssistantPrivacy privacy) {
         this.orders = orders;
         this.model = model;
         this.guide = guide;
         this.business = business;
+        this.privacy = privacy;
     }
 
     public boolean available() { return model.available(); }
     public String modelName() { return model.modelName(); }
 
-    public Reply answer(String input) {
-        return answer(input, ignored -> {});
+    public Reply answer(String input, List<Turn> history, Consumer<String> onModelStart) {
+        if (privacy.blocks(input, history)) return new Reply(
+            "本次对话含敏感信息，无法发送。请移除相关内容；若信息在前文，请新建对话。", false, null, null, null, null, true);
+        if (!available()) throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "ASSISTANT_DISABLED", "平台助手尚未配置");
+        String name = modelName();
+        onModelStart.accept(name);
+        Material material = null;
+        try {
+            var first = model.start(input, history);
+            var tool = first.lookup();
+            boolean explicitSample = hasFinancialSample(input);
+            // GLM can answer a platform question without requesting its source. Check the first
+            // answer against available platform material before displaying guessed steps or figures.
+            if (tool == null && !explicitSample && !needsPlatformSource(input)) {
+                return new Reply(first.answer(), true, null, null, null, name, false);
+            }
+            String requested = tool == null ? input : tool.question();
+            String query = history.isEmpty() || explicitSample ? input : requested;
+            material = lookup(query);
+            if (material == null && !query.equals(requested)) material = lookup(requested);
+            if (material == null) material = Material.notice("未找到与问题对应的平台资料，请明确工单、时间范围或操作入口。");
+            if (material.payload() == null) return material.reply(material.headline(), false, name);
+            if (!requested.equals(input) && privacy.blocks(requested, List.of())) {
+                return material.reply("平台查询参数含敏感信息，无法继续发送。", false, name);
+            }
+            String answer = model.finish(input, history, tool, material.payload());
+            if (material.headline() != null) answer = material.headline() + "\n\n" + answer;
+            return material.reply(answer, true, name);
+        } catch (ApiException error) {
+            if (material == null && (history.isEmpty() || hasFinancialSample(input))) material = lookup(input);
+            if (material == null) return new Reply(error.getMessage(), false, null, null, null, name, false);
+            String hint = material.reference() != null || material.facts() != null ? "。请查看下方平台资料。" : "";
+            String summary = material.headline() == null ? "" : material.headline() + "\n\n";
+            return material.reply(summary + error.getMessage() + hint, false, name);
+        }
     }
 
-    public Reply answer(String input, Consumer<String> onModelStart) {
-        String shortQuestion = input.replaceAll("[\\s\\u3000]+", "");
-        if (IDENTITY.matcher(shortQuestion).matches()) {
-            String currentModel = modelName();
-            return new Reply("我是电动车保险平台的只读助手。"
-                + (currentModel == null ? "当前没有启用外部模型。" : "后端当前配置的智谱模型是 " + currentModel + "。"),
-                false, null);
+    private static boolean hasFinancialSample(String input) {
+        return RecentOrderScope.hasExplicitRange(input)
+            && (AssistantBusiness.performanceQuestion(input) || AssistantBusiness.cashQuestion(input));
+    }
+
+    private boolean needsPlatformSource(String input) {
+        if (AssistantQuestion.parse(input) != null || AssistantQuestion.singleOrderNumber(input) != null) return true;
+        if (input.matches("(?s).*(本月|上月|今天|今日|最近|近[一二三四五六七八九十0-9]|[0-9]{4}年).*")
+            && (AssistantBusiness.performanceQuestion(input) || AssistantBusiness.cashQuestion(input))) return true;
+        return !guide.find(input).isEmpty();
+    }
+
+    private Material lookup(String input) {
+        if (asksForOriginal(input)) {
+            if (AssistantGuide.asksForInstructions(input)) {
+                var sections = guide.find(input);
+                if (!sections.isEmpty()) return guideMaterial(sections);
+            }
+            return Material.notice("原件、聊天记录和照片不在助手读取范围内。可以输入工单号，查已核对的单据识别结果。");
         }
-        if (CAPABILITIES.matcher(shortQuestion).matches()) {
-            return new Reply("我可以分析经营和实际收付，查询工单状态与办理卡点，解释平台操作步骤，或查看已核对的脱敏单据识别结果。",
-                false, null);
-        }
-        if (!available()) throw new ApiException(
-            HttpStatus.SERVICE_UNAVAILABLE, "ASSISTANT_DISABLED", "平台助手尚未配置");
-        if (asksForOriginal(input)) return new Reply(
-            "原件、聊天记录和照片不在助手读取范围内。可以输入工单号，查已核对的单据识别结果。", false, null);
         var question = AssistantQuestion.parse(input);
         if (question == null) {
             var number = AssistantQuestion.singleOrderNumber(input);
-            if (recognitionQuestion(input)) return recognition(number, input, onModelStart);
+            if (recognitionQuestion(input)) {
+                if (number == null && AssistantGuide.asksForInstructions(input)) {
+                    var sections = guide.find(input);
+                    if (!sections.isEmpty()) return guideMaterial(sections);
+                }
+                return recognition(number, input);
+            }
             boolean businessQuestion = AssistantBusiness.cashQuestion(input) || AssistantBusiness.performanceQuestion(input);
             if (businessQuestion) {
                 var recent = RecentOrderScope.resolve(input, AssistantBusiness.today());
-                if (recent != null) return recentSummary(recent, onModelStart);
+                if (recent != null) return recentSummary(recent, AssistantBusiness.revenueQuestion(input));
             }
             var sections = guide.find(input);
             if (number != null && AssistantBusiness.caseQuestion(input)) {
                 var details = business.caseDetails(number);
-                if (details == null) return new Reply("没有查到这个工单编号，请核对后再试。", false, null);
-                return summarize(Map.of("query", "CASE", "facts", details, "guide", sections),
-                    null, "工单核对信息", details.display(), onModelStart);
+                if (details == null) return Material.notice("没有查到这个工单编号，请核对后再试。");
+                return new Material(Map.of("query", "CASE", "facts", details, "guide", sections),
+                    null, "工单核对信息", details.display(), null);
             }
-            if (sections.isEmpty() && businessQuestion) return businessSummary(input, onModelStart);
-            if (sections.isEmpty()) return new Reply(
-                "可以问「分析本月经营效益」「本月实际到账多少」「怎么提交网点报价」，或带工单号查询进度与卡点。", false, null);
-            var reference = sections.stream().map(section -> section.title() + "\n" + section.content())
-                .collect(java.util.stream.Collectors.joining("\n\n"));
-            return summarize(Map.of("query", "GUIDE", "source", "平台功能手册", "sections", sections),
-                null, "平台功能手册", reference, onModelStart);
+            if (sections.isEmpty() && businessQuestion) return businessSummary(input);
+            if (sections.isEmpty()) return null;
+            return guideMaterial(sections);
         }
         var window = question.period().window();
         var facts = switch (question.kind()) {
@@ -93,20 +131,26 @@ public class AssistantService {
                 yield new Facts(total, List.of(), entries, null);
             }
         };
-        if (facts.total() == 0) return new Reply(question.kind() == AssistantQuestion.Kind.DETAIL
-            ? "没有查到这个工单编号，请核对后再试。" : "当前条件下没有匹配的工单。", false, facts);
-        return summarize(Map.of("query", question.kind(), "period", question.period(), "facts", facts),
-            facts, null, null, onModelStart);
+        if (facts.total() == 0) return new Material(null, facts, null, null, question.kind() == AssistantQuestion.Kind.DETAIL
+            ? "没有查到这个工单编号，请核对后再试。" : "当前条件下没有匹配的工单。");
+        return new Material(Map.of("query", question.kind(), "period", question.period(), "facts", facts),
+            facts, null, null, null);
     }
 
-    private Reply recentSummary(RecentOrderScope scope, Consumer<String> onModelStart) {
-        if (scope.clarification() != null) return new Reply(scope.clarification(), false, null);
+    private static Material guideMaterial(List<AssistantGuide.Section> sections) {
+        var reference = sections.stream().map(section -> section.title() + "\n" + section.content())
+            .collect(java.util.stream.Collectors.joining("\n\n"));
+        return new Material(Map.of("query", "GUIDE", "source", "平台功能手册", "sections", sections),
+            null, "平台功能手册", reference, null);
+    }
+
+    private Material recentSummary(RecentOrderScope scope, boolean showRevenue) {
+        if (scope.clarification() != null) return Material.notice(scope.clarification());
         var report = business.recent(scope);
-        if (report.orders().isEmpty()) return new Reply(report.headline() + "当前没有符合条件的工单。", false, null);
-        var reply = summarize(Map.of("query", "RECENT_BUSINESS", "facts", report), null,
-            "本次取数与工单明细", report.display(), onModelStart);
-        return new Reply(report.headline() + "\n\n" + reply.answer(), reply.ai(), reply.facts(),
-            reply.source(), reply.reference(), reply.model());
+        if (report.orders().isEmpty()) return Material.notice(report.headline() + "当前没有符合条件的工单。");
+        String headline = showRevenue ? report.headline() + "\n" + report.revenueSummary() : report.headline();
+        return new Material(Map.of("query", "RECENT_BUSINESS", "facts", report), null,
+            "本次取数与工单明细", report.display(), headline);
     }
 
     private static boolean asksForOriginal(String input) {
@@ -118,14 +162,13 @@ public class AssistantService {
         return input.matches("(?is).*(识别结果|识别出的|识别数据|识别明细|OCR结果|脱敏单据|脱敏识别).*");
     }
 
-    private Reply recognition(String number, String input, Consumer<String> onModelStart) {
-        if (number == null) return new Reply("请提供一张工单的完整工单号，再查询已核对的单据识别结果。", false, null);
+    private Material recognition(String number, String input) {
+        if (number == null) return Material.notice("请提供一张工单的完整工单号，再查询已核对的单据识别结果。");
         boolean quote = input.contains("报价");
         boolean assessment = input.contains("核损") || input.contains("定损");
         String kind = quote == assessment ? null : quote ? "SHOP_QUOTE" : "LOSS_ASSESSMENT";
         var rows = orders.recognizedValues(number, kind);
-        if (rows.isEmpty()) return new Reply(
-            "没有查到当前有效且已人工确认并用于业务的对应识别结果。请核对工单号或该单据的采用状态。", false, null);
+        if (rows.isEmpty()) return Material.notice("没有查到当前有效且已人工确认并用于业务的对应识别结果。请核对工单号或该单据的采用状态。");
         var values = rows.stream().map(row -> new DocumentValue(row.kind(), row.lineNo(), row.quantity(),
             AssistantBusiness.money(row.unitPrice()), AssistantBusiness.money(row.amount()))).toList();
         long total = rows.getFirst().matchedCount();
@@ -133,13 +176,13 @@ public class AssistantService {
         reference.add(number + " · " + total + " 项");
         values.forEach(value -> reference.add(value.display()));
         if (total > values.size()) reference.add("仅显示前 " + values.size() + " 项");
-        return summarize(Map.of("query", "RECOGNITION", "businessNo", number, "total", total, "values", values),
-            null, "已核对的单据识别结果", String.join("\n", reference), onModelStart);
+        return new Material(Map.of("query", "RECOGNITION", "businessNo", number, "total", total, "values", values),
+            null, "已核对的单据识别结果", String.join("\n", reference), null);
     }
 
-    private Reply businessSummary(String input, Consumer<String> onModelStart) {
+    private Material businessSummary(String input) {
         var period = AssistantBusiness.period(input, AssistantBusiness.today());
-        if (period == null) return new Reply("目前经营分析支持今天、本月、上月或指定年月，请明确要查询的月份。", false, null);
+        if (period == null) return Material.notice("目前经营分析支持今天、本月、上月或指定年月，请明确要查询的月份。");
         boolean cash = AssistantBusiness.cashQuestion(input);
         boolean performance = AssistantBusiness.performanceQuestion(input);
         var facts = new java.util.LinkedHashMap<String, Object>();
@@ -154,24 +197,16 @@ public class AssistantService {
             facts.put("cash", flow);
             lines.add("实际记账 · 按资金发生日期，排除已冲销记录\n" + flow.current().display() + "\n对比期 " + flow.comparison().display());
         }
-        return summarize(Map.of("query", "BUSINESS", "facts", facts), null, "经营与资金汇总",
-            String.join("\n\n", lines), onModelStart);
+        return new Material(Map.of("query", "BUSINESS", "facts", facts), null, "经营与资金汇总",
+            String.join("\n\n", lines), null);
     }
 
-    private Reply summarize(Map<String, Object> payload, Facts facts, String source, String reference,
-                            Consumer<String> onModelStart) {
-        String modelName = modelName();
-        onModelStart.accept(modelName);
-        try {
-            return new Reply(model.answer(payload), true, facts, source, reference, modelName);
-        } catch (ApiException error) {
-            return new Reply(error.getMessage() + "。请查看下方平台资料。", false, facts, source, reference, modelName);
-        }
+    private record Material(Map<String, Object> payload, Facts facts, String source, String reference, String headline) {
+        static Material notice(String text) { return new Material(null, null, null, null, text); }
+        Reply reply(String answer, boolean ai, String model) { return new Reply(answer, ai, facts, source, reference, model, false); }
     }
 
-    public record Reply(String answer, boolean ai, Facts facts, String source, String reference, String model) {
-        Reply(String answer, boolean ai, Facts facts) { this(answer, ai, facts, null, null, null); }
-    }
+    public record Reply(String answer, boolean ai, Facts facts, String source, String reference, String model, boolean blocked) {}
     public record Facts(long total, List<StatusCount> counts, List<Entry> orders, String totalCny) {}
     public record Entry(String businessNo, String status, Instant updatedAt) {}
 

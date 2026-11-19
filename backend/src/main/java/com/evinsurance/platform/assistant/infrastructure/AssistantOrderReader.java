@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Param;
 
 @Mapper
 public interface AssistantOrderReader {
+    boolean containsPrivateValue(@Param("text") String normalizedText);
     List<StatusCount> counts(@Param("status") String status, @Param("start") Instant start, @Param("end") Instant end);
     List<OrderFact> orders(@Param("status") String status, @Param("start") Instant start, @Param("end") Instant end,
                            @Param("number") String number);

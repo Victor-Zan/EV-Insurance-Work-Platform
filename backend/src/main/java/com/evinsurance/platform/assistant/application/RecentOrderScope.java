@@ -19,8 +19,14 @@ record RecentOrderScope(int limit, boolean completedOnly, LocalDate from, LocalD
         + "(?:网点|客服|区域|保险公司|车主)(?:负责|经办|下)?的"
         + "(?:工单|案件|订单)|待派单|待结算|已取消|维修中");
 
+    static boolean hasExplicitRange(String input) {
+        return ORDER_LIMIT.matcher(compact(input)).find();
+    }
+
+    private static String compact(String input) { return input.replaceAll("[\\s\\u3000]+", ""); }
+
     static RecentOrderScope resolve(String input, LocalDate today) {
-        String text = input.replaceAll("[\\s\\u3000]+", "");
+        String text = compact(input);
         var match = ORDER_LIMIT.matcher(text);
         if (!match.find()) {
             return SOME_ORDERS.matcher(text).find()

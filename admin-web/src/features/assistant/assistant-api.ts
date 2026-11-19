@@ -3,6 +3,7 @@ import type { ApiResponse } from '@/shared/http/create-client'
 import type { WorkOrderStatus } from '@/features/workorders/work-orders'
 
 export interface AssistantReply {
+  blocked?: boolean
   answer: string
   ai: boolean
   model?: string
@@ -20,9 +21,9 @@ export const assistantApi = {
   async status() {
     return (await httpClient.get<ApiResponse<{ enabled: boolean; model?: string }>>('/admin/assistant/status')).data.data
   },
-  async chat(message: string, signal: AbortSignal, onModel: (model: string) => void) {
-    const response = await httpClient.post<ReadableStream<Uint8Array>>('/admin/assistant/chat/stream', { message }, {
-      adapter: 'fetch', responseType: 'stream', timeout: 25_000, signal,
+  async chat(message: string, signal: AbortSignal, onModel: (model: string) => void, history: { message: string; answer: string }[]) {
+    const response = await httpClient.post<ReadableStream<Uint8Array>>('/admin/assistant/chat/stream', { message, history }, {
+      adapter: 'fetch', responseType: 'stream', timeout: 50_000, signal,
       headers: { Accept: 'application/x-ndjson, application/json' },
     })
     const reader = response.data.getReader()

@@ -1,6 +1,21 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.evinsurance.platform.assistant.infrastructure.AssistantOrderReader">
+    <!-- The local privacy check returns one boolean. No protected value leaves PostgreSQL. -->
+    <select id="containsPrivateValue" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1 FROM (
+                SELECT unnest(ARRAY[owner_name,owner_phone,claim_no,policy_no,vehicle_vin,vehicle_plate,
+                    vehicle_other_identifier,accident_address,parking_address]) AS value FROM work_order
+                UNION ALL SELECT unnest(ARRAY[display_name,contact_phone]) FROM owner_profile
+                UNION ALL SELECT unnest(ARRAY[owner_name,owner_phone,claim_no,vehicle_plate,accident_address]) FROM historical_case
+                UNION ALL SELECT unnest(ARRAY[owner_name,claim_no]) FROM formal_quote_document_header
+                UNION ALL SELECT transaction_no FROM funds_entry
+                UNION ALL SELECT raw_json::jsonb -&gt;&gt; 'transactionNo' FROM funds_import_row
+            ) protected_values
+            WHERE strpos(#{text}, nullif(regexp_replace(lower(normalize(value, NFKC)), '[[:space:][:punct:]]+', '', 'g'), '')) > 0
+        )
+    </select>
     <sql id="period">
         <if test="start != null">AND w.created_at &gt;= #{start}</if>
         <if test="end != null">AND w.created_at &lt; #{end}</if>

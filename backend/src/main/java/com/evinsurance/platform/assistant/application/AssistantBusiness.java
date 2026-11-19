@@ -30,15 +30,19 @@ public class AssistantBusiness {
     }
 
     static boolean cashQuestion(String input) {
-        return input.matches("(?s).*(实际到账|实际回款|实际结算|实收|实付|现金流|回款多少|到账多少|结算多少|收了多少|付了多少).*");
+        return input.matches("(?s).*(实际到账|实际回款|实际结算|实收|实付|进账|现金流|回款多少|到账多少|结算多少|收了多少|付了多少).*");
+    }
+
+    static boolean revenueQuestion(String input) {
+        return input.contains("营收") || input.contains("收入") || input.contains("营业额") || input.contains("保险应收");
     }
 
     static boolean performanceQuestion(String input) {
-        return input.matches("(?s).*(经营|业绩|毛利|盈利|利润|赚了多少).*");
+        return revenueQuestion(input) || input.matches("(?s).*(经营|业绩|毛利|盈利|利润|赚了多少).*");
     }
 
     static boolean caseQuestion(String input) {
-        return input.matches("(?s).*(为什么|不能|不到|不了|卡住|怎么办|下一步|授权|前置|进度|任务|材料|确认|核损|报价|应收|应付|回款|结算|到账|实收|实付|利润|盈利|毛利).*");
+        return revenueQuestion(input) || input.matches("(?s).*(为什么|不能|不到|不了|卡住|怎么办|下一步|授权|前置|进度|任务|材料|确认|核损|报价|应收|应付|回款|结算|到账|实收|实付|利润|盈利|毛利).*");
     }
 
     static Period period(String input, LocalDate today) {
@@ -103,7 +107,7 @@ public class AssistantBusiness {
         var margin = insurance.signum() == 0 ? null
             : profit.movePointRight(2).divide(insurance, 2, java.math.RoundingMode.HALF_UP).toPlainString();
         var selected = rows.stream().map(row -> new SelectedOrder(row.businessNo(), AssistantQuestion.statusLabel(row.status()),
-            LOCAL_TIME.format(row.selectedAt()), money(row.formalQuote()), money(row.assessment()), money(row.profit()),
+            LOCAL_TIME.format(row.selectedAt()), money(row.formalQuote()), money(row.assessment()), money(row.insurance()), money(row.profit()),
             money(row.received()), money(row.paid()))).toList();
         String sort = scope.completedOnly() ? "按有效完工时间倒序，仅已完工工单" : "按创建时间倒序，仅正式编号工单";
         String window = scope.from() == null ? "不限日期" : scope.from() + " 至 " + scope.to() + "（北京时间）";
@@ -160,6 +164,12 @@ public class AssistantBusiness {
             return "请求最近 " + requested + " 单，实际取到 " + orders.size() + " 单（" + order + "，" + window + "）。";
         }
 
+        String revenueSummary() {
+            String accrual = accounted == 0 ? "这批工单尚无已完工核算的保险应收金额"
+                : "其中 " + accounted + " 单已完工核算，保险应收合计 " + insurance + " 元";
+            return accrual + "。这 " + orders.size() + " 单的实际净到账合计 " + received + " 元（已排除冲销）。";
+        }
+
         String display() {
             var details = new java.util.StringJoiner("\n");
             details.add("完工 " + completed + " 单，其中已核算 " + accounted + " 单，待核算 " + (completed - accounted) + " 单。");
@@ -171,11 +181,12 @@ public class AssistantBusiness {
             return details.toString();
         }
     }
-    record SelectedOrder(String businessNo, String status, String time, String formalQuote, String assessment, String profit,
+    record SelectedOrder(String businessNo, String status, String time, String formalQuote, String assessment, String insurance, String profit,
                          String received, String paid) {
         String display() {
             return businessNo + " · " + time + " · " + status
-                + "\n正式报价 " + amount(formalQuote) + " · 已确认核损 " + amount(assessment) + " · 完工核算盈利 " + amount(profit)
+                + "\n正式报价 " + amount(formalQuote) + " · 已确认核损 " + amount(assessment) + " · 已核算保险应收 " + amount(insurance)
+                + " · 完工核算盈利 " + amount(profit)
                 + " · 净实收 " + received + " 元 · 净实付 " + paid + " 元";
         }
 

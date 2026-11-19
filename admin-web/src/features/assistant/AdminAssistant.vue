@@ -12,7 +12,7 @@ const input = ref<HTMLTextAreaElement | null>(null)
 const active = computed(() => history.value.drafts.find(draft => draft.id === history.value.activeId))
 const draftText = computed(() => active.value?.text ?? '')
 const drafts = computed(() => [...history.value.drafts].sort((a, b) => b.updatedAt - a.updatedAt))
-const examples = ['分析本月经营效益', '本月实际到账多少', '怎么提交网点报价', '今天有多少工单']
+const examples = ['分析最近五单的经营情况', '帮我写一句礼貌的催办提醒', '怎么提交网点报价', '今天有多少工单']
 const enabled = ref<boolean | null>(null), error = ref('')
 const pendingTurn = ref<{ id: string; message: string; model?: string } | null>(null)
 const busy = computed(() => pendingTurn.value !== null)
@@ -78,13 +78,19 @@ async function send() {
   void scrollToLatest()
   error.value = ''
   try {
+    const context = (draft.turns ?? []).filter(turn => turn.reply.ai && turn.reply.blocked === false)
+      .slice(-4).map(turn => ({
+        message: turn.message,
+        answer: [turn.reply.answer, turn.reply.reference].filter(Boolean).join('\n\n').slice(0, 8000),
+      }))
     const reply = await assistantApi.chat(message, pending.signal, model => {
       if (!pending.signal.aborted && pendingTurn.value?.id === draft.id) {
         pendingTurn.value.model = model
         if (active.value?.id === draft.id) void scrollToLatest()
       }
-    })
+    }, context)
     if (pending.signal.aborted) return
+    if (reply.blocked) throw new Error(reply.answer)
     draft.turns = [...(draft.turns ?? []).slice(-19), { message, reply }]
     draft.text = ''
     draft.updatedAt = Date.now()
@@ -162,13 +168,13 @@ onUnmounted(() => {
     <div class="assistant-main">
       <header class="assistant-header">
         <div class="assistant-heading"><button class="history-toggle" type="button" :aria-expanded="sidebarOpen" aria-controls="assistant-history" :aria-label="sidebarOpen ? '收起会话记录' : '展开会话记录'" @click="sidebarOpen = !sidebarOpen"><Fold v-if="sidebarOpen" aria-hidden="true" /><Expand v-else aria-hidden="true" /></button><h2 id="assistant-title">平台助手</h2><span class="preview-label">只读试用</span></div>
-        <span class="connection-status">{{ enabled ? '可查询工单' : enabled === null ? '正在检查配置…' : '助手暂不可用' }}</span>
+        <span class="connection-status">{{ enabled ? '可对话' : enabled === null ? '正在检查配置…' : '助手暂不可用' }}</span>
       </header>
       <div class="assistant-body">
         <div v-if="!turns.length && !visiblePending" class="assistant-welcome">
           <p class="welcome-eyebrow">从一个问题开始</p>
           <h3>有什么可以帮你？</h3>
-          <p class="welcome-description">分析经营数据、查询工单与已核对单据，或了解平台操作</p>
+          <p class="welcome-description">可以自由提问，也可以查工单、分析经营情况，或了解平台操作</p>
           <div class="typing-line" aria-hidden="true"><span>{{ animatedText || '\u00a0' }}</span><span class="typing-caret" :class="{ paused: !idle || reducedMotion }"></span></div>
           <div class="suggestions" aria-label="示例问题">
             <button v-for="example in examples" :key="example" type="button" :disabled="busy" @click="useExample(example)">{{ example }}</button>
@@ -194,16 +200,16 @@ onUnmounted(() => {
             <p class="question">{{ visiblePending.message }}</p>
             <div class="assistant-pending" role="status">
               <span class="assistant-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-              <span>{{ visiblePending.model ? `正在调用 ${visiblePending.model} 生成回答…` : '正在查询平台资料…' }}</span>
+              <span>{{ visiblePending.model ? `正在调用 ${visiblePending.model} 生成回答…` : '正在检查敏感信息…' }}</span>
             </div>
           </div>
         </div>
         <form class="composer" @submit.prevent="send">
           <label class="sr-only" for="assistant-input">向平台助手提问</label>
-          <textarea id="assistant-input" ref="input" :value="visiblePending ? '' : draftText" :readonly="busy" rows="2" maxlength="4000" placeholder="输入你的工单问题…" aria-describedby="assistant-send-note" @keydown="onComposerKey" @compositionstart="composing = true" @compositionend="composing = false" @input="updateDraft(($event.target as HTMLTextAreaElement).value)" @focus="focused = true" @blur="focused = false" />
+          <textarea id="assistant-input" ref="input" :value="visiblePending ? '' : draftText" :readonly="busy" rows="2" maxlength="4000" placeholder="输入问题，或接着上一条追问…" aria-describedby="assistant-send-note" @keydown="onComposerKey" @compositionstart="composing = true" @compositionend="composing = false" @input="updateDraft(($event.target as HTMLTextAreaElement).value)" @focus="focused = true" @blur="focused = false" />
           <div class="composer-footer"><span>Enter 发送 · Shift + Enter 换行</span><button type="submit" class="send-button" :disabled="!enabled || busy || !draftText.trim()" aria-label="发送"><ArrowUp aria-hidden="true" /></button></div>
         </form>
-        <p id="assistant-send-note" class="send-note">只读。智谱仅接收相关的业务字段和手册片段。</p>
+        <p id="assistant-send-note" class="send-note">通过敏感信息检查后，本条提问和本会话最近四轮问答将发给智谱。平台数据只读。</p>
         <p v-if="error" role="alert" class="storage-error">{{ error }}</p>
         <p v-if="storageError" role="alert" class="storage-error">{{ storageError }}</p>
       </div>
