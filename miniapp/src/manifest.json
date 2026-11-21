@@ -1,0 +1,20 @@
+{
+  "name": "电单车理赔协同原型",
+  "appid": "__UNI__LOCAL_DEMO__",
+  "description": "仅用于本机技术验证的合成数据原型",
+  "versionName": "0.1.0",
+  "versionCode": "10",
+  "transformPx": false,
+  "uniStatistics": {
+    "enable": false
+  },
+  "mp-weixin": {
+    "appid": "",
+    "setting": {
+      "urlCheck": true,
+      "es6": true,
+      "minified": true
+    },
+    "usingComponents": true
+  }
+}

@@ -19,6 +19,7 @@ import org.springframework.test.web.servlet.MockMvc;
 @WebMvcTest(JsMapController.class) @Import({SecurityConfiguration.class,RequestTraceFilter.class})
 class JsMapControllerTest {
  @MockitoBean JwtService jwt;@MockitoBean UserMapper users;@MockitoBean JsMapService maps;@Autowired MockMvc mvc;
+ @MockitoBean WechatBindingStore wechatBindings;@MockitoBean WechatLoginConfiguration wechatLogin;
  private final String key=UUID.randomUUID().toString().replace("-",""),cookie=Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[32]);
  @BeforeEach void prepare(){int id=0;for(Role role:Role.values()){long actor=++id;String token=role.name();when(jwt.decode(token)).thenReturn(Jwt.withTokenValue(token).header("alg","test").subject(Long.toString(actor)).claim("av",0L).issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(300)).build());when(users.accessById(actor)).thenReturn(new AccessRow(actor,"synthetic","合成",null,true,0,token,null,null));}
  when(maps.configuration()).thenReturn(new JsMapService.Configuration(true,true,"synthetic"));when(maps.issue(any())).thenReturn(new JsMapService.Grant(cookie,key,JsMapService.PREFIX,Instant.now().plusSeconds(60)));}

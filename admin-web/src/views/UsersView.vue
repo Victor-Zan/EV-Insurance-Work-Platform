@@ -46,12 +46,12 @@ async function reset() {
 onMounted(() => { void run(load) })
 </script>
 <template>
-  <main><header class="module-page-head"><p>ADMIN / USERS</p><h1>用户与角色</h1><span>仅管理员可创建账号、调整现有角色及网点归属；权限以服务端校验为准。</span></header>
+  <main><header class="module-page-head"><p>ADMIN / USERS</p><h1>用户与角色</h1><span>管理员可管理账号、调整角色与网点归属；小程序用户首次微信登录后出现在账号列表。</span></header>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" role="alert" />
     <ElAlert v-if="message" :title="message" type="success" :closable="false" />
     <ElCard shadow="never"><h2>创建账号</h2><form @submit.prevent="submitCreate">
       <label>账号<ElInput v-model="create.username" autocomplete="off" /></label><label>显示名<ElInput v-model="create.displayName" /></label>
-      <p>本人通过邀请设置密码；车主请从案件详情开通。</p>
+      <p>管理端账号沿用邀请开通；小程序用户直接微信登录，网点身份在下方账号列表按 ID 设置。</p>
       <label>角色<ElSelect v-model="create.role"><ElOption v-for="role in ['ADMIN','CUSTOMER_SERVICE','REPAIR_SHOP']" :key="role" :label="role" :value="role" /></ElSelect></label>
       <label v-if="create.role === 'REPAIR_SHOP'">网点 ID<ElInput v-model="create.shopId" inputmode="numeric" /></label>
       <label v-if="create.role === 'OWNER'">车主手机号（用于工单精确匹配）<ElInput v-model="create.ownerPhone" maxlength="32" /></label>
@@ -66,7 +66,7 @@ onMounted(() => { void run(load) })
       <label>新密码<ElInput v-model="resetPassword" type="password" autocomplete="new-password" /></label><ElButton native-type="submit" :disabled="busy">重置</ElButton>
     </form></ElCard>
     <ElDialog v-model="contactOpen" title="维护车主手机号"><p>仅影响后续精确匹配；不转移已有案件绑定。</p><label>手机号<ElInput v-model="contactPhone" maxlength="32"/></label><label>变更原因<ElInput v-model="contactReason" type="textarea" maxlength="2000"/></label><ElAlert v-if="error" :title="error" type="error" :closable="false"/><template #footer><ElButton @click="contactOpen=false">取消</ElButton><ElButton type="primary" :loading="busy" @click="saveContact">保存并审计</ElButton></template></ElDialog>
-    <ElDialog v-model="assignmentOpen" title="调整角色与网点归属" width="min(520px,calc(100vw - 32px))"><p>更改后该用户原有会话失效；角色范围仍仅限现有四类。</p><ElCheckboxGroup v-model="assignmentRoles"><ElCheckbox v-for="role in roleOptions" :key="role" :value="role">{{ role }}</ElCheckbox></ElCheckboxGroup><label v-if="assignmentRoles.includes('REPAIR_SHOP')">所属网点 ID<ElInput v-model="assignmentShopId" inputmode="numeric"/></label><ElAlert v-if="error" :title="error" type="error" :closable="false"/><template #footer><ElButton @click="assignmentOpen=false">取消</ElButton><ElButton type="primary" :loading="busy" @click="saveAssignment">保存并审计</ElButton></template></ElDialog>
+    <ElDialog v-model="assignmentOpen" title="调整角色与网点归属" width="min(520px,calc(100vw - 32px))"><p>账号 ID：{{ assignmentId }}。小程序用户只选一个身份；设为维修网点时取消 OWNER、只选 REPAIR_SHOP，并填写所属网点 ID。保存后旧登录失效，重新微信登录进入对应端。</p><ElCheckboxGroup v-model="assignmentRoles"><ElCheckbox v-for="role in roleOptions" :key="role" :value="role">{{ role }}</ElCheckbox></ElCheckboxGroup><label v-if="assignmentRoles.includes('REPAIR_SHOP')">所属网点 ID<ElInput v-model="assignmentShopId" inputmode="numeric"/></label><ElAlert v-if="error" :title="error" type="error" :closable="false"/><template #footer><ElButton @click="assignmentOpen=false">取消</ElButton><ElButton type="primary" :loading="busy" @click="saveAssignment">保存并审计</ElButton></template></ElDialog>
     <InvitationResult :invitation="invitation" @close="invitation=undefined"/>
   </main>
 </template>

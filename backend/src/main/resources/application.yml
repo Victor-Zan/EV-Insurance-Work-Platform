@@ -1,4 +1,8 @@
 app:
+  wechat-login:
+    enabled: ${WECHAT_LOGIN_ENABLED:false}
+    app-id: ${WECHAT_APP_ID:}
+    app-secret: ${WECHAT_APP_SECRET:}
   maps:
     provider: ${MAP_PROVIDER:MOCK_V1}
 

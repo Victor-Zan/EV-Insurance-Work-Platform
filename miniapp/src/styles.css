@@ -1,0 +1,15 @@
+page {
+  background: #f5f3ee;
+  color: #292b2d;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+}
+
+view, text, input, textarea, button, image { box-sizing: border-box; }
+button::after { border: 0; }
+.app-shell { min-height: 100vh; }
+
+/* #ifdef H5 */
+html { scrollbar-width: none; }
+html::-webkit-scrollbar { display: none; }
+/* #endif */

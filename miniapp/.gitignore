@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.hbuilderx/
+.DS_Store
+.task-log/
+npm-debug.log*
+.env
+.env.*
+!.env.example

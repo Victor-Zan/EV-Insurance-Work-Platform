@@ -28,6 +28,8 @@ public class SecurityConfiguration {
     @Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(12); }
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http,ObjectMapper json,JwtService jwt,UserMapper users,
+        com.evinsurance.platform.identity.infrastructure.WechatBindingStore bindings,
+        com.evinsurance.platform.identity.infrastructure.WechatLoginConfiguration wechat,
         org.springframework.beans.factory.ObjectProvider<com.evinsurance.platform.integration.map.JsMapService> jsMaps,
         @Value("${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:5175}") String origins) throws Exception {
         var cors=new CorsConfiguration(); cors.setAllowedOrigins(List.of(origins.split(",")));
@@ -40,11 +42,12 @@ public class SecurityConfiguration {
             .exceptionHandling(errors -> errors
                 .authenticationEntryPoint((request,response,error) -> writeError(response,json,401,"UNAUTHORIZED","Authentication is required"))
                 .accessDeniedHandler((request,response,error) -> writeError(response,json,403,"FORBIDDEN","Access is denied")))
-            .addFilterBefore(new JwtAuthenticationFilter(jwt,users,json),UsernamePasswordAuthenticationFilter.class)
+            .addFilterBefore(new JwtAuthenticationFilter(jwt,users,json,bindings,wechat),UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(new com.evinsurance.platform.integration.map.JsMapAuthenticationFilter(jsMaps.getIfAvailable(),json),UsernamePasswordAuthenticationFilter.class)
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/v1/health","/actuator/health","/v3/api-docs/**","/swagger-ui.html","/swagger-ui/**").permitAll()
                 .requestMatchers(HttpMethod.POST,"/api/v1/auth/login","/api/v1/auth/sign-in","/api/v1/auth/handoff","/api/v1/auth/activation/inspect","/api/v1/auth/activation/complete").permitAll()
+                .requestMatchers(HttpMethod.POST,"/api/v1/auth/wechat/login","/api/v1/auth/wechat/bindings","/api/v1/auth/wechat/activation/inspect","/api/v1/auth/wechat/activation/complete").permitAll()
                 .requestMatchers("/api/v1/auth/me").authenticated()
                 .requestMatchers(HttpMethod.GET,"/api/v1/funds/cases/*").hasAnyRole("ADMIN","CUSTOMER_SERVICE","REPAIR_SHOP")
                 .requestMatchers("/api/v1/funds/**").hasAnyRole("ADMIN","CUSTOMER_SERVICE")
