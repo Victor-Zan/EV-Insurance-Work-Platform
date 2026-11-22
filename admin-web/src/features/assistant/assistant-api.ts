@@ -1,9 +1,14 @@
-import { httpClient } from '@/shared/http/client'
+import { httpClient, authSession } from '@/shared/http/client'
 import type { ApiResponse } from '@/shared/http/create-client'
 import type { WorkOrderStatus } from '@/features/workorders/work-orders'
+import { readAssistantStream, readAssistantError } from './assistant-stream'
+
+export interface AssistantModel { id: string; name: string; provider: string; enabled: boolean }
 
 export interface AssistantReply {
   blocked?: boolean
+  errorCode?: string | null
+  contextEligible?: boolean
   answer: string
   ai: boolean
   model?: string
@@ -19,33 +24,23 @@ export interface AssistantReply {
 
 export const assistantApi = {
   async status() {
-    return (await httpClient.get<ApiResponse<{ enabled: boolean; model?: string }>>('/admin/assistant/status')).data.data
+    return (await httpClient.get<ApiResponse<{ enabled: boolean; model?: string; defaultModel: string; models: AssistantModel[] }>>('/admin/assistant/status')).data.data
   },
-  async chat(message: string, signal: AbortSignal, onModel: (model: string) => void, history: { message: string; answer: string }[]) {
-    const response = await httpClient.post<ReadableStream<Uint8Array>>('/admin/assistant/chat/stream', { message, history }, {
-      adapter: 'fetch', responseType: 'stream', timeout: 50_000, signal,
-      headers: { Accept: 'application/x-ndjson, application/json' },
-    })
-    const reader = response.data.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
+  async chat(message: string, signal: AbortSignal, onModel: (model: string) => void, history: { message: string; answer: string }[], model?: string) {
+    const deadline = AbortSignal.timeout(95_000)
     try {
-      for (;;) {
-        const chunk = await reader.read()
-        if (chunk.done) throw new Error('回答连接已中断，请重试。')
-        buffer += decoder.decode(chunk.value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop()!
-        for (const line of lines) {
-          if (!line.trim()) continue
-          const event = JSON.parse(line) as { type: string; model?: string; response?: ApiResponse<AssistantReply> }
-          if (event.type === 'model' && event.model) onModel(event.model)
-          if (event.type === 'reply' && event.response?.data) return event.response.data
-        }
+      const response = await httpClient.post<ReadableStream<Uint8Array>>('/admin/assistant/chat/stream', { message, history, model }, {
+        adapter: 'fetch', responseType: 'stream', timeout: 0, signal: AbortSignal.any([signal, deadline]), validateStatus: () => true,
+        headers: { Accept: 'application/x-ndjson, application/json' },
+      })
+      if (response.status < 200 || response.status >= 300) {
+        if (response.status === 401) authSession.clear()
+        throw await readAssistantError(response.data, response.status)
       }
-    } finally {
-      await reader.cancel().catch(() => {})
-      reader.releaseLock()
+      return await readAssistantStream(response.data, onModel)
+    } catch (failure) {
+      if (deadline.aborted && !signal.aborted) throw new Error('等待回答超时，问题已保留。请重试或切换模型。', { cause: failure })
+      throw failure
     }
   },
 }

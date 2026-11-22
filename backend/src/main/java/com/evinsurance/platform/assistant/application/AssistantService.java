@@ -3,39 +3,45 @@ package com.evinsurance.platform.assistant.application;
 import com.evinsurance.platform.assistant.infrastructure.AssistantOrderReader;
 import com.evinsurance.platform.assistant.infrastructure.AssistantOrderReader.StatusCount;
 import com.evinsurance.platform.assistant.infrastructure.BigModelClient;
+import com.evinsurance.platform.assistant.infrastructure.AssistantModels;
 import com.evinsurance.platform.assistant.infrastructure.BigModelClient.Turn;
 import com.evinsurance.platform.foundation.api.ApiException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 @Service
 public class AssistantService {
     private final AssistantOrderReader orders;
-    private final BigModelClient model;
+    private final AssistantModels models;
     private final AssistantGuide guide;
     private final AssistantBusiness business;
     private final AssistantPrivacy privacy;
 
-    public AssistantService(AssistantOrderReader orders, BigModelClient model, AssistantGuide guide, AssistantBusiness business, AssistantPrivacy privacy) {
+    public AssistantService(AssistantOrderReader orders, AssistantModels models, AssistantGuide guide, AssistantBusiness business, AssistantPrivacy privacy) {
         this.orders = orders;
-        this.model = model;
+        this.models = models;
         this.guide = guide;
         this.business = business;
         this.privacy = privacy;
     }
 
-    public boolean available() { return model.available(); }
-    public String modelName() { return model.modelName(); }
+    public boolean available() { return models.options().stream().anyMatch(AssistantModels.Option::enabled); }
+    public String modelName() { return available() ? models.select(null).modelName() : null; }
+    public List<AssistantModels.Option> modelOptions() { return models.options(); }
+    public String defaultModel() { return models.defaultId(); }
 
     public Reply answer(String input, List<Turn> history, Consumer<String> onModelStart) {
+        return answer(input, history, onModelStart, null);
+    }
+
+    public Reply answer(String input, List<Turn> history, Consumer<String> onModelStart, String modelId) {
         if (privacy.blocks(input, history)) return new Reply(
-            "本次对话含敏感信息，无法发送。请移除相关内容；若信息在前文，请新建对话。", false, null, null, null, null, true);
-        if (!available()) throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "ASSISTANT_DISABLED", "平台助手尚未配置");
-        String name = modelName();
+            "本次对话含敏感信息，无法发送。请移除相关内容；若信息在前文，请新建对话。", false, null, null, null, null, true, null, false);
+        BigModelClient model = models.select(modelId);
+        String name = model.modelName();
         onModelStart.accept(name);
         Material material = null;
         try {
@@ -45,7 +51,7 @@ public class AssistantService {
             // GLM can answer a platform question without requesting its source. Check the first
             // answer against available platform material before displaying guessed steps or figures.
             if (tool == null && !explicitSample && !needsPlatformSource(input)) {
-                return new Reply(first.answer(), true, null, null, null, name, false);
+                return new Reply(first.answer(), true, null, null, null, name, false, null, true);
             }
             String requested = tool == null ? input : tool.question();
             String query = history.isEmpty() || explicitSample ? input : requested;
@@ -61,10 +67,11 @@ public class AssistantService {
             return material.reply(answer, true, name);
         } catch (ApiException error) {
             if (material == null && (history.isEmpty() || hasFinancialSample(input))) material = lookup(input);
-            if (material == null) return new Reply(error.getMessage(), false, null, null, null, name, false);
+            if (material == null) return new Reply(error.getMessage(), false, null, null, null, name, false, error.code(), false);
             String hint = material.reference() != null || material.facts() != null ? "。请查看下方平台资料。" : "";
             String summary = material.headline() == null ? "" : material.headline() + "\n\n";
-            return material.reply(summary + error.getMessage() + hint, false, name);
+            return new Reply(summary + error.getMessage() + hint, false, material.facts(), material.source(),
+                material.reference(), name, false, error.code(), false);
         }
     }
 
@@ -203,10 +210,11 @@ public class AssistantService {
 
     private record Material(Map<String, Object> payload, Facts facts, String source, String reference, String headline) {
         static Material notice(String text) { return new Material(null, null, null, null, text); }
-        Reply reply(String answer, boolean ai, String model) { return new Reply(answer, ai, facts, source, reference, model, false); }
+        Reply reply(String answer, boolean ai, String model) { return new Reply(answer, ai, facts, source, reference, model, false, null, true); }
     }
 
-    public record Reply(String answer, boolean ai, Facts facts, String source, String reference, String model, boolean blocked) {}
+    public record Reply(String answer, boolean ai, Facts facts, String source, String reference, String model, boolean blocked,
+                        String errorCode, boolean contextEligible) {}
     public record Facts(long total, List<StatusCount> counts, List<Entry> orders, String totalCny) {}
     public record Entry(String businessNo, String status, Instant updatedAt) {}
 

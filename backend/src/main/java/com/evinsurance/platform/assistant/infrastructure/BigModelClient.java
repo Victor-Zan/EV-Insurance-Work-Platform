@@ -44,19 +44,32 @@ public class BigModelClient {
     private final ObjectMapper json;
     private final String key;
     private final String model;
+    private final String base;
+    private final String provider;
     private final boolean available;
     private final OkHttpClient http = new OkHttpClient.Builder()
-        .callTimeout(Duration.ofSeconds(18)).retryOnConnectionFailure(false)
+        .callTimeout(Duration.ofSeconds(30)).retryOnConnectionFailure(false)
         .followRedirects(false).followSslRedirects(false).build();
 
+    @org.springframework.beans.factory.annotation.Autowired
     public BigModelClient(ObjectMapper json, @Value("${BIGMODEL_API_KEY:}") String key,
                           @Value("${BIGMODEL_MODEL:glm-4.7-flash}") String model,
                           @Value("${BIGMODEL_BASE_URL:https://open.bigmodel.cn/api/paas/v4}") String base) {
+        this(json, key, model, base, "智谱");
+    }
+
+    private BigModelClient(ObjectMapper json, String key, String model, String base, String provider) {
         this.json = json;
         this.key = key.trim();
         this.model = model.trim();
-        this.available = !this.key.isBlank() && this.model.matches("[A-Za-z0-9._-]{1,80}")
-            && (OFFICIAL_BASE.equals(base.trim()) || (OFFICIAL_BASE + "/").equals(base.trim()));
+        this.base = base.trim().replaceFirst("/$", "");
+        this.provider = provider;
+        this.available = !this.key.isBlank() && this.model.matches("[A-Za-z0-9/._-]{1,80}")
+            && ("硅基流动".equals(provider) ? "https://api.siliconflow.cn/v1".equals(this.base) : OFFICIAL_BASE.equals(this.base));
+    }
+
+    static BigModelClient siliconflow(ObjectMapper json, String key, String model) {
+        return new BigModelClient(json, key, model, "https://api.siliconflow.cn/v1", "硅基流动");
     }
 
     public boolean available() { return available; }
@@ -74,7 +87,7 @@ public class BigModelClient {
 
     private List<Map<String, Object>> messages(String question, List<Turn> history) {
         var result = new ArrayList<Map<String, Object>>();
-        result.add(Map.of("role", "system", "content", SYSTEM + "\n当前实际调用的智谱模型是 " + model + "。"));
+        result.add(Map.of("role", "system", "content", SYSTEM + "\n当前服务商是 " + provider + "，实际调用模型是 " + model + "。以本条系统信息回答模型身份，前文可能来自其他模型。"));
         for (var turn : history) {
             result.add(Map.of("role", "user", "content", turn.message()));
             result.add(Map.of("role", "assistant", "content", turn.answer()));
@@ -99,7 +112,7 @@ public class BigModelClient {
                     } catch (JacksonException ignored) { /* An invalid request cannot execute a query. */ }
                 }
             }
-            throw failure("ASSISTANT_PROVIDER_RESPONSE", "智谱返回了无效的平台查询，请重新提问");
+            throw failure("ASSISTANT_PROVIDER_RESPONSE", "模型返回了无效的平台查询，请重试或切换模型");
         }
         return new Completion(content(reply), null);
     }
@@ -120,7 +133,7 @@ public class BigModelClient {
     private static String content(JsonNode message) {
         String reply = message.path("content").asText("");
         if (!reply.isBlank() && reply.length() <= 8000) return reply;
-        throw failure("ASSISTANT_PROVIDER_RESPONSE", "智谱没有返回有效回答，请稍后重试");
+        throw failure("ASSISTANT_PROVIDER_RESPONSE", "模型没有返回有效回答，请重试或切换模型");
     }
 
     private JsonNode post(List<Map<String, Object>> messages, boolean allowLookup) {
@@ -128,10 +141,13 @@ public class BigModelClient {
         var body = new java.util.LinkedHashMap<String, Object>();
         body.put("model", model);
         body.put("max_tokens", 1000);
-        body.put("thinking", Map.of("type", "disabled"));
+        if ("智谱".equals(provider)) body.put("thinking", Map.of("type", "disabled"));
+        else if (model.equals("XingChenAGI/Xing4.0-29B")) body.put("enable_thinking", false);
         body.put("messages", messages);
-        if (allowLookup) body.put("tools", List.of(TOOL));
-        var request = new Request.Builder().url(OFFICIAL_BASE + "/chat/completions")
+        if (allowLookup) {
+            body.put("tools", List.of(TOOL));
+        }
+        var request = new Request.Builder().url(base + "/chat/completions")
             .header("Authorization", "Bearer " + key).post(RequestBody.create(json.writeValueAsBytes(body), JSON)).build();
         try (var response = http.newCall(request).execute()) {
             if (!response.isSuccessful()) {
@@ -141,7 +157,12 @@ public class BigModelClient {
                 } catch (JacksonException ignored) {
                     // Keep the HTTP fallback for non-JSON or truncated error bodies.
                 }
-                throw providerFailure(response.code(), code);
+                if ("智谱".equals(provider)) throw providerFailure(response.code(), code);
+                throw failure("ASSISTANT_PROVIDER_ERROR", switch (response.code()) {
+                    case 401, 403 -> "硅基流动未接受当前密钥或模型权限，请检查配置";
+                    case 429 -> "硅基流动达到调用限制，请稍后重试或切换模型";
+                    default -> "硅基流动未能完成请求，请重试或切换模型";
+                });
             }
             try (var content = response.body().byteStream()) {
                 byte[] bytes = content.readNBytes(128 * 1024 + 1);
@@ -150,11 +171,11 @@ public class BigModelClient {
                     if (message.isObject()) return message;
                 }
             }
-            throw failure("ASSISTANT_PROVIDER_RESPONSE", "智谱没有返回有效回答，请稍后重试");
+            throw failure("ASSISTANT_PROVIDER_RESPONSE", provider + "没有返回有效回答，请重试或切换模型");
         } catch (java.io.InterruptedIOException error) {
-            throw failure("ASSISTANT_PROVIDER_TIMEOUT", "等待智谱回复超时，请稍后手动重试");
+            throw failure("ASSISTANT_PROVIDER_TIMEOUT", "等待" + provider + "回复超时，请重试或切换模型");
         } catch (IOException | JacksonException error) {
-            throw failure("ASSISTANT_PROVIDER_ERROR", "无法取得智谱回复，请稍后重试");
+            throw failure("ASSISTANT_PROVIDER_ERROR", "无法取得" + provider + "回复，请重试或切换模型");
         }
     }
 

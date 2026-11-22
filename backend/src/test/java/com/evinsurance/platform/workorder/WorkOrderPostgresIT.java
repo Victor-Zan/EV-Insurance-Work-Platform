@@ -20,6 +20,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import com.evinsurance.platform.assistant.infrastructure.BigModelClient;
+import com.evinsurance.platform.assistant.infrastructure.AssistantModels;
 import com.evinsurance.platform.foundation.api.ApiException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -87,6 +88,8 @@ class WorkOrderPostgresIT {
         registry.add("spring.flyway.schemas",()->SCHEMA);
         registry.add("spring.flyway.default-schema",()->SCHEMA);
         registry.add("OCR_WORKER_ENABLED",()->"false");
+        registry.add("SILICONFLOW_API_KEY",()->"synthetic-assistant-test-only");
+        registry.add("BIGMODEL_API_KEY",()->"");
         registry.add("DEV_OWNER_BINDING_ENABLED",()->DEVELOPMENT_OWNER.get());
         for(String name:List.of("MINIO_ENDPOINT","MINIO_ACCESS_KEY","MINIO_SECRET_KEY","MINIO_BUCKET"))registry.add(name,()->{String value=System.getenv("TEST_"+name);if(value==null||value.isBlank())throw new IllegalStateException("Real MinIO test configuration required");return value;});
         registry.add("JWT_SECRET_BASE64",()->SECRET);
@@ -101,6 +104,7 @@ class WorkOrderPostgresIT {
     @Autowired JdbcTemplate db;
     @Autowired Flyway flyway;
     @MockitoBean BigModelClient assistantModel;
+    @Autowired AssistantModels assistantModels;
 
     private String admin;
     private String customerService;
@@ -534,6 +538,73 @@ class WorkOrderPostgresIT {
         api(admin, "POST", "/api/v1/admin/assistant/chat", Map.of("message", "继续",
             "history", java.util.Collections.nCopies(5, Map.of("message", "问题", "answer", "回答"))), null, 400);
         verifyNoInteractions(assistantModel);
+    }
+
+    @Test void assistantDoesNotMistakeStepNumbersOrPartsOfLongerNumbersForShortPrivateValues() throws Exception {
+        var row = formal(customerService, "short-private-fixture", OWNER_PHONE, "SHORTPRIVATEVIN01", Instant.now());
+        var id = UUID.fromString(row.path("id").asText());
+        db.update("UPDATE work_order SET accident_address='0' WHERE id=?", id);
+        db.update("INSERT INTO funds_entry(id,work_order_id,direction,transaction_no,amount,occurred_at,content_hash,actor_id) "
+            + "SELECT ?,id,'RECEIVE','1',1.00,now()-interval '2 years',repeat('0',64),created_by FROM work_order WHERE id=?", UUID.randomUUID(), id);
+        when(assistantModel.available()).thenReturn(true);
+        when(assistantModel.start(anyString(), anyList())).thenReturn(new BigModelClient.Completion("可以继续追问", null));
+        String path = "/api/v1/admin/assistant/chat";
+        var response = api(admin, "POST", path, Map.of("message", "能直接点下一步吗", "history", List.of(Map.of(
+            "message", "怎么操作", "answer", "1. 选择照片，每张最多 10 MiB。\n2. 等待上传完成，再点下一步。"))), null, 200);
+        assertThat(response.path("blocked").asBoolean()).isFalse();
+        assertThat(response.path("ai").asBoolean()).isTrue();
+        clearInvocations(assistantModel);
+        for (String value : List.of("流水号是1", "停放位置0", "1", "0", "1.", "1. 流水号是1")) {
+            var blocked = api(admin, "POST", path, Map.of("message", value), null, 200);
+            assertThat(blocked.path("blocked").asBoolean()).as("Standalone short values remain protected").isTrue();
+        }
+        var historyBlocked = api(admin, "POST", path, Map.of("message", "接着说", "history",
+            List.of(Map.of("message", "记录", "answer", "流水号是1"))), null, 200);
+        assertThat(historyBlocked.path("blocked").asBoolean()).isTrue();
+        verifyNoInteractions(assistantModel);
+    }
+
+    @Test void assistantSelectedDomesticModelRetainsMultipleTurnsAndPrivacyAndRoleBoundaries() throws Exception {
+        String path = "/api/v1/admin/assistant/chat/stream";
+        String selected = "Qwen/Qwen2.5-7B-Instruct";
+        var client = assistantModels.select(selected);
+        var original = org.springframework.test.util.ReflectionTestUtils.getField(client, "http");
+        var sent = new ArrayList<JsonNode>();
+        org.springframework.test.util.ReflectionTestUtils.setField(client, "http", new okhttp3.OkHttpClient.Builder().addInterceptor(chain -> {
+            assertThat(chain.request().url().host()).isEqualTo("api.siliconflow.cn");
+            var buffer = new okio.Buffer();
+            chain.request().body().writeTo(buffer);
+            sent.add(json.readTree(buffer.readUtf8()));
+            return new okhttp3.Response.Builder().request(chain.request()).protocol(okhttp3.Protocol.HTTP_1_1)
+                .code(200).message("OK").body(okhttp3.ResponseBody.create(
+                    "{\"choices\":[{\"message\":{\"content\":\"合成连续对话回答\"}}]}", okhttp3.MediaType.get("application/json"))).build();
+        }).build());
+        try {
+            var question = Map.of("message", "把刚才的话再缩短", "model", selected,
+                "history", List.of(Map.of("message", "写欢迎语", "answer", "欢迎使用工作台")));
+            for (String token : List.of(customerService, shop, owner)) api(token, "POST", path, question, null, 403);
+            api(admin, "POST", path, Map.of("message", "你好", "model", "unregistered"), null, 400);
+            assertThat(sent).isEmpty();
+            var events = mvc.perform(post(path).header("Authorization", "Bearer " + admin).contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(question))).andExpect(status().isOk()).andReturn().getResponse()
+                .getContentAsString(java.nio.charset.StandardCharsets.UTF_8).lines().map(json::readTree).toList();
+            assertThat(events.getFirst().path("model").asText()).isEqualTo(selected);
+            assertThat(events.getLast().path("response").path("data").path("ai").asBoolean()).isTrue();
+            assertThat(sent).hasSize(1);
+            assertThat(sent.getFirst().path("messages").path(2).path("content").asText()).isEqualTo("欢迎使用工作台");
+            var next = api(admin, "POST", "/api/v1/admin/assistant/chat",
+                Map.of("message", "换个说法", "model", selected, "history", List.of(
+                    Map.of("message", "写欢迎语", "answer", "欢迎使用工作台"),
+                    Map.of("message", "把刚才的话再缩短", "answer", "合成连续对话回答"))), null, 200);
+            assertThat(next.path("ai").asBoolean()).isTrue();
+            assertThat(sent).hasSize(2);
+            var denied = api(admin, "POST", "/api/v1/admin/assistant/chat", Map.of("message", "继续", "model", selected,
+                "history", List.of(Map.of("message", "电话", "answer", OWNER_PHONE))), null, 200);
+            assertThat(denied.path("blocked").asBoolean()).isTrue();
+            assertThat(sent).hasSize(2);
+        } finally {
+            org.springframework.test.util.ReflectionTestUtils.setField(client, "http", original);
+        }
     }
 
     private UUID assistantDocument(UUID id, String category, boolean shop) {

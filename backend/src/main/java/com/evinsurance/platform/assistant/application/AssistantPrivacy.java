@@ -14,6 +14,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class AssistantPrivacy {
     private static final Pattern FORMATTING = Pattern.compile("[\\p{Cf}\\p{Z}\\s]+");
+    private static final Pattern LIST_MARKER = Pattern.compile("(?m)^\\h*[0-9]{1,3}[.、．)]\\h+(?=\\S)");
     private static final Pattern ORDER_NUMBER = Pattern.compile("(?i)(?<![a-z0-9])EVR-[0-9]{8}-[0-9]{6}(?![a-z0-9])");
     private static final Pattern NUMBER = Pattern.compile("(?<![0-9])(?:(?:0086|86)?1[3-9][0-9]{9}|0[1-9][0-9]{8,10}|[0-9]{15,}[0-9Xx]?)(?![0-9])");
     private static final Pattern PLATE = Pattern.compile("[京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤青藏川宁琼][A-Z][A-Z0-9]{4,7}", Pattern.CASE_INSENSITIVE);
@@ -48,7 +49,9 @@ public class AssistantPrivacy {
 
     private static boolean appendAndCheck(StringBuilder text, String message) {
         String normalized = FORMATTING.matcher(Normalizer.normalize(message, Normalizer.Form.NFKC)).replaceAll("");
-        text.append(normalized);
+        // List numbering is document structure. Still inspect the original text for sensitive formats.
+        String content = LIST_MARKER.matcher(Normalizer.normalize(message, Normalizer.Form.NFKC)).replaceAll("");
+        text.append(FORMATTING.matcher(content).replaceAll(""));
         return hasSensitiveFormat(normalized);
     }
 

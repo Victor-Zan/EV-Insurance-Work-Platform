@@ -5,6 +5,7 @@ import static org.mockito.Mockito.*;
 
 import com.evinsurance.platform.assistant.infrastructure.AssistantOrderReader;
 import com.evinsurance.platform.assistant.infrastructure.BigModelClient;
+import com.evinsurance.platform.assistant.infrastructure.AssistantModels;
 import com.evinsurance.platform.assistant.infrastructure.BigModelClient.Turn;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -16,7 +17,8 @@ class AssistantIdentityTest {
     private final BigModelClient model = mock(BigModelClient.class);
     private final AssistantGuide guide = mock(AssistantGuide.class);
     private final AssistantBusiness business = mock(AssistantBusiness.class);
-    private final AssistantService service = new AssistantService(orders, model, guide, business, new AssistantPrivacy(orders));
+    private final AssistantService service = new AssistantService(orders,
+        new AssistantModels(model, new tools.jackson.databind.ObjectMapper(), "", "", ""), guide, business, new AssistantPrivacy(orders));
 
     @ParameterizedTest
     @ValueSource(strings = {"你在调用什么模型", "你是什么模型？", "请问你正在调用的是哪款大模型？",
@@ -51,5 +53,14 @@ class AssistantIdentityTest {
 
     @Test void canonicalPlatformOrderNumberIsAllowed() {
         assertThat(new AssistantPrivacy(orders).blocks("查 EVR-20261119-000001", List.of())).isFalse();
+    }
+
+    @Test void publishedArrivalInstructionsRemainUsableAsConversationHistory() {
+        String question = "网点到店照片应该在哪里上传，上传完怎么提交报价？";
+        var sections = new AssistantGuide().find(question);
+        var reference = sections.stream().map(section -> section.title() + "\n" + section.content())
+            .collect(java.util.stream.Collectors.joining("\n\n"));
+        assertThat(new AssistantPrivacy(orders).blocks("如果照片只是选好了还没上传成功，我能直接点下一步吗？",
+            List.of(new Turn(question, reference)))).isFalse();
     }
 }

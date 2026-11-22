@@ -2,6 +2,7 @@ package com.evinsurance.platform.assistant.api;
 
 import com.evinsurance.platform.assistant.application.AssistantService;
 import com.evinsurance.platform.assistant.infrastructure.BigModelClient.Turn;
+import com.evinsurance.platform.assistant.infrastructure.AssistantModels;
 import com.evinsurance.platform.foundation.api.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -34,13 +35,13 @@ public class AssistantController {
     @GetMapping("/status")
     @Operation(summary = "Check whether the administrator assistant is configured without calling the model")
     public ApiResponse<Availability> status() {
-        return ApiResponse.success(new Availability(service.available(), service.modelName()));
+        return ApiResponse.success(new Availability(service.available(), service.modelName(), service.defaultModel(), service.modelOptions()));
     }
 
     @PostMapping("/chat")
-    @Operation(summary = "Send a privacy-checked conversation to GLM with optional read-only platform lookup. A blocked reply never reaches GLM.")
+    @Operation(summary = "Send a privacy-checked conversation to the selected configured model with optional read-only platform lookup. Blocked conversations never leave the platform.")
     public ApiResponse<AssistantService.Reply> chat(@Valid @RequestBody Question question) {
-        return ApiResponse.success(service.answer(question.message(), question.history(), ignored -> {}));
+        return ApiResponse.success(service.answer(question.message(), question.history(), ignored -> {}, question.model()));
     }
 
     @PostMapping(value = "/chat/stream", produces = "application/x-ndjson")
@@ -50,7 +51,7 @@ public class AssistantController {
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.setHeader("Cache-Control", "no-store");
         response.setHeader("X-Accel-Buffering", "no");
-        var reply = service.answer(question.message(), question.history(), model -> event(response, new StreamEvent("model", model, null)));
+        var reply = service.answer(question.message(), question.history(), model -> event(response, new StreamEvent("model", model, null)), question.model());
         event(response, new StreamEvent("reply", null, ApiResponse.success(reply)));
     }
 
@@ -64,8 +65,9 @@ public class AssistantController {
         }
     }
 
-    public record Availability(boolean enabled, String model) {}
-    public record Question(@NotBlank @Size(max = 4000) String message, @Size(max = 4) List<@NotNull @Valid Turn> history) {
+    public record Availability(boolean enabled, String model, String defaultModel, List<AssistantModels.Option> models) {}
+    public record Question(@NotBlank @Size(max = 4000) String message, @Size(max = 4) List<@NotNull @Valid Turn> history,
+                           @Size(max = 80) String model) {
         public Question { if (history == null) history = List.of(); }
     }
     private record StreamEvent(String type, String model, ApiResponse<AssistantService.Reply> response) {}

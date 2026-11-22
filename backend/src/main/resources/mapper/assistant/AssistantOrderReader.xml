@@ -13,7 +13,10 @@
                 UNION ALL SELECT transaction_no FROM funds_entry
                 UNION ALL SELECT raw_json::jsonb -&gt;&gt; 'transactionNo' FROM funds_import_row
             ) protected_values
-            WHERE strpos(#{text}, nullif(regexp_replace(lower(normalize(value, NFKC)), '[[:space:][:punct:]]+', '', 'g'), '')) > 0
+            CROSS JOIN LATERAL (SELECT nullif(regexp_replace(lower(normalize(value, NFKC)), '[[:space:][:punct:]]+', '', 'g'), '') AS normalized_value) normalized
+            WHERE CASE WHEN normalized_value ~ '^[0-9]{1,3}$'
+                THEN #{text} ~ ('(^|[^0-9])' || normalized_value || '([^0-9]|$)')
+                ELSE strpos(#{text}, normalized_value) > 0 END
         )
     </select>
     <sql id="period">

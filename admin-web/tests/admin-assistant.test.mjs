@@ -18,7 +18,7 @@ function fixture(store = storage(), userId = 1, reduce = false, api = {
   let code = ts.transpileModule(compileScript(descriptor, { id: 'assistant-test' }).content, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText
   code = code.replace(/import\s*\{([^}]+)\}\s*from\s*['"]vue['"];?/g, (_, names) => 'const {' + names.replace(/\s+as\s+/g, ':') + '}=__vue;')
   code = code.replace(/import .*from ['"].*['"];?/g, '').replace('export default', 'return')
-  code = 'const {readHistory,writeHistory}=__history;const ArrowUp="ArrowUp",ChatLineSquare="ChatLineSquare",EditPen="EditPen",Fold="Fold",Expand="Expand";' + code
+  code = 'const {readHistory,writeHistory}=__history;const ArrowUp="ArrowUp",ArrowDown="ArrowDown",ChatLineSquare="ChatLineSquare",EditPen="EditPen",Fold="Fold",Expand="Expand",ElDropdown="ElDropdown",ElDropdownMenu="ElDropdownMenu",ElDropdownItem="ElDropdownItem";' + code
   const hooks = {}, timers = new Map(), listeners = new Map()
   let next = 0
   const media = { matches: reduce, addEventListener: (_, fn) => listeners.set('motion', fn), removeEventListener: () => listeners.delete('motion') }
@@ -246,4 +246,88 @@ test('home mounts the assistant only for admins and remounts when identity chang
     assert.equal(node.type, 'AdminAssistant'); assert.equal(node.key, id); assert.equal(node.props['user-id'], id)
   }
   assert.ok(home.indexOf(tag) < home.indexOf('aria-labelledby="todos-title"'))
+})
+
+const modelStatus = { enabled: true, defaultModel: 'configured', models: [
+  { id: 'configured', name: 'glm-4-flash-250414', provider: '智谱', enabled: true },
+  { id: 'Qwen/Qwen2.5-7B-Instruct', name: 'Qwen/Qwen2.5-7B-Instruct', provider: '硅基流动', enabled: true },
+  { id: 'missing', name: '未配置型号', provider: '硅基流动', enabled: false },
+] }
+
+test('model selection persists per chat, carries context, and failure can be retried once with a different model', async () => {
+  const calls = []
+  const f = fixture(storage(), 1, false, {
+    status: async () => modelStatus,
+    chat: async (message, _signal, _onModel, history, model) => {
+      calls.push({ message, history, model })
+      return calls.length === 2 ? { answer: '模型繁忙', ai: false, blocked: false, errorCode: 'ASSISTANT_PROVIDER_BUSY' }
+        : { answer: '答复', reference: '核对资料', ai: true, blocked: false, model }
+    },
+  })
+  await Vue.nextTick()
+  f.context.updateDraft('第一问'); await f.context.send()
+  const id = f.context.history.value.activeId
+  f.context.updateDraft('继续说明'); await f.context.send()
+  assert.equal(f.context.draftText.value, '继续说明')
+  f.context.selectModel('missing')
+  assert.equal(f.context.selectedModelId.value, 'configured')
+  f.context.selectModel('Qwen/Qwen2.5-7B-Instruct')
+  f.context.retry(); await Vue.nextTick()
+  assert.equal(calls[2].model, 'Qwen/Qwen2.5-7B-Instruct')
+  assert.deepEqual(calls[2].history, [{ message: '第一问', answer: '答复\n\n核对资料' }])
+  assert.equal(f.context.turns.value.length, 2)
+  assert.equal(f.context.turns.value.at(-1).reply.errorCode, undefined)
+  f.context.newConversation(); f.context.updateDraft('另一个会话')
+  f.context.selectModel('configured')
+  f.context.selectConversation(id)
+  assert.equal(f.context.selectedModelId.value, 'Qwen/Qwen2.5-7B-Instruct')
+  assert.equal(readHistory(f.store, 1).drafts.find(draft => draft.id === id).model, 'Qwen/Qwen2.5-7B-Instruct')
+  f.unmount()
+})
+
+test('stopping an old request immediately releases send and its late result cannot erase the next pending turn', async () => {
+  const pending = []
+  const f = fixture(storage(), 1, false, { status: async () => modelStatus,
+    chat: (message, signal, onModel) => new Promise(resolve => pending.push({ message, signal, onModel, resolve })),
+  })
+  await Vue.nextTick()
+  f.context.updateDraft('原问题')
+  const first = f.context.send()
+  f.context.selectModel('Qwen/Qwen2.5-7B-Instruct')
+  assert.equal(f.context.selectedModelId.value, 'configured')
+  f.context.stopWaiting()
+  assert.equal(f.context.busy.value, false)
+  assert.equal(pending[0].signal.aborted, true)
+  assert.equal(f.context.draftText.value, '原问题')
+  f.context.selectModel('Qwen/Qwen2.5-7B-Instruct')
+  const second = f.context.send()
+  pending[0].onModel('stale')
+  pending[0].resolve({ ai: true, blocked: false, answer: '旧答案' })
+  await first
+  assert.equal(f.context.busy.value, true)
+  assert.equal(f.context.turns.value.length, 0)
+  pending[1].resolve({ ai: true, blocked: false, answer: '新答案' })
+  await second
+  assert.equal(f.context.busy.value, false)
+  assert.equal(f.context.turns.value[0].reply.answer, '新答案')
+  f.unmount()
+})
+
+test('verified local results are available for followups and long histories keep recent complete turns within the budget', async () => {
+  let sent
+  const f = fixture(storage(), 1, false, { status: async () => modelStatus,
+    chat: async (_message, _signal, _onModel, history) => { sent = history; return { ai: true, answer: '答复', blocked: false } },
+  })
+  await Vue.nextTick()
+  f.context.updateDraft('继续解释')
+  f.context.active.value.turns = [{ message: '当月查到几单', reply: { ai: false, blocked: false, contextEligible: true, answer: '本期没有工单' } }]
+  await f.context.send()
+  assert.equal(sent[0].answer, '本期没有工单')
+  f.context.active.value.turns = Array.from({ length: 4 }, (_, index) => ({
+    message: '问题' + index, reply: { ai: true, blocked: false, answer: '字'.repeat(8000) },
+  }))
+  f.context.updateDraft('继续'); await f.context.send()
+  assert.ok(sent.reduce((total, turn) => total + turn.message.length + turn.answer.length, 0) <= 16000)
+  assert.equal(sent.at(-1).message, '问题3')
+  f.unmount()
 })
