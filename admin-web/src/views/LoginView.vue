@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { httpClient,authSession } from '@/shared/http/client'
 import {unifiedLogin,consumeHandoff} from '@/shared/auth/account-login'
 import { ElButton, ElCard, ElForm, ElFormItem, ElInput, ElAlert } from 'element-plus'
-import engineeringExploded from '@/assets/e-scooter-exploded-login.webp'
+import showcaseArtwork from '@/assets/login-showcase.png'
 import batteryArtwork from '@/assets/login-battery.png'
 import gearArtwork from '@/assets/login-gear.png'
 import wrenchArtwork from '@/assets/login-wrench.png'
@@ -23,42 +23,56 @@ onMounted(async()=>{try{if(await consumeHandoff(httpClient,authSession))await ro
 
 <template>
   <main class="login-page">
-    <div class="login-decorations" aria-hidden="true">
-      <div class="metal-gears">
+    <div class="login-stage">
+      <div class="login-illustration">
+        <p class="login-kicker">电动车保险协作</p>
+        <div class="login-copy">
+          <span class="brand-caption">e保 / 保险协作台</span>
+          <h1>让案件处理<br>清晰、有序。</h1>
+          <p>衔接核损、维修与交付。</p>
+        </div>
+      </div>
+      <div class="login-scene" aria-hidden="true">
+        <img class="showcase-artwork" :src="showcaseArtwork" alt="" width="1586" height="992" fetchpriority="high">
         <img class="gear-rotor" :src="gearArtwork" alt="" width="1254" height="1254">
         <img class="gear-satellite" :src="gearArtwork" alt="" width="1254" height="1254">
         <img class="metal-wrench" :src="wrenchArtwork" alt="" width="2172" height="724">
+        <div class="metal-battery">
+          <img :src="batteryArtwork" alt="" width="1774" height="887">
+          <svg class="battery-charge" viewBox="0 0 1774 887">
+            <rect class="battery-cell charge-one" x="348" y="270" width="146" height="382" rx="28"/>
+            <rect class="battery-cell charge-two" x="540" y="270" width="146" height="382" rx="28"/>
+            <rect class="battery-cell charge-three" x="732" y="270" width="146" height="382" rx="28"/>
+            <rect class="battery-cell charge-four" x="924" y="270" width="146" height="382" rx="28"/>
+            <rect class="battery-cell charge-five" x="1116" y="270" width="146" height="382" rx="28"/>
+          </svg>
+        </div>
       </div>
-      <div class="metal-battery">
-        <img :src="batteryArtwork" alt="" width="1774" height="887">
-        <svg class="battery-charge" viewBox="0 0 1774 887">
-          <rect class="battery-cell charge-one" x="348" y="270" width="146" height="382" rx="28"/>
-          <rect class="battery-cell charge-two" x="540" y="270" width="146" height="382" rx="28"/>
-          <rect class="battery-cell charge-three" x="732" y="270" width="146" height="382" rx="28"/>
-          <rect class="battery-cell charge-four" x="924" y="270" width="146" height="382" rx="28"/>
-          <rect class="battery-cell charge-five" x="1116" y="270" width="146" height="382" rx="28"/>
-        </svg>
-      </div>
+      <ElCard class="login-card" :class="{ 'has-error': error }" shadow="never">
+        <span class="login-kicker">客服 / 管理员</span>
+        <h2>统一登录</h2>
+        <p>统一账号密码登录，按后台授权进入管理端或移动端。受邀账号请先打开工作人员发来的开通链接。</p>
+        <ElAlert v-if="error" :title="error" type="error" :closable="false" role="alert" />
+        <ElForm label-position="top" @submit.prevent="login">
+          <ElFormItem label="账号"><ElInput v-model="username" aria-label="账号" autocomplete="username" maxlength="64" /></ElFormItem>
+          <ElFormItem label="密码"><ElInput v-model="password" aria-label="密码" type="password" autocomplete="current-password" show-password /></ElFormItem>
+          <ElButton class="login-submit" type="primary" native-type="submit" :loading="loading">登录工作台</ElButton>
+        </ElForm>
+      </ElCard>
     </div>
-    <div class="login-illustration"><p class="login-kicker">电动车保险协作</p><div class="login-copy"><span class="brand-caption">e保 / 保险协作台</span><h1>让案件处理<br/>清晰、有序。</h1><p>衔接核损、维修与交付。</p></div><img class="engineering-blueprint engineering-exploded" :src="engineeringExploded" alt="" aria-hidden="true"></div><ElCard class="login-card" shadow="never">
-    <span class="login-kicker">客服 / 管理员</span><h2>统一登录</h2><p>统一账号密码登录，按后台授权进入管理端或移动端。受邀账号请先打开工作人员发来的开通链接。</p>
-    <ElAlert v-if="error" :title="error" type="error" :closable="false" role="alert" />
-    <ElForm label-position="top" @submit.prevent="login">
-      <ElFormItem label="账号"><ElInput v-model="username" aria-label="账号" autocomplete="username" maxlength="64" /></ElFormItem>
-      <ElFormItem label="密码"><ElInput v-model="password" aria-label="密码" type="password" autocomplete="current-password" show-password /></ElFormItem>
-      <ElButton class="login-submit" type="primary" native-type="submit" :loading="loading">登录工作台</ElButton>
-    </ElForm>
-  </ElCard></main>
+  </main>
 </template>
 <style scoped>
-.login-page{position:relative;isolation:isolate;display:grid;grid-template-columns:minmax(0,1.18fr) minmax(380px,.82fr);min-height:100dvh;background:linear-gradient(115deg,var(--color-canvas),#fffefa)}
-.login-decorations{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:1}
-.metal-gears{position:absolute;left:calc(59% - 208px);top:28px;width:184px;height:148px;opacity:.62}
-.metal-gears>.gear-rotor,.metal-gears>.gear-satellite{position:absolute;width:108px;height:108px;transform-origin:50% 50%}
-.gear-rotor{left:0;top:0;animation:engineering-turn 28s linear infinite}
-.gear-satellite{left:78px;top:42px;animation:engineering-turn 28s linear infinite reverse;animation-delay:-1.5s}
-.metal-wrench{position:absolute;z-index:1;left:108px;top:63px;width:230px;height:auto;transform:rotate(-30deg);transform-origin:24px 33px}
-.metal-battery{position:absolute;right:calc(20.5% - 130px);bottom:26px;width:260px;aspect-ratio:2;opacity:.76}
+.login-page{min-height:100dvh;display:grid;place-items:center;background:#eee9e2}
+.login-stage{position:relative;isolation:isolate;container-type:inline-size;width:min(100%,max(1088px,160dvh));min-height:680px;aspect-ratio:8/5}
+.login-scene{position:absolute;inset:0;z-index:-1;pointer-events:none}
+.showcase-artwork{display:block;width:100%;height:100%}
+.gear-rotor,.gear-satellite,.metal-wrench,.metal-battery{position:absolute;height:auto}
+.gear-rotor,.gear-satellite{width:7%;filter:drop-shadow(0 3px 3px #443a2c45)}
+.gear-rotor{left:43.8%;top:6.9%;animation:engineering-turn 28s linear infinite}
+.gear-satellite{left:49.1%;top:11.1%;animation:engineering-turn 28s linear infinite reverse;animation-delay:-1.5s}
+.metal-wrench{left:51.5%;top:14.3%;width:13.6%;transform:rotate(-30deg);transform-origin:10.4% 43%;filter:drop-shadow(0 3px 3px #443a2c36)}
+.metal-battery{left:70.6%;top:79.7%;width:18%;aspect-ratio:2;filter:drop-shadow(0 3px 3px #443a2c40)}
 .metal-battery img{display:block;width:100%;height:auto}
 .battery-charge{position:absolute;inset:0;width:100%;height:100%;mix-blend-mode:multiply}
 .battery-cell{fill:#729d89;opacity:.06;animation:engineering-charge-one 8s ease-in-out infinite}
@@ -69,31 +83,46 @@ onMounted(async()=>{try{if(await consumeHandoff(httpClient,authSession))await ro
 @keyframes engineering-charge-three{0%,18%,82%,100%{opacity:.06}27%,73%{opacity:.65}}
 @keyframes engineering-charge-four{0%,27%,73%,100%{opacity:.06}36%,64%{opacity:.65}}
 @keyframes engineering-charge-five{0%,36%,64%,100%{opacity:.06}45%,55%{opacity:.65}}
-.login-illustration{position:relative;display:flex;flex-direction:column;min-height:640px;overflow:hidden;padding:44px 6vw;background-image:radial-gradient(ellipse at 70% 60%,#ffffff9c,transparent 65%)}
-.login-illustration::before{position:absolute;inset:0;border-right:1px solid #e0dcd380;content:'';pointer-events:none}
-.login-copy{position:relative;z-index:1;max-width:570px;margin-top:60px}
-.login-illustration h1{margin:18px 0;font-size:clamp(32px,3.5vw,50px);font-weight:600;line-height:1.25;letter-spacing:-.03em}
-.login-illustration p{max-width:450px;font-size:14px}
-.engineering-blueprint{position:absolute;right:3%;bottom:12px;width:94%;height:50%;object-fit:contain;filter:grayscale(1) contrast(.9);opacity:.64;animation:blueprint-arrive 500ms var(--motion-fluid) both;pointer-events:none}
-.brand-caption,.login-kicker{position:relative;z-index:1;color:var(--color-text-secondary);font-size:12px;font-weight:500;letter-spacing:.06em}
-.login-illustration>.login-kicker{color:var(--color-accent);font-size:13px;font-weight:600}
-.login-card{position:relative;z-index:2;align-self:center;justify-self:center;width:min(420px,calc(100% - 48px));margin:32px 0;border:1px solid #ffffffed;border-radius:16px;background:var(--glass-context);box-shadow:inset 0 1px 0 #fff,var(--shadow-floating);backdrop-filter:blur(18px) saturate(.85);animation:form-arrive 260ms var(--motion-fluid) both}
-.login-card :deep(.el-card__body){padding:32px}
-.login-card h2{margin:12px 0 8px;font-size:27px;font-weight:600;letter-spacing:-.02em}
-.login-card p{margin-bottom:26px;font-size:13px}
-.login-card .el-form{margin-top:20px}.login-card :deep(.el-form-item){margin-bottom:22px}
-.login-card :deep(.el-input__wrapper){min-height:42px}.login-submit{width:100%;height:42px;margin-top:6px}
-@keyframes blueprint-arrive{from{opacity:0;transform:translate3d(0,8px,0)}to{opacity:.64;transform:translate3d(0,0,0)}}
+.login-illustration{position:absolute;top:4.8%;left:6%;width:40%}
+.login-illustration>.login-kicker{margin:0;color:var(--color-accent);font-size:13px;font-weight:600}
+.login-copy{margin-top:clamp(48px,4.7cqw,76px)}
+.brand-caption,.login-kicker{color:var(--color-text-secondary);font-size:12px;font-weight:500;letter-spacing:.06em}
+.login-illustration h1{margin:18px 0;font-size:clamp(36px,3.5cqw,56px);font-weight:600;line-height:1.25;letter-spacing:-.03em}
+.login-illustration .login-copy p{margin:0;font-size:14px}
+.login-card{position:relative;margin:0 0 0 64.7%;top:25.7%;width:29.5%;border:1px solid #ffffffb3;border-radius:18px;background:rgba(255,252,247,.9);box-shadow:0 16px 28px #443a2c26,inset 0 1px 0 #fff;backdrop-filter:blur(18px) saturate(.85);animation:form-arrive 260ms var(--motion-fluid) both}
+.login-card :deep(.el-card__body){padding:clamp(24px,2.4cqw,38px)}
+.login-card h2{margin:12px 0 8px;font-size:clamp(26px,2.1cqw,34px);font-weight:600;letter-spacing:-.02em}
+.login-card p{margin:0 0 20px;font-size:13px;line-height:1.65}
+.login-card .el-form{margin-top:16px}.login-card :deep(.el-form-item){margin-bottom:20px}
+.login-card :deep(.el-input__wrapper){min-height:42px;background:#fffefe}
+.login-submit{width:100%;height:42px;margin-top:6px}
+.login-card :deep(.el-alert){margin-bottom:16px}
 @keyframes form-arrive{from{opacity:0;transform:translate3d(0,6px,0)}to{opacity:1;transform:translate3d(0,0,0)}}
-@media(min-width:851px) and (max-height:700px){.login-copy{margin-top:36px}}
-@media(min-width:851px) and (max-height:820px){.metal-battery{bottom:10px;width:220px;right:calc(20.5% - 110px)}}
-@media(min-width:851px) and (max-height:760px){.login-card :deep(.el-card__body){padding:24px}.login-card p{margin-bottom:20px}.login-card .el-form{margin-top:16px}.login-card :deep(.el-form-item){margin-bottom:16px}}
-@media(min-width:851px) and (max-height:700px){.metal-battery{bottom:0;width:180px;right:calc(20.5% - 90px)}}
-@media(max-width:1050px){.metal-gears{left:calc(59% - 174px);width:150px;transform:scale(.8);transform-origin:top left}}
-@media(max-width:850px){.metal-gears{display:none}.metal-battery{top:12px;right:20px;bottom:auto;width:150px}}
-@media(max-width:850px){.login-page{grid-template-columns:1fr}.login-illustration{min-height:330px;padding:28px}.login-copy{max-width:70%;margin-top:30px}.login-illustration h1{font-size:30px}.engineering-blueprint{right:0;bottom:8px;width:55%;height:65%;opacity:.25;animation:none}.login-card{width:min(480px,calc(100% - 40px));margin:24px 0 40px}}
-@media(max-width:440px){.login-illustration{min-height:300px}.login-copy{max-width:100%}.engineering-blueprint{width:65%;opacity:.13}.login-card :deep(.el-card__body){padding:24px}}
+@media(min-width:1089px){
+@container (max-width:1350px){
+.login-card{top:24%}.login-card.has-error{top:18%}
+.login-card :deep(.el-card__body){padding:24px}.login-card h2{font-size:26px;margin-top:10px}
+.login-card p{margin-bottom:14px}.login-card .el-form{margin-top:12px}
+.login-card :deep(.el-form-item){margin-bottom:14px}
+.login-card :deep(.el-input__wrapper){min-height:40px}.login-submit{height:40px}
+}
+}
+@media(max-width:1088px){
+.login-page{background:var(--color-canvas)}
+.login-stage{width:100%;min-height:100dvh;aspect-ratio:auto;padding:0 0 32px}
+.login-scene{position:relative;aspect-ratio:8/5}
+.login-illustration{position:relative;top:auto;left:auto;width:100%;padding:24px 6%}
+.login-copy{margin-top:5vw}.login-illustration h1{font-size:clamp(24px,4.5vw,40px);margin:12px 0}
+.login-card{top:auto;width:min(480px,calc(100% - 40px));margin:24px auto 0}
+.login-card :deep(.el-card__body){padding:28px}
+}
+@media(max-width:540px){
+.login-illustration{padding:20px 24px 16px}
+.login-copy{margin-top:16px}.brand-caption{font-size:11px}
+.login-illustration h1{font-size:28px;margin:10px 0}.login-illustration .login-copy p{font-size:12px}
+.login-card{margin-top:16px}.login-card :deep(.el-card__body){padding:24px}
+}
 @media(prefers-reduced-transparency:reduce){.login-card{background:#fffefa;backdrop-filter:none}}
 @supports not (backdrop-filter:blur(1px)){.login-card{background:#fffefa}}
-@media(prefers-reduced-motion:reduce){.login-page *{animation:none}.battery-cell{opacity:.4}}
+@media(prefers-reduced-motion:reduce){.login-card,.gear-rotor,.gear-satellite,.battery-cell{animation:none}.battery-cell{opacity:.4}}
 </style>

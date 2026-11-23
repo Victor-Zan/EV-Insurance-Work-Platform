@@ -58,7 +58,7 @@ test('design refinement retains engineering artwork, layered glass and safe moti
   const magnetic = source('../src/shared/ui/magnetic.ts')
   const css = source('../src/styles.css')
   assert.match(shell, /e-scooter-graphite\.png/)
-  assert.match(login, /e-scooter-exploded-login\.webp/)
+  assert.match(login, /login-showcase\.png/)
   assert.match(home, /e-scooter-parts-empty\.webp/)
   assert.match(app, /Transition name="page-shift"/)
   assert.match(css, /backdrop-filter:blur\(18px\)/)
