@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.evinsurance.platform.integration.map.WorkshopDirectoryMapper">
+  <sql id="source">
+    FROM repair_shop s JOIN region d ON d.level=3 AND d.enabled AND s.address LIKE ('广东省深圳市'||d.name||'%')
+    JOIN region c ON c.id=d.parent_id AND c.code='440300' AND c.enabled
+    WHERE s.code LIKE 'AMAP-%'
+  </sql>
+  <sql id="filter">
+    <if test="district != null">AND d.id=#{district}</if>
+    <if test="query != ''">AND strpos(lower(s.name||' '||coalesce(s.address,'')||' '||coalesce(s.contact_phone,'')),lower(#{query}))&gt;0</if>
+  </sql>
+  <select id="count" resultType="long">SELECT count(*) <include refid="source"/><include refid="filter"/></select>
+  <select id="rows" resultType="com.evinsurance.platform.integration.map.WorkshopDirectoryService$Entry">
+    SELECT s.id,s.name,s.address,s.contact_phone,d.id AS district_id,d.name AS district
+    <include refid="source"/><include refid="filter"/> ORDER BY s.name,s.id LIMIT #{size} OFFSET #{offset}
+  </select>
+  <select id="find" resultType="com.evinsurance.platform.integration.map.WorkshopDirectoryService$Entry">
+    SELECT s.id,s.name,s.address,s.contact_phone,d.id AS district_id,d.name AS district
+    <include refid="source"/> AND s.id=#{id}
+  </select>
+  <select id="lock" resultType="com.evinsurance.platform.integration.map.WorkshopDirectoryService$Entry">
+    SELECT s.id,s.name,s.address,s.contact_phone,d.id AS district_id,d.name AS district
+    <include refid="source"/> AND s.id=#{id} FOR UPDATE OF s
+  </select>
+</mapper>

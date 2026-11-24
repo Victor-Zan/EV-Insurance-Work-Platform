@@ -39,4 +39,7 @@ Desktop.ini
 # Runtime data
 logs/
 tmp/
+/output/
+**/__pycache__/
+*.pyc
 /local-validation/
