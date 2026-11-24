@@ -2984,3 +2984,9 @@ API用providerManaged=true和remaining=null表达本地不设累计上限、供�
 - 首先用合成样本复现旧逻辑失败，再运行 Java 21 的 Maven verify -Ppostgres-it -Dit.test=SamplePostgresIT，156 项单元测试、8 项价格数据库测试、Flyway 校验和构建通过。覆盖列优先级、地区留空、确认入库、两类报价及重放去重。管理端 npm.cmd run lint、npm.cmd run typecheck、npm.cmd test（309 项）、npm.cmd run build 通过。日志位于 tmp/price-region-verify.log 和 tmp/price-region-admin-*.log。
 - 本地 8080 备份后换包，49 份迁移 SQL 摘要一致。用原表经 5173 只读预览确认 97 行全部为东莞，156 条重复报价、19 行跳过。重复报价来自历史归档，核对当前 156 条地区均为东莞。未确认导入原表。运行备份清单及前后预览汇总在 Git 忽略的 tmp/price-region-runtime-install.json 和 tmp/price-region-preview-*.json。
 - H5、Docker Compose 及数据库结构无本阶段改动，沿用此前验证。分支内分开提交权限和价格修复，依用户授权合并并推送 main。正式发布由用户在 GitHub Actions 手动触发。
+
+## 2026-11-25 正式发布作业超时
+
+- GitHub Actions 运行 45399191200 的两次尝试均通过后端、管理端与 H5 检查和构建，约 86 MB 的产物已保存到 Actions。随后都在经 SSH 上传至正式服务器时触发 35 分钟的作业时限。修复前线上版本接口仍返回 bf6f838。
+- 将作业时限延长到 90 分钟，为构建和低速上传留出时间，并记录上传包大小、包校验和正式发布阶段。继续使用既有受限 SSH、包完整性校验及发布健康检查。
+- 本地验证通过 9 项发布与回滚测试，5 段 Bash 脚本均通过 `bash -n`。推送后在 main 上重新发起发布，以 Actions 成功、线上版本与提交一致及 API 健康检查为验收条件。

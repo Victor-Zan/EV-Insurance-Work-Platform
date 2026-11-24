@@ -19,7 +19,8 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    # The production SSH upload alone can take over 25 minutes after the build.
+    timeout-minutes: 90
     services:
       postgres:
         image: postgres:17-alpine
@@ -138,9 +139,14 @@ jobs:
           remote=ev-deploy@106.55.251.21
           case "$OPERATION" in
             deploy|check)
+              printf 'Uploading release to production (%s bytes)\n' "$(stat -c %s output/release.tar.gz)"
               ssh "${ssh_args[@]}" "$remote" "upload $GITHUB_SHA" < output/release.tar.gz
+              printf 'Validating the uploaded release\n'
               ssh "${ssh_args[@]}" "$remote" "check $GITHUB_SHA"
-              if test "$OPERATION" = deploy; then ssh "${ssh_args[@]}" "$remote" "publish $GITHUB_SHA"; fi
+              if test "$OPERATION" = deploy; then
+                printf 'Publishing the validated release and checking production health\n'
+                ssh "${ssh_args[@]}" "$remote" "publish $GITHUB_SHA"
+              fi
               ;;
             status) ssh "${ssh_args[@]}" "$remote" status ;;
             rollback) ssh "${ssh_args[@]}" "$remote" "rollback previous" ;;
