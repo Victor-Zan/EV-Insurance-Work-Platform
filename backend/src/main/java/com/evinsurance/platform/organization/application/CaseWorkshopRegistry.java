@@ -54,6 +54,9 @@ public class CaseWorkshopRegistry {
         });
     }
     public void finish(UUID id,boolean success){tx.executeWithoutResult(status->db.update("UPDATE public_workshop_operation SET status=? WHERE id=? AND actor_id=? AND status='RUNNING'",success?"READY":"FAILED",id,CurrentUser.require().id()));}
+    public void completeDirectory(UUID id,long shopId){
+        if(db.update("UPDATE public_workshop_operation SET status='READY',result_shop_id=? WHERE id=? AND actor_id=? AND status='RUNNING'",shopId,id,CurrentUser.require().id())!=1)throw ApiException.conflict("IDEMPOTENCY_CONFLICT","本次选店派单结果保存失败");
+    }
     public record TemporaryShop(long shopId,String name,String address,UUID caseId,String notice){}
     public TemporaryShop create(UUID caseId,long version,long accidentRegion,String name,String address,String source,String identity,String key){
         return tx.execute(status->{
@@ -66,6 +69,9 @@ public class CaseWorkshopRegistry {
             Long district=db.queryForObject("SELECT count(*) FROM region r JOIN region c ON c.id=r.parent_id JOIN region p ON p.id=c.parent_id WHERE r.id=? AND r.level=3 AND c.level=2 AND p.code='440000' AND r.enabled AND c.enabled AND p.enabled",Long.class,accidentRegion);
             if(district==null||district!=1)throw ApiException.invalid("请先核实启用的广东事故服务区县");
             var existing=db.queryForList("SELECT shop_id FROM case_workshop_binding WHERE work_order_id=? AND identity_hash=?",Long.class,caseId,identity);
+            // A prior public-map confirmation and a directory confirmation may describe
+            // the same case-bound shop using different source identities. Reuse it.
+            if(existing.isEmpty())existing=db.queryForList("SELECT s.id FROM repair_shop s JOIN case_workshop_binding b ON b.shop_id=s.id WHERE b.work_order_id=? AND b.accident_region_id=? AND s.enabled AND lower(btrim(s.name))=lower(?) AND lower(btrim(s.address))=lower(?) ORDER BY s.id LIMIT 1",Long.class,caseId,accidentRegion,"【临时／仅本案】"+name,address);
             long shopId;
             if(!existing.isEmpty())shopId=existing.getFirst();
             else{

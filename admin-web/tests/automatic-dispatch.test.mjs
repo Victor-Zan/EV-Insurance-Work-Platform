@@ -20,6 +20,7 @@ function mount(t,post,options={}){
  code=code.replace(/import\s*\{\s*ApiError\s*\}\s*from[^\n]+/g,'class ApiError extends Error{}')
  code=code.replace(/import\s*\{\s*mapStatus\s*\}\s*from[^\n]+/g,'const mapStatus=x=>x;')
  code=code.replace(/import\s+AmapLocationMap\s+from[^\n]+/g,'const AmapLocationMap={};').replace('export default','return')
+ code=code.replace(/import\s+DirectoryDispatchPanel\s+from[^\n]+/g,'const DirectoryDispatchPanel={};')
  const component=new Function('Vue','client',code)(Vue,client);component.render=()=>null
  const renderer=Vue.createRenderer({createComment:()=>({}),insert(){},remove(){},parentNode:()=>null,nextSibling:()=>null})
  const props=Vue.reactive({caseId:'synthetic-case',simulationDestinations:options.simulationDestinations??false,order:{version:1,status:'PENDING_DISPATCH',accidentAddress:'广州市天河区测试入口10号',...options.order}})

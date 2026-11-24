@@ -2945,3 +2945,19 @@ API用providerManaged=true和remaining=null表达本地不设累计上限、供�
 - `npm.cmd run lint`、`npm.cmd run typecheck`、`npm.cmd test`（296 项通过，零跳过）、`npm.cmd run build` 通过；随后新增两项 watchdog 用例，`node --test tests/startup.test.mjs`（6 项）和 lint 通过。`git diff --check` 通过。测试及构建日志位于 tmp/startup-tests.log、tmp/startup-build.log；构建保留既有大包提示。
 - 浏览器使用生产 dist 验证正常打开、背景图延迟 20 秒停在 83%、图片 503 保留错误遮罩、恢复后点击重新加载成功，以及 390×844 布局。截图和限制见 docs/design/startup-bearing/README.md。超时由模拟计时器测试，减少动态效果、真实登录交接、已登录业务页和部署环境尚未浏览器验证。
 - 新增透明轴承素材约 117 KiB，无新增依赖。保留本轮开始前 docs/PROGRESS.md 的未提交内容。本阶段实现及本地验证完成，未提交、推送或部署。
+
+## 2026-11-24 远端发布通道（实现与验证中）
+- 用户授权队友 Victor-Zan 从 main 远端发布。仓库内已合并线上网点目录、派单缺项及双地图会话补丁，保留9510426的新登录页。既有两处集成样例的时间隔离调整一并保留，未弱化断言。
+- 新增手动GitHub工作流与仅接受发布命令的SSH网关、归档/摘要/数据库迁移一致性校验、发布备份和恢复逻辑。现有生产密钥不进入发布包。结构迁移变化的版本拒绝自动切换，需另行演练。
+- 本地9项发布边界与恢复测试通过。服务器安装因新增持久账号、SSH密钥及受限sudo入口被自动审批拦截，已请求用户对具体权限配置明确确认；未执行该项变更。其余代码检查继续进行。
+
+- 用户随后明确同意新增ev-deploy、发布SSH密钥及受限sudo。服务器安装完成，status命令成功，任意id命令拒绝；生产服务暂未切换。发布目录独立放在/var/lib/ev-insurance-deployment，原有私有数据目录权限保持不变。
+
+- 首次完整GitHub检查中155项单元测试通过；209项集成测试的22个错误来自默认连接池累积超过测试PostgreSQL连接上限，零断言失败。工作流补充与原隔离环境一致的Hikari最大5/最小空闲0配置，保留全部测试并重跑。正式数据库与生产服务无变更。
+
+## 2026-11-24 保存本地改动并合并远端 main（完成）
+
+- 按用户要求，将管理端与 H5 加载页、素材、测试及已有文档改动共 21 个文件保存为本地提交 6879541，再执行 git pull --no-rebase --no-edit origin main，合入远端截至 bf6f838 的 4 个提交。
+- 仅 docs/PROGRESS.md 末尾追加记录发生冲突，按时间顺序保留本地加载页记录和远端发布通道记录；docs/REQUIREMENTS.md 自动合并。逐项核对本地 19 个、远端 23 个非冲突文件与对应提交一致，并验证两份文档完整保留两侧原有内容及顺序，未残留冲突标记。
+- 验证：管理端及 H5 的 npm.cmd run lint、npm.cmd run typecheck、npm.cmd test、npm.cmd run build 全部通过；管理端 304 项、H5 74 项测试，零失败、零跳过。git diff --check 通过；日志位于 tmp/pull-merge-admin-web-*.log 和 tmp/pull-merge-h5-web-*.log。管理端构建保留大包体积提示。
+- 本次为本地保存与合并，未额外修改业务代码。后端 Maven、集成测试、Flyway、Docker 和浏览器交互未在本轮验证；需要在相应运行环境另行检查。不推送远端、不部署，不进入下一阶段。

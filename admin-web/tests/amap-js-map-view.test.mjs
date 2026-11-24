@@ -17,7 +17,8 @@ function setup(overrides={}){
  code=code.replace(/import\s*\{[^}]+\}\s*from\s*['"]\.\/amap-js['"];?/g,'const {loadAmapJs,pointFromEvent}=__map;').replace('export default','return')
  const component=new Function('__vue','__client','__map','window','document','fetch',code)({...Vue,onMounted:fn=>{hooks.mount=fn},onUnmounted:fn=>{hooks.unmount=fn}},client,{pointFromEvent,loadAmapJs:async()=>{sdkCalls++;return sdk?sdk():{Map,Marker}}},{location:{origin:'http://localhost:5210'}},{createElement:()=>({setAttribute(){}})},async(...args)=>{fetches.push(args)})
  const props=Vue.reactive({disabled:false,...overrides}),scope=Vue.effectScope(),state=scope.run(()=>component.setup(props,{expose(){},emit:(...e)=>events.push(e)}));state.host.value={}
- return {events,requests,maps,fetches,hooks,props,scope,state,sdkCalls:()=>sdkCalls,setBootstrap:fn=>{bootstrap=fn},setSdk:fn=>{sdk=fn}}
+ function another(overrides={}){const saved={...hooks},otherScope=Vue.effectScope(),otherProps=Vue.reactive({disabled:false,...overrides}),otherState=otherScope.run(()=>component.setup(otherProps,{expose(){},emit(){}}));otherState.host.value={};const otherHooks={...hooks};Object.assign(hooks,saved);return {scope:otherScope,state:otherState,hooks:otherHooks}}
+ return {another,events,requests,maps,fetches,hooks,props,scope,state,sdkCalls:()=>sdkCalls,setBootstrap:fn=>{bootstrap=fn},setSdk:fn=>{sdk=fn}}
 }
 test('mount only reads local config; explicit loading waits for complete and map clicks stay local',async t=>{
  const f=setup();t.after(()=>{f.hooks.unmount();f.scope.stop()});await f.hooks.mount();assert.equal(f.sdkCalls(),0);assert.equal(f.requests.filter(r=>r[0]==='post').length,0)
@@ -27,7 +28,7 @@ test('mount only reads local config; explicit loading waits for complete and map
  f.props.disabled=true;await Vue.nextTick();f.maps[0].events.click({lnglat:{getLng:()=>114,getLat:()=>24}});assert.equal(f.events.length,1)
 })
 test('leaving during bootstrap cannot initialize a late map and revokes its cookie without vendor calls',async()=>{
- const f=setup();let release;f.setBootstrap(()=>new Promise(resolve=>{release=resolve}));await f.hooks.mount();const loading=f.state.load();f.hooks.unmount();release({data:{data:{publicKey:'synthetic-public-key',servicePath:'/_AMapService'}}});await loading
+ const f=setup();let release;f.setBootstrap(()=>new Promise(resolve=>{release=resolve}));await f.hooks.mount();const loading=f.state.load();await new Promise(resolve=>setImmediate(resolve));assert.equal(typeof release,'function');f.hooks.unmount();release({data:{data:{publicKey:'synthetic-public-key',servicePath:'/_AMapService'}}});await loading
  assert.equal(f.sdkCalls(),0);assert.equal(f.maps.length,0);assert.deepEqual(f.fetches[0],[ '/_AMapService/session',{method:'DELETE',credentials:'same-origin',keepalive:true}]);f.scope.stop()
 })
 
@@ -43,7 +44,7 @@ test('explicit retry revokes the failed grant, preserves the point and recovers 
  assert.equal(f.state.state.value,'failed');assert.match(f.state.error.value,/脚本/);assert.equal(f.requests.filter(r=>r[0]==='post').length,1)
  const source=readFileSync(new URL('../src/features/materials/AmapLocationMap.vue',import.meta.url),'utf8')
  assert.doesNotMatch(source,/:disabled="[^"]*state==='failed'/);assert.match(source,/重新加载地图/)
- f.setSdk(undefined);await f.state.load();assert.equal(f.fetches.length,1);assert.equal(f.requests.filter(r=>r[0]==='post').length,2)
+ f.setSdk(undefined);await f.state.load();assert.equal(f.fetches.length,2);assert.equal(f.requests.filter(r=>r[0]==='post').length,2)
  f.maps[0].events.complete();assert.equal(f.state.state.value,'ready');assert.deepEqual(f.props.point,point)
 })
 
@@ -57,5 +58,16 @@ test('an old backend proxy is diagnosed before SDK requests and can recover afte
  const f=setup();t.after(()=>{f.hooks.unmount();f.scope.stop()})
  f.setBootstrap(async()=>({data:{data:{publicKey:'synthetic-public-key',servicePath:'/api/v1/maps/js-proxy'}}}))
  await f.hooks.mount();await f.state.load();assert.equal(f.sdkCalls(),0);assert.equal(f.state.state.value,'failed');assert.match(f.state.error.value,/前后端版本/)
- f.setBootstrap(undefined);await f.state.load();f.maps[0].events.complete();assert.equal(f.state.state.value,'ready');assert.equal(f.sdkCalls(),1);assert.equal(f.fetches.length,1)
+ f.setBootstrap(undefined);await f.state.load();f.maps[0].events.complete();assert.equal(f.state.state.value,'ready');assert.equal(f.sdkCalls(),1);assert.equal(f.fetches.length,2)
+})
+
+
+test('two maps share one bootstrap and releasing one does not invalidate the other map',async()=>{
+ const f=setup({autoLoad:true}),other=f.another({autoLoad:true})
+ await Promise.all([f.hooks.mount(),other.hooks.mount()])
+ assert.equal(f.requests.filter(r=>r[0]==='post').length,1)
+ assert.equal(f.fetches.length,1)
+ f.hooks.unmount();assert.equal(f.fetches.length,1)
+ other.hooks.unmount();await Vue.nextTick();assert.equal(f.fetches.length,2)
+ f.scope.stop();other.scope.stop()
 })

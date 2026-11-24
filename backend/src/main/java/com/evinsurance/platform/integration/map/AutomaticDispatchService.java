@@ -116,6 +116,12 @@ public class AutomaticDispatchService {
     }
     private Result expired(Plan p,String message){return new Result(p.id,"EXPIRED",message,p.address,p.source,locations.regionLabel(p.accidentDistrict),locations.regionLabel(p.parkingDistrict),p.location,null,null,p.expires,p.approximate,p.simulation);}
     private Plan owned(UUID caseId,UUID id){var actor=access();var p=plans.get(id);if(p==null||p.actor!=actor.id()||!p.caseId.equals(caseId))throw ApiException.missing("Automatic dispatch plan");return p;}
+    record DirectoryContext(long version,long accidentDistrict,long parkingDistrict,MapProvider.AddressCandidate location,String accidentAddress,boolean approximate){}
+    DirectoryContext directoryContext(UUID caseId,UUID id){
+        var p=owned(caseId,id);ensureCurrent(p);
+        if(p.simulation||p.location==null||p.location.mock()||!p.expires.isAfter(Instant.now()))throw ApiException.conflict("MAP_PLAN_NOT_READY","请先核对并定位接车位置；过期后须重新定位");
+        return new DirectoryContext(p.version,p.accidentDistrict,p.parkingDistrict,p.location,p.accidentAddress,p.approximate);
+    }
     private void ensureCurrent(Plan p){
         var order=order(p.caseId);
         if(order.version()!=p.version||!store.current(p.actor,p.caseId,p.id))throw ApiException.conflict("MAP_PLAN_CHANGED","案件或接车地址已变化，本次旧结果不可使用");
