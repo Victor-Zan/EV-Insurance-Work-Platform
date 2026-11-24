@@ -1,0 +1,148 @@
+name: Remote production deployment
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('Production {0} · {1}', inputs.operation, github.actor) || 'Validate deployment changes' }}
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "deploy=发布 main；check=只验证上传包；status=当前版本；rollback=回退上一版"
+        type: choice
+        required: true
+        default: deploy
+        options: [deploy, check, status, rollback]
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.event_name == 'workflow_dispatch' && 'ev-insurance-production' || github.run_id }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: release_validation
+          POSTGRES_PASSWORD: validation-only-not-production
+          POSTGRES_DB: release_validation
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U release_validation -d release_validation"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+    env:
+      DO_BUILD: ${{ github.event_name == 'pull_request' || inputs.operation == 'deploy' || inputs.operation == 'check' }}
+      BIGMODEL_API_KEY: ""
+      SILICONFLOW_API_KEY: ""
+      MAP_PROVIDER: MOCK_V1
+      OCR_PROVIDER: MOCK_V1
+      TEST_DB_URL: jdbc:postgresql://127.0.0.1:5432/release_validation
+      TEST_DB_USERNAME: release_validation
+      TEST_DB_PASSWORD: validation-only-not-production
+      TEST_MINIO_ENDPOINT: http://127.0.0.1:19000
+      TEST_MINIO_ACCESS_KEY: release-validation
+      TEST_MINIO_SECRET_KEY: synthetic-validation-password
+      TEST_MINIO_BUCKET: release-validation
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Restrict production requests to main and approved operators
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          ACTOR: ${{ github.actor }}
+          REF: ${{ github.ref }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          test "$REF" = refs/heads/main
+          test "$REPOSITORY" = Victor-Zan/EV-Insurance-Work-Platform
+          case "$ACTOR" in Victor-Zan|xuerui522-lab) ;; *) echo "此账号尚未列入发布操作员"; exit 1;; esac
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: env.DO_BUILD == 'true'
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: |
+            admin-web/package-lock.json
+            h5-web/package-lock.json
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        if: env.DO_BUILD == 'true'
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Validate release boundary and rollback behavior
+        if: env.DO_BUILD == 'true'
+        run: python3 -m unittest discover -s ops/deployment/tests -v
+      - name: Start isolated object storage
+        if: env.DO_BUILD == 'true'
+        run: |
+          docker run --name release-minio --detach --user 0:0 --tmpfs /data -p 19000:9000 \
+            -e MINIO_ROOT_USER="$TEST_MINIO_ACCESS_KEY" -e MINIO_ROOT_PASSWORD="$TEST_MINIO_SECRET_KEY" \
+            cgr.dev/chainguard/minio:latest server /data
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:19000/minio/health/ready >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          exit 1
+      - name: Backend tests, database integration and package
+        if: env.DO_BUILD == 'true'
+        working-directory: backend
+        run: bash ./mvnw -B -ntp verify -Ppostgres-it
+      - name: Management website checks and build
+        if: env.DO_BUILD == 'true'
+        working-directory: admin-web
+        run: |
+          npm ci
+          npm run lint
+          npm run typecheck
+          npm test
+          npm run build
+      - name: Mobile website checks and build
+        if: env.DO_BUILD == 'true'
+        working-directory: h5-web
+        run: |
+          npm ci
+          npm run lint
+          npm run typecheck
+          npm test
+          npm run build
+      - name: Package verified release
+        if: env.DO_BUILD == 'true'
+        run: python3 ops/deployment/package_release.py --commit "$GITHUB_SHA" --output output/release.tar.gz
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: env.DO_BUILD == 'true' && github.event_name == 'workflow_dispatch'
+        with:
+          name: release-${{ github.sha }}
+          path: output/release.tar.gz
+          retention-days: 3
+          if-no-files-found: error
+      - name: Upload and execute the restricted server operation
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          DEPLOY_KEY: ${{ secrets.EV_DEPLOY_SSH_KEY }}
+          OPERATION: ${{ inputs.operation }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY" || { echo "尚未配置 EV_DEPLOY_SSH_KEY"; exit 1; }
+          key="$RUNNER_TEMP/ev-deploy-key"
+          trap 'rm -f "$key"' EXIT
+          umask 077
+          printf '%s\n' "$DEPLOY_KEY" > "$key"
+          unset DEPLOY_KEY
+          ssh_args=(-T -i "$key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=ops/deployment/known_hosts)
+          remote=ev-deploy@106.55.251.21
+          case "$OPERATION" in
+            deploy|check)
+              ssh "${ssh_args[@]}" "$remote" "upload $GITHUB_SHA" < output/release.tar.gz
+              ssh "${ssh_args[@]}" "$remote" "check $GITHUB_SHA"
+              if test "$OPERATION" = deploy; then ssh "${ssh_args[@]}" "$remote" "publish $GITHUB_SHA"; fi
+              ;;
+            status) ssh "${ssh_args[@]}" "$remote" status ;;
+            rollback) ssh "${ssh_args[@]}" "$remote" "rollback previous" ;;
+            *) exit 1 ;;
+          esac
+          ssh "${ssh_args[@]}" "$remote" status
+          printf '操作：%s\n\n平台：https://106.55.251.21/login\n\n提交：%s\n' "$OPERATION" "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"

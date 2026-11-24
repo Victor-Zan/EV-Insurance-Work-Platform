@@ -4,6 +4,7 @@ import {ElMessageBox} from 'element-plus'
 import {httpClient,currentUser} from '@/shared/http/client'
 import {ApiError} from '@/shared/http/create-client'
 import AmapLocationMap from '../materials/AmapLocationMap.vue'
+import DirectoryDispatchPanel from './DirectoryDispatchPanel.vue'
 import {mapStatus} from '../materials/map-recommendation'
 import type {WorkOrder} from './work-orders'
 
@@ -16,7 +17,7 @@ interface Plan {id:string;status:string;message:string;inputAddress:string;sourc
 interface Draft {address:string;corrected:boolean;point?:Point;selected?:number;planId?:string;requestKey:string;expires:number}
 const base=computed(()=>`/maps/cases/${props.caseId}/automatic-dispatch`)
 const storageKey=computed(()=>`dispatch-draft:${currentUser.value?.id}:${props.caseId}:${props.order.version}`)
-const initialAddress=()=>props.order.accidentAddress??''
+const initialAddress=()=>props.order.dispatchAddressConfirmed?(props.order.parkingAddress??props.order.accidentAddress??''):(props.order.accidentAddress??'')
 const address=ref(initialAddress()),corrected=ref(false),point=ref<Point>(),plan=ref<Plan>(),selected=ref<number>(),selectedShop=ref<Shop>()
 const busy=ref(false),submitting=ref(false),editing=ref(false),error=ref(''),now=ref(Date.now()),requestKey=ref<string>(crypto.randomUUID())
 const catalog=ref<{page:number;size:number;total:number;records:Shop[]}>({page:1,size:20,total:0,records:[]})
@@ -112,6 +113,10 @@ onUnmounted(()=>{disposed=true;generation++;clearTimeout(pollTimer);clearInterva
   <dl class="facts"><div><dt>事故地点</dt><dd>{{ (!corrected?address:order.accidentAddress)||'第一步未填写详细地址' }}<small v-if="plan?.accidentRegion">{{ plan.accidentRegion }}</small></dd></div><div><dt>接车位置</dt><dd>{{ plan?.location?.address||address||'请补充接车地址' }}<small>{{ corrected?'已更正接车位置；事故区县保持原事实':order.dispatchAddressConfirmed?'使用已保存的接车位置':'默认车辆仍在事故地点' }}</small></dd><button type="button" :disabled="submitting" @click="modifyPickup">车辆已转移／修改接车位置</button></div></dl>
   <div class="correction"><label for="automatic-pickup">{{ corrected?'接车地址（车辆已转移）':'事故地址（可补充或更正）' }}<input id="automatic-pickup" :value="address" :disabled="submitting" maxlength="200" placeholder="请输入区县、道路及具体门牌或地标入口" @input="changeAddress(($event.target as HTMLInputElement).value)" @keydown.enter.prevent="prepare()" @blur="prepare()"></label><p>按回车或离开输入框自动定位并计算距离。只有路段信息时展示粗略定位；补充内容将在最后确认派单时保存。</p></div>
   <section class="map-correction" aria-label="事故地点与模拟网点地图"><h4>事故地点与网点位置 <span v-if="plan?.approximate" class="precision-label">路段级粗略定位</span></h4><AmapLocationMap auto-load :point="point??plan?.location?.point" :approximate="plan?.approximate" :confirmed="Boolean(plan?.location)&&!plan?.approximate" :disabled="busy||submitting" :shops="visibleShops.records" :selected-shop-id="selected" @pick="pickPoint" @choose="chooseFromMap"/><button v-if="point" type="button" :disabled="busy||submitting" @click="prepare(true)">使用所选接车点重新推荐</button></section>
+  <p v-if="!simulationDestinations&&!plan?.location&&plan?.message" class="notice" role="status">接车位置尚未就绪：{{ plan.message }}</p>
+  <button v-if="!simulationDestinations&&(error||expired||plan&&['NEEDS_REVIEW','PARTIAL','EXPIRED'].includes(plan.status))" type="button" :disabled="busy||submitting||address.trim().length<4" @click="prepare(true)">重新定位接车位置</button>
+  <DirectoryDispatchPanel v-if="!simulationDestinations" :case-id="caseId" :order="order" :plan-id="plan?.id" :pickup-ready="Boolean(plan?.location)&&!expired&&!busy" :accident-ready="Boolean(order.accidentRegionId)" :disabled="busy||submitting" @changed="emit('changed',$event)" @relocate="prepare(true)"/>
+  <details :open="simulationDestinations"><summary>已合作网点道路推荐（可选）</summary>
   <section class="shop-catalog" aria-label="已导入网点与事故地点距离"><header><h4>{{ simulationDestinations?'已导入模拟维修网点':'本次合作维修网点' }}</h4><small>{{ visibleShops.total }} 家 · {{ plan?.approximate?'按粗略位置估算':'驾车道路距离' }}</small></header><p v-if="!visibleShops.records.length" class="comparison-scope">{{ busy?'正在计算网点距离…':'尚无可展示网点，请核对服务配置或点击重新计算。' }}</p><div class="shop-choices"><button v-for="(shop,index) in visibleShops.records" :key="shop.shopId" type="button" :disabled="busy||submitting||expired||shop.status!=='READY'||shop.metres==null" :aria-pressed="selected===shop.shopId" @click="choose(shop)"><span><strong>{{ (visibleShops.page-1)*visibleShops.size+index+1 }}. {{ shop.name }}</strong><small>{{ shop.address }}</small><small>{{ selected===shop.shopId?'已选择 · ':'' }}{{ mapStatus(shop.status) }}</small></span><b>{{ shop.metres==null?(shop.status==='NOT_CALCULATED'?'待计算':'距离未知'):(shop.metres/1000).toFixed(2)+' km' }}</b></button><nav v-if="visibleShops.total>visibleShops.size" aria-label="候选网点分页"><button :disabled="busy||visibleShops.page<=1" @click="resultPage(visibleShops.page-1)">上一页</button><span>第{{ visibleShops.page }}页 · 共{{ visibleShops.total }}家</span><button :disabled="busy||visibleShops.page*visibleShops.size>=visibleShops.total" @click="resultPage(visibleShops.page+1)">下一页</button></nav></div></section>
   <p v-if="plan?.message&&!busy" class="notice" :class="{ready:plan.status==='READY'}" role="status">{{ plan.message }}</p>
   <p v-if="error" class="failure" role="alert">{{ error }}</p>
@@ -120,6 +125,7 @@ onUnmounted(()=>{disposed=true;generation++;clearTimeout(pollTimer);clearInterva
   <p v-if="plan?.recommendation" class="comparison-scope">比较范围：{{ plan.recommendation.scope||'事故区县服务资格内的广东合作网点' }}。本次进入道路计算 {{ plan.recommendation.shops.total }} 家；资料缺失与计算失败时不会认定全体最近。</p>
   <div class="final-action"><button v-if="error||expired||plan&&['NEEDS_REVIEW','PARTIAL','EXPIRED'].includes(plan.status)" type="button" :disabled="busy||submitting||address.trim().length<4" @click="prepare(true)">重新定位并计算</button><button class="primary" type="button" :disabled="!canDispatch" @click="dispatch()">{{ submitting?'正在派单…':'核对位置和网点并派单' }}</button></div>
 
+  </details>
   <footer><p>最终确认才保存必要位置并派单。推荐失效后需明确重算；系统不会自动派单或自动改派。</p><button type="button" :disabled="busy||submitting" @click="emit('manual')">异常处理／使用人工派单</button></footer>
  </section>
 </template>

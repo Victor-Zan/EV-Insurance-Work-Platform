@@ -856,7 +856,7 @@ class WorkOrderPostgresIT {
     @Test void staffWorkbenchesFilterIndependentStatusesAndDenyExternalRoles() throws Exception {
         String suffix=UUID.randomUUID().toString();var order=formal(customerService,"FUNDS-WB-"+suffix,OWNER_PHONE,"FUNDS-VIN-"+suffix,Instant.now().minus(600,ChronoUnit.DAYS));String id=order.path("id").asText();
         api(customerService,"POST","/api/v1/funds/cases/"+id+"/targets",Map.of("expectedVersion",0,"direction","RECEIVE","amount","10.00","reason","人工应收"),"wb-target-"+suffix,200);
-        api(customerService,"POST","/api/v1/funds/cases/"+id+"/entries",Map.of("expectedVersion",1,"direction","RECEIVE","transactionNo","wb-"+suffix,"amount","3.25","occurredAt",Instant.now().toString()),"wb-entry-"+suffix,200);
+        api(customerService,"POST","/api/v1/funds/cases/"+id+"/entries",Map.of("expectedVersion",1,"direction","RECEIVE","transactionNo","wb-"+suffix,"amount","3.25","occurredAt",Instant.now().minus(730,ChronoUnit.DAYS).toString()),"wb-entry-"+suffix,200);
         var result=api(admin,"GET","/api/v1/funds/workbench?query=FUNDS-WB-"+suffix+"&status=PENDING_DISPATCH&receivableStatus=PARTIAL&payableStatus=UNSET",null,null,200);
         assertThat(result.path("total").asLong()).isEqualTo(1);var row=result.path("records").get(0);assertThat(row.path("receivable").path("net").asText()).isEqualTo("3.25");assertThat(row.toString()).doesNotContain(OWNER_PHONE,"markup","rawTotal","storageKey");
         var targetHistory=api(admin,"GET","/api/v1/funds/cases/"+id+"/targets",null,null,200);assertThat(targetHistory.path("records").get(0).path("actorId").asLong()).isPositive();
@@ -1086,7 +1086,7 @@ class WorkOrderPostgresIT {
         JsonNode otherOwnerUser=createUser("OWNER",null);
         String otherOwner=login(otherOwnerUser.path("username").asText(),"H5");
         String vin="SENSITIVE-VIN-123456789";
-        Map<String,Object> request=requiredDraft("SCOPE-"+UUID.randomUUID(),OWNER_PHONE,vin,Instant.now());
+        Map<String,Object> request=requiredDraft("SCOPE-"+UUID.randomUUID(),OWNER_PHONE,vin,Instant.now().minus(1500,ChronoUnit.DAYS));
         request.put("policyNo","POLICY-123456789");
         request.put("accidentAddress","上海市浦东新区测试路 1 号");
         String id=createDraft(customerService,request).path("id").asText();
