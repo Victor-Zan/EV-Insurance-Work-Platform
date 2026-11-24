@@ -71,7 +71,7 @@ public class FundsService {
         if(next.equals(order.getStatus()))return;
         var actor=CurrentUser.require();var now=Instant.now();var assignment=orders.activeAssignment(id);
         if(orders.transition(id,order.getVersion(),order.getStatus(),next,order.getShopId(),false,actor.id(),now)!=1)throw ApiException.conflict("WORK_ORDER_STATE_CONFLICT","Work order changed concurrently");
-        orders.insertHistory(id,order.getStatus(),next,"FUNDS_WORKFLOW",null,actor.id(),"CUSTOMER_SERVICE",assignment==null?null:assignment.getAssignmentVersion(),TraceContext.currentTraceId()==null?UUID.randomUUID().toString():TraceContext.currentTraceId(),now);
+        orders.insertHistory(id,order.getStatus(),next,"FUNDS_WORKFLOW",null,actor.id(),actor.roles().stream().map(Enum::name).sorted().collect(java.util.stream.Collectors.joining(",")),assignment==null?null:assignment.getAssignmentVersion(),TraceContext.currentTraceId()==null?UUID.randomUUID().toString():TraceContext.currentTraceId(),now);
         order.setStatus(next);order.setVersion(order.getVersion()+1);
     }
     @Transactional public JsonNode confirm(UUID id,FundsRequests.Confirmation request,String key){

@@ -39,7 +39,7 @@ public class AutomaticDispatchService {
         boolean approximate,simulation,comparisonComplete;String accidentAddress;
         Plan(UUID id,UUID caseId,long actor,long version,String address,String source,Instant expires){this.id=id;this.caseId=caseId;this.actor=actor;this.version=version;this.address=address;this.source=source;this.expires=expires;}
     }
-    private CurrentUser access(){var actor=CurrentUser.require();if(!actor.roles().contains(Role.CUSTOMER_SERVICE))throw ApiException.denied();return actor;}
+    private CurrentUser access(){var actor=CurrentUser.require();if(!actor.canHandleWorkOrders())throw ApiException.denied();return actor;}
     private WorkOrderViews.WorkOrder order(UUID id){access();var order=orders.get(id);if(!"PENDING_DISPATCH".equals(order.status()))throw ApiException.conflict("MAP_CASE_READ_ONLY","自动推荐仅用于初次派单；请使用原改派流程");return order;}
     @org.springframework.scheduling.annotation.Scheduled(fixedDelay=60000)
     public void purgeExpired(){plans.values().removeIf(p->p.expires.isBefore(Instant.now()));}

@@ -5,7 +5,7 @@ import { currentUser, httpClient } from '@/shared/http/client'
 import OcrReviewPanel from './OcrReviewPanel.vue'
 import { ocrIntakeApi } from './ocr-intake'
 const route=useRoute(),router=useRouter(),selected=ref<File>(),busy=ref(false),message=ref(''),provider=ref(''),uploadKey=ref(crypto.randomUUID())
-const cs=computed(()=>currentUser.value?.roles.includes('CUSTOMER_SERVICE')===true),jobId=computed(()=>String(route.query.job??''))
+const cs=computed(()=>currentUser.value?.roles.some(role=>role==='ADMIN'||role==='CUSTOMER_SERVICE')===true),jobId=computed(()=>String(route.query.job??''))
 function choose(event:Event){selected.value=(event.target as HTMLInputElement).files?.[0];uploadKey.value=crypto.randomUUID()}
 const intakeApi=ocrIntakeApi(httpClient)
 async function upload(){if(!selected.value){message.value='请选择手写单据';return}busy.value=true;message.value='';try{const result=await intakeApi.upload(selected.value,uploadKey.value);await router.replace({path:'/ocr/intake',query:{job:result.id}})}catch(error){message.value=error instanceof Error?error.message:'上传失败'}finally{busy.value=false}}

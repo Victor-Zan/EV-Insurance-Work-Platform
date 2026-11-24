@@ -6,7 +6,7 @@ import {computed,onMounted,ref,watch} from 'vue'
 import {currentUser,httpClient} from '@/shared/http/client'
 interface Complaint {id:string;caseId:string;status:string;version:number;description:string;createdAt:string;photos:unknown[]}
 const props=defineProps<{caseId:string;status:string;readonly?:boolean;refreshToken?:number}>()
-const owner=computed(()=>currentUser.value?.roles.includes('OWNER')),admin=computed(()=>currentUser.value?.roles.includes('ADMIN')),cs=computed(()=>currentUser.value?.roles.includes('CUSTOMER_SERVICE'))
+const owner=computed(()=>currentUser.value?.roles.includes('OWNER')),admin=computed(()=>currentUser.value?.roles.includes('ADMIN')),cs=computed(()=>currentUser.value?.roles.some(role=>role==='ADMIN'||role==='CUSTOMER_SERVICE'))
 const records=ref<Complaint[]>([]),total=ref(0),page=ref(1),selected=ref<Complaint>(),history=ref(''),historyPage=ref(1),historyTotal=ref(0),busy=ref(false),message=ref(''),description=ref(''),photos=ref<string[]>([]),publicNote=ref(''),internalNote=ref(''),pending=ref<{body:string;key:string}>()
 const canCreate=computed(()=>owner.value&&['REPAIRING','WAITING_OWNER_CONFIRMATION','COMPLETED','WAITING_INSURER_PAYMENT','WAITING_SHOP_SETTLEMENT'].includes(props.status))
 const next=computed(()=>selected.value&&({SUBMITTED:'PROCESSING',PROCESSING:'RESOLVED',RESOLVED:'CLOSED'} as Record<string,string>)[selected.value.status])

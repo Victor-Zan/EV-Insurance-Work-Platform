@@ -186,7 +186,7 @@ public class WorkflowActions {
     }
 
     private boolean canWithdrawReceipt(WorkOrderEntity row,CurrentUser actor) {
-        return actor.roles().contains(Role.CUSTOMER_SERVICE)&&exists("""
+        return actor.canHandleWorkOrders()&&exists("""
             SELECT EXISTS(SELECT 1 FROM repair_receipt r WHERE work_order_id=?
               AND NOT EXISTS(SELECT 1 FROM repair_receipt_withdrawal w WHERE w.receipt_id=r.id))
             """,row.getId());

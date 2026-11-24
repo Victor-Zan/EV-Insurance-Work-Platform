@@ -6,6 +6,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -23,6 +24,7 @@ final class PriceWorkbookParser {
     static final String SHEET = "导入文档";
     private static final int MAX_BYTES = 10 * 1024 * 1024;
     private static final String INVALID_CELL = "〈公式或错误值〉";
+    private static final List<String> REGION_HEADERS = List.of("地区", "市", "机构");
     record Row(int number, String brand, String model, String part, String unit, String region, String supplier, String cp) {}
     record Workbook(String fileName, String hash, List<Row> rows) {}
 
@@ -50,7 +52,7 @@ final class PriceWorkbookParser {
                 requireHeader(sheet, format, 2, 14, "单位");
                 requireHeader(sheet, format, 2, 15, "配件商报价金额");
                 requireHeader(sheet, format, 2, 16, "CP报价金额");
-                int regionColumn = regionColumn(sheet, format);
+                int[] regionColumns = regionColumns(sheet, format);
                 var rows = new ArrayList<Row>();
                 for (int i = 4; i <= sheet.getLastRowNum(); i++) {
                     var row = sheet.getRow(i);
@@ -61,7 +63,7 @@ final class PriceWorkbookParser {
                     var cp = amountValue(row.getCell(16), format);
                     if (part.isEmpty() && unit.isEmpty() && supplier.isEmpty() && cp.isEmpty()) continue;
                     rows.add(new Row(i + 1, value(row.getCell(9), format), value(row.getCell(10), format), part, unit,
-                        regionColumn < 0 ? "" : value(row.getCell(regionColumn), format), supplier, cp));
+                        region(row, regionColumns, format), supplier, cp));
                     if (rows.size() > 2000) throw ApiException.invalid("一次最多预览 2000 条配件明细");
                 }
                 if (rows.isEmpty()) throw ApiException.invalid("未找到配件明细");
@@ -83,18 +85,27 @@ final class PriceWorkbookParser {
         return "";
     }
 
-    private static int regionColumn(Sheet sheet, DataFormatter format) {
-        int city = -1;
+    private static int[] regionColumns(Sheet sheet, DataFormatter format) {
+        int[] columns = new int[REGION_HEADERS.size()];
+        Arrays.fill(columns, -1);
         for (int i = 1; i <= 3; i++) {
             var row = sheet.getRow(i);
             if (row == null) continue;
             for (var cell : row) {
-                String title = header(cell, format);
-                if ("地区".equals(title)) return cell.getColumnIndex();
-                if ("市".equals(title)) city = cell.getColumnIndex();
+                int priority = REGION_HEADERS.indexOf(header(cell, format));
+                if (priority >= 0 && columns[priority] < 0) columns[priority] = cell.getColumnIndex();
             }
         }
-        return city;
+        return columns;
+    }
+
+    private static String region(org.apache.poi.ss.usermodel.Row row, int[] columns, DataFormatter format) {
+        for (int column : columns) {
+            if (column < 0) continue;
+            String text = value(row.getCell(column), format);
+            if (!text.isEmpty()) return text;
+        }
+        return "";
     }
 
     private static void requireHeader(Sheet sheet, DataFormatter format, int row, int col, String expected) {

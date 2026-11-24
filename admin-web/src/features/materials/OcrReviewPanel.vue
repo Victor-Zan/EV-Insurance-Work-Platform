@@ -11,7 +11,7 @@ interface Job {id:string;provider:string;providerApi:string;providerVersion:stri
 const props=withDefaults(defineProps<{jobId:string;writable?:boolean}>(),{writable:true})
 const router=useRouter(),job=ref<Job>(),candidate=ref<Candidate>({}),program=ref<Candidate>({}),draft=ref<DraftForm>(blankOcrDraft()),regions=ref<RegionOption[]>([]),history=ref<unknown>(),historyPage=ref(1),historyTotal=ref(0),image=ref(''),raw=ref(''),message=ref(''),busy=ref(false),dirty=ref(false)
 const regionPage=ref(0),regionTotal=ref(0)
-const cs=computed(()=>currentUser.value?.roles.includes('CUSTOMER_SERVICE')===true),editable=computed(()=>cs.value&&props.writable&&job.value?.state==='SUCCEEDED')
+const cs=computed(()=>currentUser.value?.roles.some(role=>role==='ADMIN'||role==='CUSTOMER_SERVICE')===true),editable=computed(()=>cs.value&&props.writable&&job.value?.state==='SUCCEEDED')
 let timer:ReturnType<typeof setTimeout>|undefined
 async function data<T>(path:string){return (await httpClient.get<{data:T}>(path)).data.data}
 async function run(action:()=>Promise<void>){busy.value=true;message.value='';try{await action()}catch(e){message.value=e instanceof Error?e.message:'操作失败'}finally{busy.value=false}}

@@ -60,7 +60,7 @@ test('receipt task exposes one explicit action with nearby retry feedback and re
  const f=setup('features/repair/RepairPanel.vue',{caseId:'receipt-case',receiptMode:true,shopName:'开发测试网点'},{httpClient:client})
  await f.context.run(f.context.load)
  assert.equal(calls.filter(c=>c[0]==='post').length,0)
- f.user.value.roles=['ADMIN'];assert.equal(f.context.canReceive.value,false)
+ f.user.value.roles=['ADMIN'];assert.equal(f.context.canReceive.value,true)
  f.user.value.roles=['CUSTOMER_SERVICE']
  let page=nodes(f);assert.equal(page.filter(n=>n.type==='button'&&n.children==='确认已收车').length,1)
  assert.equal(page.find(n=>n.type==='details').props.open,false)

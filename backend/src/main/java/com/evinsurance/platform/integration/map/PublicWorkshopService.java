@@ -23,7 +23,7 @@ public class PublicWorkshopService {
     private record Snapshot(UUID id,UUID caseId,long actor,long version,UUID locationToken,Instant expires,int page,boolean hasMore,int excluded,List<Row> rows){}
     public record Result(UUID queryId,String provider,String scope,Instant expiresAt,int page,boolean hasMore,int excluded,List<Row> rows){}
     public record Settings(boolean enabled,int radiusMetres,int maximumPublicCandidates,Integer searchRemaining,Integer routesRemaining,boolean providerManaged){}
-    private CurrentUser access(){var actor=CurrentUser.require();if(!actor.roles().contains(Role.CUSTOMER_SERVICE))throw ApiException.denied();return actor;}
+    private CurrentUser access(){var actor=CurrentUser.require();if(!actor.canHandleWorkOrders())throw ApiException.denied();return actor;}
     public Settings settings(){access();var a=budget.availability();return new Settings(registry.enabled(),10000,20,remaining(a,"POI_SEARCH"),remaining(a,"DRIVING"),a.providerManaged());}
     private static Integer remaining(MapCallBudget.Availability a,String op){return a.operations().stream().filter(r->op.equals(r.operation())).map(MapCallBudget.OperationAllowance::remaining).findFirst().orElse(null);}
     private WorkOrderViews.WorkOrder order(UUID id){access();registry.requireEnabled();var order=orders.get(id);if(!Set.of("PENDING_DISPATCH","PENDING_ACCEPTANCE","PENDING_ARRIVAL","ARRIVAL_EXCEPTION").contains(order.status()))throw ApiException.conflict("PUBLIC_WORKSHOP_READ_ONLY","当前案件不在派单或改派阶段");return order;}

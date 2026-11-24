@@ -35,7 +35,7 @@ const router = createRouter({
     { path: '/funds/analytics', component: () => import('@/features/funds/AnalyticsView.vue'), meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
     { path: '/funds/workbench', component: FundsWorkbenchView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
     { path: '/complaints', component: ComplaintsWorkbenchView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
-    { path: '/funds/imports', component: FundsImportsView, meta: { roles: ['CUSTOMER_SERVICE'] } },
+    { path: '/funds/imports', component: FundsImportsView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
     { path: '/work-orders', component: WorkOrdersView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
     { path: '/ocr/intake', component: () => import('@/features/materials/OcrIntakeView.vue'), meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },
     { path: '/historical-cases', component: HistoricalCasesView, meta: { roles: ['ADMIN', 'CUSTOMER_SERVICE'] } },

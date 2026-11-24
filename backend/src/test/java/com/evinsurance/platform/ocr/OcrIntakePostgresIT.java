@@ -15,6 +15,8 @@ import java.util.concurrent.*;
 import javax.imageio.ImageIO;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -79,7 +81,8 @@ class OcrIntakePostgresIT {
     private JsonNode command(String token,String path,Object body,int statusCode) throws Exception {return json.readTree(mvc.perform(post("/api/v1/"+path).header("Authorization","Bearer "+token).header("Idempotency-Key",UUID.randomUUID().toString()).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body))).andExpect(status().is(statusCode)).andReturn().getResponse().getContentAsString()).path("data");}
     private JsonNode upload(String token,String key,int statusCode) throws Exception {return json.readTree(mvc.perform(multipart("/api/v1/ocr/intake").file(new MockMultipartFile("file","synthetic.png","image/png",image)).header("Authorization","Bearer "+token).header("Idempotency-Key",key)).andExpect(status().is(statusCode)).andReturn().getResponse().getContentAsString()).path("data");}
     private JsonNode getJob(String token,String id,int statusCode) throws Exception {return json.readTree(mvc.perform(get("/api/v1/ocr/"+id).header("Authorization","Bearer "+token)).andExpect(status().is(statusCode)).andReturn().getResponse().getContentAsString()).path("data");}
-    @Test void noCaseUploadPrefillCorrectionConfirmedDraftAndOriginalFormalSubmit() throws Exception {
+    @ParameterizedTest @ValueSource(booleans={false,true}) void noCaseUploadPrefillCorrectionConfirmedDraftAndOriginalFormalSubmit(boolean administrator) throws Exception {
+        if(administrator)cs=admin;
         long before=db.queryForObject("SELECT count(*) FROM work_order",Long.class);String key=UUID.randomUUID().toString();var queued=upload(cs,key,200);String id=queued.path("id").asString();
         assertThat(upload(cs,key,200).path("id").asString()).isEqualTo(id);assertThat(db.queryForObject("SELECT count(*) FROM work_order",Long.class)).isEqualTo(before);
         worker().tick();var ready=getJob(cs,id,200);assertThat(ready.path("provider").asString()).isEqualTo("BAIDU_HANDWRITING_V1");assertThat(ready.path("candidate").path("fields").path("ownerName").asString()).isEqualTo("合成客户甲");assertThat(ready.path("candidate").path("fields").has("claimNo")).isFalse();
@@ -99,9 +102,9 @@ class OcrIntakePostgresIT {
     }
     @Test void fourRolesAndAnotherCustomerServiceCannotCrossIntakeScope() throws Exception {
         String id=upload(cs,UUID.randomUUID().toString(),200).path("id").asString();worker().tick();getJob(admin,id,200);
-        for(String token:List.of(admin,shop,owner))upload(token,UUID.randomUUID().toString(),403);
+        for(String token:List.of(shop,owner))upload(token,UUID.randomUUID().toString(),403);
         for(String token:List.of(shop,owner)){getJob(token,id,403);mvc.perform(get("/api/v1/ocr/"+id+"/raw").header("Authorization","Bearer "+token)).andExpect(status().isForbidden());}
-        command(admin,"ocr/"+id+"/review",Map.of("expectedVersion",0,"candidate",Map.of()),403);command(admin,"ocr/"+id+"/confirm",Map.of("expectedVersion",0),403);
+        command(admin,"ocr/"+id+"/review",Map.of("expectedVersion",0,"candidate",Map.of()),200);command(admin,"ocr/"+id+"/confirm",Map.of("expectedVersion",1),200);
         String username="synthetic_cs_"+UUID.randomUUID().toString().replace("-","");command(admin,"admin/users",Map.of("username",username,"displayName","合成其他客服","password",PASSWORD,"roles",List.of("CUSTOMER_SERVICE")),200);String other=login(username,"ADMIN");getJob(other,id,403);mvc.perform(get("/api/v1/ocr/"+id+"/image").header("Authorization","Bearer "+other)).andExpect(status().isForbidden());
     }
     @Test void realProviderLeaseExpiryNeverAutomaticallyReissuesAndStaleFinishCannotPublish() throws Exception {
@@ -128,6 +131,6 @@ class OcrIntakePostgresIT {
         command(cs,"ocr/"+id+"/review",Map.of("expectedVersion",1,"candidate",Map.of("origin","PROGRAM_LABELLED_TEXT_V2","fields",Map.of("ownerName","合成人工修改"))),200);
         assertThat(getJob(cs,id,200).path("candidate").path("origin").asString()).isEqualTo("HUMAN_REVISION");
         var program=json.readTree(mvc.perform(get("/api/v1/ocr/"+id+"/program").header("Authorization","Bearer "+cs)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data");assertThat(program.path("fields").path("ownerName").asString()).isEqualTo("合成客户甲");
-        assertThat(db.queryForObject("SELECT count(*) FROM ocr_review WHERE job_id=?::uuid",Long.class,id)).isEqualTo(3);assertThat(db.queryForObject("SELECT count(*) FROM ocr_raw_result WHERE job_id=?::uuid",Long.class,id)).isEqualTo(1);assertThat(db.queryForObject("SELECT count(*) FROM work_order",Long.class)).isEqualTo(before);command(admin,"ocr/"+id+"/reextract",Map.of("expectedVersion",2),403);
+        assertThat(db.queryForObject("SELECT count(*) FROM ocr_review WHERE job_id=?::uuid",Long.class,id)).isEqualTo(3);assertThat(db.queryForObject("SELECT count(*) FROM ocr_raw_result WHERE job_id=?::uuid",Long.class,id)).isEqualTo(1);assertThat(db.queryForObject("SELECT count(*) FROM work_order",Long.class)).isEqualTo(before);assertThat(command(admin,"ocr/"+id+"/reextract",Map.of("expectedVersion",2),200).path("reviewVersion").asInt()).isEqualTo(3);verify(provider,times(1)).recognize(anyString(),any(byte[].class),eq(false));
     }
 }

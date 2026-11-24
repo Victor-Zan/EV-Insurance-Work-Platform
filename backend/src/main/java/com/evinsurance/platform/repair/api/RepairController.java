@@ -18,7 +18,7 @@ public class RepairController {
     public ApiResponse<JsonNode> progress(@PathVariable UUID id,@RequestHeader("Idempotency-Key") String key,@RequestBody RepairRequests.Progress body){return ApiResponse.success(service.progress(id,body,key));}
     @PostMapping("/completion") @Operation(summary="至少一张本次派单由网点上传的有效JPG/PNG完工照；快照冻结后进入待收车")
     public ApiResponse<JsonNode> complete(@PathVariable UUID id,@RequestHeader("Idempotency-Key") String key,@RequestBody RepairRequests.Complete body){return ApiResponse.success(service.complete(id,body,key));}
-    @PostMapping("/receipt") @Operation(summary="绑定车主或客服确认已收车，工单完成；评价评分均非必填，不参与门禁")
+    @PostMapping("/receipt") @Operation(summary="绑定车主或管理员/客服确认已收车，工单完成；评价评分均非必填，不参与门禁")
     public ApiResponse<JsonNode> receive(@PathVariable UUID id,@RequestHeader("Idempotency-Key") String key,@RequestBody RepairRequests.Receive body){return ApiResponse.success(service.receive(id,body,key));}
     @PostMapping("/receipt/withdraw") public ApiResponse<JsonNode> withdraw(@PathVariable UUID id,@RequestHeader("Idempotency-Key") String key,@RequestBody RepairRequests.Withdraw body){return ApiResponse.success(service.withdraw(id,body,key));}
     @PostMapping("/review") public ApiResponse<JsonNode> review(@PathVariable UUID id,@RequestHeader("Idempotency-Key") String key,@RequestBody RepairRequests.Review body){return ApiResponse.success(service.review(id,body,key,false));}

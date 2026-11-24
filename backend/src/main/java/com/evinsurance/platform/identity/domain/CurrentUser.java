@@ -12,6 +12,7 @@ public record CurrentUser(long id, String username, String displayName, Set<Role
         }
         return user;
     }
+    public boolean canHandleWorkOrders() { return roles.contains(Role.ADMIN) || roles.contains(Role.CUSTOMER_SERVICE); }
     public void requireAdmin() { if (!roles.contains(Role.ADMIN)) throw ApiException.denied(); }
     public void requireShop(long targetShopId) {
         if (!roles.contains(Role.REPAIR_SHOP) || shopId == null || shopId != targetShopId) throw ApiException.denied();

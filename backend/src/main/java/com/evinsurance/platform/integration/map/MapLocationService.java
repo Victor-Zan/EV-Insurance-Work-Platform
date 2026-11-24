@@ -21,7 +21,7 @@ public class MapLocationService {
     public synchronized void purgeExpired(){sessions.values().removeIf(session->session.expires().isBefore(Instant.now()));}
     public record Configuration(String provider,boolean mock,String coordinateSystem,boolean recommendationsAvailable){}
     public record RegionOption(long id,String name,String adcode){}
-    private static void access(){if(!CurrentUser.require().roles().contains(Role.CUSTOMER_SERVICE))throw ApiException.denied();}
+    private static void access(){if(!CurrentUser.require().canHandleWorkOrders())throw ApiException.denied();}
     public Configuration configuration(){access();return new Configuration(provider.providerId(),"MOCK_V1".equals(provider.providerId()),"GCJ-02",true);}
     public PageResponse<RegionOption> regions(Long cityId,int page,int size){
         access();return regionOptions(cityId,page,size);

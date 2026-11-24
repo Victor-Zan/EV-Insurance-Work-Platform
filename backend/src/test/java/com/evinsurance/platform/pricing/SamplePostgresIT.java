@@ -261,6 +261,8 @@ class SamplePostgresIT {
             .param("correctionRow","5").param("correctionNature","SUPPLIER_QUOTED").param("correctionAmount","95"),null);
         assertThat(corrected.path("ready").asInt()).isEqualTo(4);
         assertThat(corrected.path("skippedRows").asInt()).isEqualTo(2);
+        assertThat(corrected.path("rows").path("records").valueStream().map(row->row.path("region").asText()))
+            .containsExactly("全国","市优先","东莞","东莞");
         assertThat(db.queryForObject("SELECT count(*) FROM price_sample_batch WHERE file_name='standalone-pricing.xlsx'",Long.class)).isZero();
         var stale=multipart(workbook+"/confirm").file(file).param("excludeRows","7").param("fingerprint",corrected.path("fingerprint").asText())
             .header("Authorization","Bearer "+token);
@@ -293,6 +295,8 @@ class SamplePostgresIT {
         assertThat(record.path("record").path("original").has("historicalCaseId")).isFalse();
         assertThat(record.path("relatedQuotes").valueStream().map(item->item.path("amount").asText())).containsExactly("95.00","95.00");
         assertThat(record.path("record").path("original").path("amount").asText()).isEqualTo("0");
+        assertThat(matches.valueStream().filter(row->row.path("region").asText().equals("东莞"))
+            .map(row->row.path("original").path("region").asText())).containsExactly("东莞","东莞");
 
         var history=ok(multipart("/api/v1/historical-cases/imports/full").file(file).param("excludeRows","7")
             .param("supplierCorrectionRow","5").param("supplierCorrectionAmount","95"),null);
@@ -328,7 +332,8 @@ class SamplePostgresIT {
                 row.createCell(15).setCellValue(i==0?0:22);
                 row.createCell(16).setCellValue(i==0?95:30);
                 if(i==0||i==3)row.createCell(17).setCellValue("合成维修网点"+suffix);
-                if(standalone&&i==3)row.createCell(19).setCellValue("东莞");
+                if(standalone&&i>0)row.createCell(2).setCellValue("东莞");
+                if(standalone&&i==1)row.createCell(19).setCellValue("市优先");
             }
             book.write(output);return output.toByteArray();
         }

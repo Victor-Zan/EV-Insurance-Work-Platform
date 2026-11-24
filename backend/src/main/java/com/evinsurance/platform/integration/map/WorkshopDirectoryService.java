@@ -30,7 +30,7 @@ public class WorkshopDirectoryService {
         this.directory=directory;this.automatic=automatic;this.locations=locations;this.orders=orders;this.workOrders=workOrders;this.registry=registry;this.mapData=mapData;
     }
     private CurrentUser access(UUID caseId){
-        var actor=CurrentUser.require();if(!actor.roles().contains(Role.CUSTOMER_SERVICE))throw ApiException.denied();registry.requireEnabled();
+        var actor=CurrentUser.require();if(!actor.canHandleWorkOrders())throw ApiException.denied();registry.requireEnabled();
         var row=workOrders.find(caseId);if(row==null)throw ApiException.missing("Work order");WorkOrderWriteAccess.require(row,actor);
         orders.get(caseId);return actor;
     }

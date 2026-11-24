@@ -8,9 +8,9 @@ import {currentUser,httpClient} from '@/shared/http/client'
 import {repairApi,type RepairCase,type RepairEntry} from './repair'
 const props=defineProps<{caseId:string;readonly?:boolean;refreshToken?:number;receiptMode?:boolean;shopName?:string}>(),emit=defineEmits<{changed:[];'open-materials':[]}>(),api=repairApi(httpClient,props.caseId)
 const data=ref<RepairCase>(),history=ref<RepairEntry[]>([]),page=ref(1),total=ref(0),busy=ref(false),message=ref(''),note=ref(''),selectedPhotos=ref<string[]>([])
-const editable=computed(()=>!props.readonly&&currentUser.value?.roles.some(role=>role==='REPAIR_SHOP'||role==='CUSTOMER_SERVICE')&&data.value?.status==='REPAIRING')
+const editable=computed(()=>!props.readonly&&currentUser.value?.roles.some(role=>role==='REPAIR_SHOP'||role==='ADMIN'||role==='CUSTOMER_SERVICE')&&data.value?.status==='REPAIRING')
 const pending=ref<{body:string;key:string}>()
-const cs=computed(()=>currentUser.value?.roles.includes('CUSTOMER_SERVICE')),owner=computed(()=>currentUser.value?.roles.includes('OWNER'))
+const cs=computed(()=>currentUser.value?.roles.some(role=>role==='ADMIN'||role==='CUSTOMER_SERVICE')),owner=computed(()=>currentUser.value?.roles.includes('OWNER'))
 const reason=ref(''),reviewText=ref(''),score=ref(''),reviewHistory=ref(''),reviewPage=ref(1),reviewTotal=ref(0)
 async function mutate(operation:'receipt/withdraw'|'review'|'review/corrections'){
   if(!data.value)return
@@ -19,7 +19,7 @@ async function mutate(operation:'receipt/withdraw'|'review'|'review/corrections'
   data.value=await api.post(operation,body,pending.value.key);pending.value=undefined;message.value='已保存，原记录保留';emit('changed');await load()
 }
 async function loadReviewHistory(){const result=(await httpClient.get<{data:{records:unknown[];total:number}}>(`/repairs/cases/${props.caseId}/review/history`,{params:{page:reviewPage.value,size:20}})).data.data;reviewHistory.value=JSON.stringify(result.records,null,2);reviewTotal.value=result.total}
-const canReceive=computed(()=>!props.readonly&&data.value?.status==='WAITING_OWNER_CONFIRMATION'&&currentUser.value?.roles.some(role=>role==='OWNER'||role==='CUSTOMER_SERVICE'))
+const canReceive=computed(()=>!props.readonly&&data.value?.status==='WAITING_OWNER_CONFIRMATION'&&currentUser.value?.roles.some(role=>role==='OWNER'||role==='ADMIN'||role==='CUSTOMER_SERVICE'))
 async function receive(){
   if(!data.value)return
   const body={expectedVersion:data.value.version},serialized=JSON.stringify({operation:'receipt',body})

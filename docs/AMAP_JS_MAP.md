@@ -57,3 +57,7 @@ POST /api/v1/maps/locations/places：{districtId,keywords,page}，页码1—20�
 新增AMAP_PLACE_BUDGET_ENABLED（默认false）、AMAP_PLACE_BUDGET_SCHEMA、AMAP_PLACE_BUDGET_RUN_ID，仅显式dev+AMAP_WEB_V1可启用。独立Flyway位置db/map-place-budget，历史表flyway_place_budget_history，不改旧业务/预算迁移。启动只建表/校验，不创建授权或调用槽位。只有可信本机操作脚本能按本次授权一次性准备10槽位；数据库保护额度不可扩展、已尝试槽位不可重置/删除、已关闭run不可恢复，重跑配置不补次数。仅保存请求摘要和时间，无明文关键词、坐标或凭据。POI接口认证/权限/供应商额度/限流错误关闭该独立POI授权，不消费或恢复其他分类额度。原进程总量防线在本机对应增加10，不代表自动新增任何其他分类授权。
 
 官方文档：https://lbs.amap.com/api/webservice/guide/api-advanced/newpoisearch 。Web服务搜索接口的权限、费用和供应商配额仍需用户实际账户验证；JS底图成功不代表该高级搜索服务有权限。本轮用户明确自行测试，仅编译打包，未运行测试、浏览器联调或真实调用，不能将本功能标为已完成真实搜索验收。
+
+## 2026-11-24 管理员工单办理权限同步
+
+ADMIN 与 CUSTOMER_SERVICE 均可办理客服工单操作，包括真实派单定位/推荐、底图 bootstrap 与会话、材料/OCR、报价核损、维修收车及资金确认。管理员以 ADMIN 身份留审计；底图资源仍受原会话、固定路径、有效期和限额保护，客服数据范围、网点/车主边界和业务门禁不变。本补充覆盖本文此前客服专属或管理员只读的相关说明。

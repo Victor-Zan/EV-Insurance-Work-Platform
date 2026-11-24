@@ -9,7 +9,7 @@ import {computed,onActivated,onDeactivated,onMounted,onUnmounted,ref,watch} from
 import {currentUser,httpClient} from '@/shared/http/client'
 import {formalPayload,quotationApi,type QuoteCase} from './quotation'
 const props=defineProps<{caseId:string;readonly?:boolean;refreshToken?:number;workflow:Workflow;claimNo?:string;insuranceCompany?:string;vehiclePlate?:string;vehicleVin?:string}>(),emit=defineEmits<{changed:[];draft:[value:{assessment:string;markup:string;mode:string}|undefined]}>(),api=quotationApi(httpClient,props.caseId)
-const cs=computed(()=>currentUser.value?.roles.includes('CUSTOMER_SERVICE'))
+const cs=computed(()=>currentUser.value?.roles.some(role=>role==='ADMIN'||role==='CUSTOMER_SERVICE'))
 const data=ref<QuoteCase>(),busy=ref(false),message=ref(''),mode=ref<'FIXED_AMOUNT'|'PERCENTAGE'>('PERCENTAGE'),markup=ref('0.00'),assessment=ref(''),historyType=ref('EVENT'),historyPage=ref(1),historyTotal=ref(0),history=ref('')
 const assessmentBasis=ref<number>()
 const vehicleIdentity=computed(()=>props.vehiclePlate||props.vehicleVin||'未填写')

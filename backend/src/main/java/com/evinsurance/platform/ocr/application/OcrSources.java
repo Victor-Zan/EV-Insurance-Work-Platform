@@ -37,7 +37,7 @@ public class OcrSources {
     public void mutable(OcrRow job){
         if(shopQuote(job)){shopPolicy.authorize(job,true);return;}
         var actor=CurrentUser.require();source(job,true);
-        if(!actor.roles().contains(Role.CUSTOMER_SERVICE)){
+        if(!actor.canHandleWorkOrders()){
             if(!actor.roles().contains(Role.REPAIR_SHOP)||job.fileId()==null)throw ApiException.denied();
             var file=fileService.accessible(job.fileId());var order=access.order(file.workOrderId(),true);
             if(!"SHOP_QUOTE".equals(file.category())||!com.evinsurance.platform.document.domain.FileStagePolicy.allowed(order.getStatus(),com.evinsurance.platform.document.domain.FileCategory.SHOP_QUOTE,false))throw ApiException.denied();
@@ -55,7 +55,7 @@ public class OcrSources {
                 (SELECT work_order_id FROM ocr_draft_link WHERE job_id=?))
             """+(lock?" FOR UPDATE":""),Boolean.class,job.fileId(),job.id());
         if(caseState.contains(true))return false;
-        var enabled=db.queryForObject("SELECT count(*) FROM app_user u JOIN user_role ur ON ur.user_id=u.id JOIN app_role r ON r.id=ur.role_id WHERE u.id=? AND u.enabled AND (r.code='CUSTOMER_SERVICE' OR (r.code='REPAIR_SHOP' AND EXISTS(SELECT 1 FROM case_file f JOIN work_order w ON w.id=f.work_order_id JOIN work_order_assignment a ON a.work_order_id=w.id JOIN shop_account sa ON sa.user_id=u.id WHERE f.id=? AND f.category='SHOP_QUOTE' AND f.shop_id=sa.shop_id AND w.shop_id=sa.shop_id AND a.shop_id=sa.shop_id AND a.assignment_version=f.assignment_version AND a.status='ACCEPTED' AND w.status IN ('ARRIVED','WAITING_QUOTE','QUOTE_REVIEWING','WAITING_INSURER_ASSESSMENT','WAITING_REPAIR_AUTHORIZATION'))))",Long.class,job.createdBy(),job.fileId());
+        var enabled=db.queryForObject("SELECT count(*) FROM app_user u JOIN user_role ur ON ur.user_id=u.id JOIN app_role r ON r.id=ur.role_id WHERE u.id=? AND u.enabled AND (r.code IN ('ADMIN','CUSTOMER_SERVICE') OR (r.code='REPAIR_SHOP' AND EXISTS(SELECT 1 FROM case_file f JOIN work_order w ON w.id=f.work_order_id JOIN work_order_assignment a ON a.work_order_id=w.id JOIN shop_account sa ON sa.user_id=u.id WHERE f.id=? AND f.category='SHOP_QUOTE' AND f.shop_id=sa.shop_id AND w.shop_id=sa.shop_id AND a.shop_id=sa.shop_id AND a.assignment_version=f.assignment_version AND a.status='ACCEPTED' AND w.status IN ('ARRIVED','WAITING_QUOTE','QUOTE_REVIEWING','WAITING_INSURER_ASSESSMENT','WAITING_REPAIR_AUTHORIZATION'))))",Long.class,job.createdBy(),job.fileId());
         if(enabled==null||enabled==0)return false;
         if(job.intakeId()!=null)return Boolean.TRUE.equals(db.queryForObject("SELECT EXISTS(SELECT 1 FROM ocr_intake_file WHERE id=? AND actor_id=?)",Boolean.class,job.intakeId(),job.createdBy()));
         return Boolean.TRUE.equals(db.queryForObject("SELECT EXISTS(SELECT 1 FROM case_file f JOIN work_order w ON w.id=f.work_order_id WHERE f.id=? AND f.state='ACTIVE' AND f.category IN ('NOTICE','SHOP_QUOTE','ASSESSMENT','LOSS_ASSESSMENT') AND w.status NOT IN ('COMPLETED','CANCELLED') AND (w.status<>'DRAFT' OR w.created_by=?))",Boolean.class,job.fileId(),job.createdBy()));

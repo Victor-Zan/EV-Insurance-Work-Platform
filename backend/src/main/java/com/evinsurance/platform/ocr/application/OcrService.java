@@ -25,7 +25,7 @@ public class OcrService {
     OcrRow accessible(UUID id,boolean lock){var r=jobs.find(id);if(r==null)throw ApiException.missing("OCR job");sources.source(r,true);if(lock){if(r.fileId()!=null)access.order(files.accessible(r.fileId()).workOrderId(),true);r=jobs.lock(id);}return r;}
     private void mutable(OcrRow r){sources.mutable(r);}
     @Transactional public View create(UUID fileId,boolean fail){var actor=CurrentUser.require();var f=files.accessible(fileId);access.mutable(access.order(f.workOrderId(),true));if(!"ACTIVE".equals(f.state())||!FileCategory.valueOf(f.category()).ocrSupported())throw ApiException.invalid("OCR only supports active document categories");
-        if(!actor.roles().contains(com.evinsurance.platform.identity.domain.Role.CUSTOMER_SERVICE)&&!(actor.roles().contains(com.evinsurance.platform.identity.domain.Role.REPAIR_SHOP)&&"SHOP_QUOTE".equals(f.category())))throw ApiException.denied();
+        if(!actor.canHandleWorkOrders()&&!(actor.roles().contains(com.evinsurance.platform.identity.domain.Role.REPAIR_SHOP)&&"SHOP_QUOTE".equals(f.category())))throw ApiException.denied();
         if(fail&&!env.matchesProfiles("dev"))throw ApiException.invalid("Failure simulation is only available in dev");
         if(fail&&!provider.id().equals("MOCK_V1"))throw ApiException.invalid("Failure simulation requires Mock");
         var prior=jobs.byFile(fileId,provider.id());if(prior!=null){sources.mutable(prior);return view(prior);}UUID id=UUID.randomUUID();jobs.insert(id,fileId,null,CurrentUser.require().id(),fail,provider.id(),provider.api(),provider.version());sources.mutable(jobs.find(id));audit.record(CurrentUser.require(),Action.OCR_CREATE,"OCR_JOB",id,"Provider="+provider.id()+"; source="+fileId);return view(jobs.find(id));}

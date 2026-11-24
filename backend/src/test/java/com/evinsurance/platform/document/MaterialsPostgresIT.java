@@ -24,6 +24,8 @@ import java.util.concurrent.Executors;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -83,9 +85,9 @@ class MaterialsPostgresIT {
     private long regionId;
     private long shopId;
 
-    @Test void mapLocationApiKeepsCustomerServiceOnlyAndValidatesGuangdongHierarchy() throws Exception {
+    @Test void mapLocationApiKeepsStaffBoundaryAndValidatesGuangdongHierarchy() throws Exception {
         mvc.perform(get("/api/v1/maps/locations/configuration")).andExpect(status().isUnauthorized());
-        for(String token:List.of(admin,shop,owner)){
+        for(String token:List.of(shop,owner)){
             mvc.perform(get("/api/v1/maps/locations/configuration").header("Authorization","Bearer "+token)).andExpect(status().isForbidden());
             mvc.perform(get("/api/v1/maps/locations/regions").header("Authorization","Bearer "+token)).andExpect(status().isForbidden());
             mvc.perform(post("/api/v1/maps/locations/resolve").header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON).content("{\"districtId\":1,\"detail\":\"合成街道10号\"}")).andExpect(status().isForbidden());
@@ -241,7 +243,7 @@ class MaterialsPostgresIT {
         var stored=files.find(UUID.fromString(file));try(var stream=storage.read(stored.objectKey())){assertThat(com.evinsurance.platform.document.application.FileService.hash(stream.readAllBytes())).isEqualTo(stored.sha256());}
         mvc.perform(get("/api/v1/materials/{id}/download",file).header("Authorization","Bearer "+owner)).andExpect(status().isForbidden());
         mvc.perform(get("/api/v1/materials/{id}/download",file).header("Authorization","Bearer "+admin)).andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Cache-Control","no-store"));
-        upload(admin,id,"NOTICE",UUID.randomUUID().toString(),null,null,403);
+        upload(admin,id,"NOTICE",UUID.randomUUID().toString(),null,null,200);
         var assigned=dispatch(customerService,id,shopId,true,"合成文件测试",UUID.randomUUID().toString(),200).path("data");int version=assignmentVersion(assigned);
         command(shop,"work-orders/"+id+"/accept",Map.of("assignmentVersion",version),200);
         var photo=upload(shop,id,"ARRIVAL_PHOTO",UUID.randomUUID().toString(),null,version,200);
@@ -253,7 +255,7 @@ class MaterialsPostgresIT {
         mvc.perform(get("/api/v1/materials/{id}/download",photo.path("id").asText()).header("Authorization","Bearer "+owner)).andExpect(status().isForbidden());
         mvc.perform(get("/api/v1/materials/{id}/download",photo.path("id").asText()).header("Authorization","Bearer "+customerService)).andExpect(status().isOk());
         command(customerService,"materials/"+replacement.path("id").asText()+"/void",Map.of(),200);
-        assertThat(db.queryForObject("select count(*) from case_file where work_order_id=?::uuid",Long.class,id)).isEqualTo(4);
+        assertThat(db.queryForObject("select count(*) from case_file where work_order_id=?::uuid",Long.class,id)).isEqualTo(5);
         org.junit.jupiter.api.Assertions.assertThrows(org.springframework.dao.DataAccessException.class,()->db.update("delete from case_file where id=?::uuid",file));
         for(String state:List.of("COMPLETED","CANCELLED")){db.update("update work_order set status=? where id=?::uuid",state,id);upload(customerService,id,"NOTICE",UUID.randomUUID().toString(),null,null,409);command(customerService,"materials/cases/"+id+"/missing-notice",Map.of("reason","合成缺失"),409);mvc.perform(put("/api/v1/work-orders/{id}/critical-fields",id).header("Authorization","Bearer "+customerService).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("insuranceCompany","测试","claimNo","changed","vehicleVin","VIN","reason","只读测试")))).andExpect(status().isConflict());}
         assertThat(db.queryForObject("select count(*) from audit_log where action='FILE_UPLOAD' and object_id=?",Long.class,file)).isEqualTo(1);
@@ -313,13 +315,14 @@ class MaterialsPostgresIT {
         var raw=command(shop,"quotations/cases/"+id+"/raw-quotes",Map.of("expectedVersion",0,"assignmentVersion",version,"lines",List.of(Map.of("description","合成配件","quantity",1,"unitPrice","1.00"))),200);
         command(customerService,"quotations/cases/"+id+"/formal-quotes",Map.of("expectedVersion",raw.path("version").asInt(),"rawQuoteId",raw.path("rawQuote").path("id").asText(),"mode","FIXED_AMOUNT","fixedAmount","0.00"),200);
     }
-    @Test void ocrFailureRetryHumanSnapshotsAndLeases() throws Exception {
+    @ParameterizedTest @ValueSource(booleans={false,true}) void ocrFailureRetryHumanSnapshotsAndLeases(boolean administrator) throws Exception {
+        if(administrator)customerService=admin;
         String id=caseId();String file=upload(customerService,id,"NOTICE",UUID.randomUUID().toString(),null,null,200).path("id").asText();
         var job=command(customerService,"ocr",Map.of("fileId",file,"simulateFailure",true),200);String jobId=job.path("id").asText();assertThat(command(customerService,"ocr",Map.of("fileId",file),200).path("id").asText()).isEqualTo(jobId);
         var claimed=tasks.claim(3,60);assertThat(claimed.id().toString()).isEqualTo(jobId);assertThat(tasks.claim(3,60)).isNull();tasks.finish(claimed,null,"PROVIDER_OR_STORAGE_FAILURE");
         command(customerService,"ocr/"+jobId+"/retry",Map.of(),200);var next=tasks.claim(3,60);var f=files.find(UUID.fromString(file));byte[] data;try(var stream=storage.read(f.objectKey())){data=stream.readAllBytes();}tasks.finish(next,json.writeValueAsString(provider.extract(f.category(),data,false)),null);
         mvc.perform(get("/api/v1/ocr/{id}",jobId).header("Authorization","Bearer "+shop)).andExpect(status().isForbidden());
-        command(admin,"ocr/"+jobId+"/confirm",Map.of("expectedVersion",0),403);
+        command(admin,"ocr/"+jobId+"/confirm",Map.of("expectedVersion",0),200);
         var revised=command(customerService,"ocr/"+jobId+"/review",Map.of("expectedVersion",0,"candidate",Map.of("claimNo","人工修正候选")),200);assertThat(revised.path("confirmed").asBoolean()).isFalse();
         command(customerService,"ocr/"+jobId+"/confirm",Map.of("expectedVersion",0),409);command(customerService,"ocr/"+jobId+"/confirm",Map.of("expectedVersion",1),200);
         assertThat(db.queryForObject("select count(*) from ocr_review where job_id=?::uuid",Long.class,jobId)).isEqualTo(2);assertThat(db.queryForObject("select claim_no from work_order where id=?::uuid",String.class,id)).doesNotContain("人工修正");

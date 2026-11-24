@@ -14,15 +14,15 @@ public class QuotationController {
     public ApiResponse<JsonNode> get(@PathVariable UUID id){return ApiResponse.success(service.get(id));}
     @PostMapping("/raw-quotes") @Operation(summary="当前已接单网点提交不可变报价；须本次派单有效JPG/PNG到店照片，否则409 ARRIVAL_PHOTO_REQUIRED；金额为CNY元十进制字符串")
     public ApiResponse<JsonNode> raw(@PathVariable UUID id,@RequestHeader("Idempotency-Key") String key,@RequestBody QuotationRequests.Raw body){return ApiResponse.success(service.submitRaw(id,body,key));}
-    @PostMapping("/formal-quotes") @Operation(summary="客服审核当前原始版本；可附reviewedLines另存核对修订及审计，网点原价保留，服务端重算加价")
+    @PostMapping("/formal-quotes") @Operation(summary="管理员/客服审核当前原始版本；可附reviewedLines另存核对修订及审计，网点原价保留，服务端重算加价")
     public ApiResponse<JsonNode> formal(@PathVariable UUID id,@RequestHeader("Idempotency-Key") String key,@RequestBody QuotationRequests.Formal body){return ApiResponse.success(service.issueFormal(id,body,key));}
-    @PostMapping("/assessments") @Operation(summary="客服基于当前正式报价记录核损金额新版本；核损单与OCR可选，未完成报价审核拒绝")
+    @PostMapping("/assessments") @Operation(summary="管理员/客服基于当前正式报价记录核损金额新版本；核损单与OCR可选，未完成报价审核拒绝")
     public ApiResponse<JsonNode> assess(@PathVariable UUID id,@RequestHeader("Idempotency-Key") String key,@RequestBody QuotationRequests.Assessment body){return ApiResponse.success(service.assess(id,body,key));}
-    @PostMapping("/assessment-confirmation") @Operation(summary="客服以核损金额作为最终价格一次确认；保存核对后未加价的应付、盈利和利润率依据，事务内进入维修")
+    @PostMapping("/assessment-confirmation") @Operation(summary="管理员/客服以核损金额作为最终价格一次确认；保存核对后未加价的应付、盈利和利润率依据，事务内进入维修")
     public ApiResponse<JsonNode> completeAssessment(@PathVariable UUID id,@RequestHeader("Idempotency-Key") String key,@RequestBody QuotationRequests.CompleteAssessment body){return ApiResponse.success(service.completeAssessment(id,body,key));}
-    @PostMapping("/confirmations/{kind}") @Operation(summary="客服依次代录保险确认、执行最终价格确认；最终价格须与当前核损一致；授权齐备直接进入维修，可无核损单")
+    @PostMapping("/confirmations/{kind}") @Operation(summary="管理员/客服依次代录保险确认、执行最终价格确认；最终价格须与当前核损一致；授权齐备直接进入维修，可无核损单")
     public ApiResponse<JsonNode> confirm(@PathVariable UUID id,@PathVariable String kind,@RequestHeader("Idempotency-Key") String key,@RequestBody QuotationRequests.Confirm body){return ApiResponse.success(service.confirm(id,kind,body,key));}
-    @PostMapping("/start-repair") @Operation(summary="当前网点开修：锁案件、重新校验核损金额、保险/客服确认及派单版本；不等回款或网点二次确认")
+    @PostMapping("/start-repair") @Operation(summary="当前网点开修：锁案件、重新校验核损金额、保险/管理员/客服确认及派单版本；不等回款或网点二次确认")
     public ApiResponse<JsonNode> start(@PathVariable UUID id,@RequestHeader("Idempotency-Key") String key,@RequestBody QuotationRequests.Start body){return ApiResponse.success(service.start(id,body,key));}
     @GetMapping("/history") public ApiResponse<PageResponse<Map<String,Object>>> history(@PathVariable UUID id,@RequestParam(defaultValue="EVENT") String type,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size){return ApiResponse.success(service.history(id,type,page,size));}
     @GetMapping("/formal-quotes/{quote}/export") @Operation(summary="客服/管理员导出对外CSV数据，移除内部原价与加价；非正式模板")

@@ -150,3 +150,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Manage-LocalWe
 本机私密.env已开启`DEV_OWNER_BINDING_ENABLED=true`，仅dev profile生效；新提交工单默认绑定固定dev_owner。已有35张正式单经用户授权同步，原绑定/版本和审计trace保存在忽略目录binding-receipt.json及数据库审计中；联系人和工单流程状态不改，未提交草稿不开放给车主。正式环境或开关关闭仍用手机号匹配。
 
 客服核损输入“核损金额”和独立“最终确认价格”，可不同，一次确认完成办理；资金应收/应付默认采用客服确认快照中的最终价格。演示单EVR-20261029-000002停在保险核损、金额和确认均未提交，开发车主可见。车主端请使用配置已允许的`http://localhost:5174`；客服演示入口为`http://127.0.0.1:5173`。未将本机.env或数据库、截图、运行包提交到Git。
+
+## 2026-11-24 管理员工单权限运行同步
+
+管理员地图配置403来自未更新的11月22日常驻JAR。本机8080现使用已验证权限修复包，SHA256为713433180c2de7b08583727da36e6210864b001fc54a38b3b1220d8684aa1ed7，安装清单及public库/旧包/配置备份路径记录于tmp/admin-permissions-runtime-install.json（Git忽略）。49份SQL与旧包逐字节摘要相同，public保持V40，无迁移。原守护恢复，管理端5173及H5继续运行。纯ADMIN、客服通过8080/5173配置读取200、底图会话签发200及仅Cookie撤销204复验；未外呼高德或执行业务派单。页面需刷新加载新配置。

@@ -40,7 +40,7 @@ public class MapRecommendationService {
         var available=budget.availability();Integer remaining=available.operations().stream().filter(row->"DRIVING".equals(row.operation())).map(MapCallBudget.OperationAllowance::remaining).findFirst().orElse(null);
         return new Estimate(count,count,remaining,count<=LIMIT&&(remaining==null||available.callsEnabled()&&count<=remaining));
     }
-    private static CurrentUser access(){var actor=CurrentUser.require();if(!actor.roles().contains(Role.CUSTOMER_SERVICE))throw ApiException.denied();return actor;}
+    private static CurrentUser access(){var actor=CurrentUser.require();if(!actor.canHandleWorkOrders())throw ApiException.denied();return actor;}
     private WorkOrderViews.WorkOrder order(UUID id){return order(id,null);}
     private WorkOrderViews.WorkOrder order(UUID id,Long draftDistrict){access();var order=orders.get(id);if(!Set.of("PENDING_DISPATCH","PENDING_ACCEPTANCE","PENDING_ARRIVAL","ARRIVAL_EXCEPTION").contains(order.status()))throw ApiException.conflict("MAP_CASE_READ_ONLY","当前案件不在客服派单/改派阶段");if(draftDistrict==null&&order.accidentRegionId()==null)throw ApiException.conflict("MAP_ACCIDENT_REGION_REQUIRED","请先人工核对事故服务区县；停车位置不会自动补写事故区域");
         try{locations.address(draftDistrict==null?order.accidentRegionId():draftDistrict,"事故服务区县核验");}catch(ApiException invalid){throw ApiException.conflict("MAP_ACCIDENT_REGION_REQUIRED","事故服务区域须为已核对的广东区县，不能以停车城市代替");}
