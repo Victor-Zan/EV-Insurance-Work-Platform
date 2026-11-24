@@ -2961,3 +2961,4 @@ API用providerManaged=true和remaining=null表达本地不设累计上限、供�
 - 仅 docs/PROGRESS.md 末尾追加记录发生冲突，按时间顺序保留本地加载页记录和远端发布通道记录；docs/REQUIREMENTS.md 自动合并。逐项核对本地 19 个、远端 23 个非冲突文件与对应提交一致，并验证两份文档完整保留两侧原有内容及顺序，未残留冲突标记。
 - 验证：管理端及 H5 的 npm.cmd run lint、npm.cmd run typecheck、npm.cmd test、npm.cmd run build 全部通过；管理端 304 项、H5 74 项测试，零失败、零跳过。git diff --check 通过；日志位于 tmp/pull-merge-admin-web-*.log 和 tmp/pull-merge-h5-web-*.log。管理端构建保留大包体积提示。
 - 本次为本地保存与合并，未额外修改业务代码。后端 Maven、集成测试、Flyway、Docker 和浏览器交互未在本轮验证；需要在相应运行环境另行检查。不推送远端、不部署，不进入下一阶段。
+- 补充检查：git diff --cached --check 提示远端原有 WorkshopDirectoryPostgresIT.java:148 文件末尾多一个空行；该文件与远端版本一致，本轮未修改或清理。无未解决的索引冲突。
