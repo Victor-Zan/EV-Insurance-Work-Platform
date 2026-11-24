@@ -140,7 +140,10 @@ jobs:
           case "$OPERATION" in
             deploy|check)
               printf 'Uploading release to production (%s bytes)\n' "$(stat -c %s output/release.tar.gz)"
-              ssh "${ssh_args[@]}" "$remote" "upload $GITHUB_SHA" < output/release.tar.gz
+              # Emit transfer progress as log lines and detect an unresponsive SSH peer.
+              dd if=output/release.tar.gz bs=64K status=progress 2> >(tr '\r' '\n' >&2) |
+                ssh -v "${ssh_args[@]}" -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o IPQoS=none \
+                  "$remote" "upload $GITHUB_SHA"
               printf 'Validating the uploaded release\n'
               ssh "${ssh_args[@]}" "$remote" "check $GITHUB_SHA"
               if test "$OPERATION" = deploy; then
