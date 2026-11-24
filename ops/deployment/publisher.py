@@ -14,7 +14,7 @@ import time
 import urllib.request
 import zipfile
 
-ROOT = Path('/var/lib/ev-insurance/deployment')
+ROOT = Path('/var/lib/ev-insurance-deployment')
 RELEASES = ROOT / 'releases'
 BACKUPS = Path('/var/backups/ev-insurance/remote-deployment')
 PUBLIC = Path('/home/ubuntu/ev-insurance-deploy/releases/directory-20261122/admin-dist')
@@ -63,7 +63,11 @@ def unpack(archive_path, stage, commit):
     with tarfile.open(archive_path, 'r:gz') as archive:
         seen = set()
         size = 0
+        entries = 0
         for member in archive:
+            entries += 1
+            if entries > MAX_FILES:
+                raise Rejected('Release entry limit exceeded')
             # No ownership, permissions, links, devices or tar extraction callbacks are trusted.
             if member.isdir():
                 p = PurePosixPath(member.name)

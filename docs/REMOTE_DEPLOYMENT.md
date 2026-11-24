@@ -19,7 +19,7 @@
 - 地址 `106.55.251.21`，发布身份 `ev-deploy`。已固定服务器 ED25519 公钥，不关闭 SSH 主机校验。
 - GitHub 仓库 Secret `EV_DEPLOY_SSH_KEY` 保存专用发布私钥。只能由受信任的发布流程使用，不是 ubuntu 管理账号密钥。
 - 发布身份仅允许 `upload/check/publish <完整提交SHA>`、`status`、`rollback previous`，无交互式 shell、SFTP/SCP、端口或代理转发。上传使用 SSH 标准输入。
-- root 拥有的发布程序校验命令、上传大小、归档路径及逐文件摘要。发布目录 `/var/lib/ev-insurance/deployment/releases`；状态文件和服务器私有备份不向发布账号开放。
+- root 拥有的发布程序校验命令、上传大小、归档路径及逐文件摘要。发布目录 `/var/lib/ev-insurance-deployment/releases`；状态文件和服务器私有备份不向发布账号开放。
 - 当前管理端和后端一起发布，H5构建产物保留在对应版本中；不在本次新增H5公网路由。
 - 生产环境变量仍为 `/etc/ev-insurance/backend.env`，不会被发布包替换。既有用户、案件、附件、候选网点和价格数据不通过源码发布重新初始化。
 

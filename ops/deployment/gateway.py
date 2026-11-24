@@ -8,7 +8,7 @@ import sys
 import tempfile
 
 MAX_UPLOAD = 180 * 1024 * 1024
-INCOMING = Path('/var/lib/ev-insurance/deployment/incoming')
+INCOMING = Path('/var/lib/ev-insurance-deployment/incoming')
 PUBLISHER = '/usr/local/sbin/ev-insurance-release'
 
 
