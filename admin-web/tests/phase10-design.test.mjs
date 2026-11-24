@@ -6,7 +6,7 @@ const source = path => readFileSync(new URL(path, import.meta.url), 'utf8')
 
 test('management navigation exposes only existing role-scoped routes', () => {
   const routes = source('../src/router/index.ts')
-  assert.match(routes, /path: '\/funds\/imports'.*roles: \['CUSTOMER_SERVICE'\]/)
+  assert.match(routes, /path: '\/funds\/imports'.*roles: \['ADMIN', 'CUSTOMER_SERVICE'\]/)
   for (const path of ['/admin/users', '/admin/regions', '/admin/shops', '/admin/audit-logs', '/admin/settings/work-orders']) {
     assert.match(routes, new RegExp(`path: '${path.replaceAll('/', '\\/')}'.*roles: \\['ADMIN'\\]`))
   }

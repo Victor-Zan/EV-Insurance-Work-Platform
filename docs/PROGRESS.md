@@ -2962,3 +2962,18 @@ API用providerManaged=true和remaining=null表达本地不设累计上限、供�
 - 验证：管理端及 H5 的 npm.cmd run lint、npm.cmd run typecheck、npm.cmd test、npm.cmd run build 全部通过；管理端 304 项、H5 74 项测试，零失败、零跳过。git diff --check 通过；日志位于 tmp/pull-merge-admin-web-*.log 和 tmp/pull-merge-h5-web-*.log。管理端构建保留大包体积提示。
 - 本次为本地保存与合并，未额外修改业务代码。后端 Maven、集成测试、Flyway、Docker 和浏览器交互未在本轮验证；需要在相应运行环境另行检查。不推送远端、不部署，不进入下一阶段。
 - 补充检查：git diff --cached --check 提示远端原有 WorkshopDirectoryPostgresIT.java:148 文件末尾多一个空行；该文件与远端版本一致，本轮未修改或清理。无未解决的索引冲突。
+
+## 2026-11-24 管理员工单办理权限同步（完成）
+
+- 按用户要求先从当前 main 建立 codex/admin-workflow-permissions 分支，再更新 REQUIREMENTS 与 DECISIONS，将客服工单办理能力同步给 ADMIN。前端入口、工作流 canAct/canUpload、安全规则和应用服务覆盖派单地图/候选门店、材料/OCR、报价核损及授权、客服可办的维修完工/收车/撤回/评价纠正、资金目标/流水/确认/冲销/导入、投诉纠正与待办期限；管理员保留真实 ADMIN 身份及原管理权限。
+- 地图底图会话和 OCR Worker 同步支持 ADMIN；保留会话主体/权限版本、有效期、导入批次归属、客服转交只读、跨店/车主隔离、阶段材料、核损金额/确认、收付款顺序、冻结/终态、并发和幂等校验。收车渠道仍为工作人员代办，状态历史和审计写入真实角色。无角色或数据库迁移变更，API摘要、流程/地图说明及助手手册同步更新。
+- 前端：管理端 npm.cmd run lint、npm.cmd run typecheck、npm.cmd test（309项）及 npm.cmd run build 全通过；H5同四项检查通过（74项测试），零失败/跳过。日志 tmp/admin-permissions-admin-final2-*.log、tmp/admin-permissions-h5-web-*.log。保留管理端既有大包提示。
+- 后端：Java21离线 Maven 全155项单元测试通过；首轮 verify -Ppostgres-it 跑完222项集成测试，其中7项失败为旧管理员只读预期或新增操作后的计数/主体预期，均已按新授权修正并保留其他角色越权断言。随后使用 -Dit.test=MaterialsPostgresIT,OcrIntakePostgresIT,QuotationPostgresIT,MapRecommendationPostgresIT 完整重跑相关四类121项集成测试（含新增管理员端到端、实际ADMIN审计、并发、金额及状态门禁），零失败/错误/跳过，Maven verify BUILD SUCCESS。其余首轮集成类均通过，含7项候选网点与29项工单测试。未再次全库复跑；不将首轮全库记为通过。证据 tmp/admin-permissions-integration.log、tmp/admin-permissions-targeted.log及各构建目录reports。
+- 测试使用本机15432 PostgreSQL随机隔离schema、独立MinIO测试bucket，真实外部地图/OCR未调用；Flyway迁移校验通过，git diff --check通过。真实浏览器/生产高德交互未验证，未重启服务、提交、推送或部署。用户随后明确授权本阶段完成后继续在同分支修复价格导入“机构”列地区识别，作为下一阶段入口。
+
+## 2026-11-24 管理员地图权限修复同步本地运行（完成接口复验）
+
+- 用户在本地工单派单页仍看到“没有访问权限”。实测旧8080与5173代理上纯ADMIN读取/maps/locations/configuration及/maps/js/configuration均403，客服均200。常驻JAR无canHandleWorkOrders，后端PID30020自11月22日运行，确认前端源码与旧常驻包不一致，不能把分支测试通过当作运行同步完成。
+- 新旧JAR的49份数据库SQL逐份摘要完全一致；先备份public schema（custom dump 687935字节）、旧JAR、私密.env及进程回执，再只更新本项目常驻后端并恢复原守护；管理端Vite、H5与Docker保留运行。备份和新旧哈希清单位于Git忽略的tmp/admin-permissions-runtime-install.json。新运行JAR SHA256=713433180c2de7b08583727da36e6210864b001fc54a38b3b1220d8684aa1ed7，PID29588，public仍V40，启动日志确认无需迁移。
+- 真实本地HTTP复验：纯ADMIN与客服分别在8080和5173读取两类地图配置均200，5173底图bootstrap均200、仅Cookie撤销会话均204。验证脚本首次错误复用了Authorization头，触发既有代理安全拒绝；改为仅Cookie后通过，安全规则未放宽。证据tmp/admin-permissions-local-before.json、tmp/admin-permissions-local-after.json。未调用高德供应商、未派单或改写工单；页面最终显示待用户刷新确认。
+- 按用户“先别急着进下一步”要求，暂不修改价格导入；此前仅只读确认样本有机构列东莞而市列为空，待地图页面确认后在同分支继续。未提交、推送或更新线上部署。

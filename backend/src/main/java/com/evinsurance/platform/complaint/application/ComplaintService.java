@@ -88,7 +88,7 @@ public class ComplaintService {
         });
     }
     @Transactional public JsonNode correct(UUID id,ComplaintRequests.Correct request,String key){
-        if(!CurrentUser.require().roles().contains(Role.CUSTOMER_SERVICE))throw ApiException.denied();var row=visible(id,true);return command(id,"CORRECT",key,request,()->{
+        if(!CurrentUser.require().canHandleWorkOrders())throw ApiException.denied();var row=visible(id,true);return command(id,"CORRECT",key,request,()->{
             expected(row,request.expectedVersion());mapper.event(id,"CORRECTION",text(request.publicNote(),"Correction note"),null,CurrentUser.require().id());
             if(mapper.advance(id,request.expectedVersion(),(String)row.get("status"))!=1)throw ApiException.conflict("COMPLAINT_VERSION_CONFLICT","Complaint changed concurrently");
             audit.record(CurrentUser.require(),AuditService.Action.COMPLAINT_CORRECT,"COMPLAINT",id,"Customer service correction appended; owner original retained");return view(mapper.find(id));

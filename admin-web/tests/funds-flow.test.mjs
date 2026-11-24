@@ -189,8 +189,8 @@ test('one explicit receipt action records the remaining amount then confirms the
  assert.equal(f.context.time.value,'2026-10-17T00:30');assert.equal(f.context.confirmationError.value,'')
 })
 
-test('admin and shop render no funds confirmation write button',async()=>{
- for(const roles of [['ADMIN'],['REPAIR_SHOP']]){const f=fixture(roles);await f.context.load();assert.equal(buttons(f).some(n=>n.props?.class==='primary'),false);assert.equal(f.calls.length,0)}
+test('staff render funds confirmation while shop cannot write',async()=>{
+ for(const role of ['ADMIN','CUSTOMER_SERVICE','REPAIR_SHOP']){const f=fixture([role]);await f.context.load();assert.equal(buttons(f).some(n=>n.props?.class==='primary'),role!=='REPAIR_SHOP');assert.equal(f.calls.length,0)}
 })
 test('receipts and payments each have one actual amount input with no separate target confirmation',async()=>{
  const f=fixture();await f.context.load();const nodes=elements(f)

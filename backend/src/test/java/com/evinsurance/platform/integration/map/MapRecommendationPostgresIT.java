@@ -10,6 +10,8 @@ import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.*;
@@ -86,7 +88,8 @@ class MapRecommendationPostgresIT {
     @Autowired AutomaticDispatchService automatic;
     private JsonNode automatic(Map<String,Object> input)throws Exception{return postJson("/api/v1/maps/cases/"+caseId+"/automatic-dispatch",cs,input,null,200).path("data");}
     private String automaticPath(String id){return "/api/v1/maps/cases/"+caseId+"/automatic-dispatch/"+id;}
-    @Test void automaticPlanDefersWritesReusesRequestsAndDispatchesManualChoiceOnce()throws Exception{
+    @ParameterizedTest @ValueSource(booleans={false,true}) void automaticPlanDefersWritesReusesRequestsAndDispatchesManualChoiceOnce(boolean administrator)throws Exception{
+        if(administrator)cs=admin;
         db.update("update work_order set accident_address='广州市天河区合成测试街10号',accident_region_id=?,parking_address=null,parking_region_id=null,dispatch_address_confirmed=false where id=?",city,caseId);
         var before=db.queryForMap("select version,accident_region_id,accident_address,parking_address,dispatch_address_confirmed from work_order where id=?",caseId);
         var input=Map.<String,Object>of("requestKey",UUID.randomUUID());var result=automatic(input);
@@ -121,7 +124,7 @@ class MapRecommendationPostgresIT {
     }
     @Test void automaticRolesCaseVersionAndAccidentConflictsAreEnforced()throws Exception{
         String path="/api/v1/maps/cases/"+caseId+"/automatic-dispatch";
-        for(String denied:List.of(admin,shop,owner))postJson(path,denied,Map.of("requestKey",UUID.randomUUID()),null,403);
+        for(String denied:List.of(shop,owner))postJson(path,denied,Map.of("requestKey",UUID.randomUUID()),null,403);
         postJson(path,null,Map.of("requestKey",UUID.randomUUID()),null,401);verify(provider,never()).resolve(any());
         var result=automatic(Map.of("requestKey",UUID.randomUUID()));db.update("update work_order set version=version+1 where id=?",caseId);
         postJson(automaticPath(result.path("id").asString())+"/dispatch",cs,Map.of("shopId",shops.get(0)),UUID.randomUUID().toString(),409);
@@ -140,7 +143,8 @@ class MapRecommendationPostgresIT {
         db.update("update repair_shop set code=?,name='【测试／非真实合作方】合成模拟网点乙' where id=?","DEV-SIM-"+UUID.randomUUID().toString().substring(0,8),shops.get(1));
         return receiver;
     }
-    @Test void simulationsCompareAllDestinationsAndDispatchOnlyToOriginalDeveloperShop()throws Exception{
+    @ParameterizedTest @ValueSource(booleans={false,true}) void simulationsCompareAllDestinationsAndDispatchOnlyToOriginalDeveloperShop(boolean administrator)throws Exception{
+        if(administrator)cs=admin;
         long receiver=simulationFixtures();db.update("update work_order set vehicle_brand='未映射的合成品牌' where id=?",caseId);
         var catalog=json.readTree(mvc.perform(get("/api/v1/maps/simulation-shops").header("Authorization","Bearer "+cs)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data");
         assertThat(catalog.path("total").asLong()).isEqualTo(2);assertThat(routes.get()).isZero();
@@ -175,9 +179,9 @@ class MapRecommendationPostgresIT {
         assertThat(db.queryForObject("select location_precision from work_order_assignment where work_order_id=?",String.class,caseId)).isEqualTo("ROAD");
     }
     @Test void simulationCatalogAndResultsKeepRoleScopeAndRejectChangedDestination()throws Exception{
-        simulationFixtures();for(String denied:List.of(admin,shop,owner))mvc.perform(get("/api/v1/maps/simulation-shops").header("Authorization","Bearer "+denied)).andExpect(status().isForbidden());
+        simulationFixtures();for(String denied:List.of(shop,owner))mvc.perform(get("/api/v1/maps/simulation-shops").header("Authorization","Bearer "+denied)).andExpect(status().isForbidden());
         var result=automatic(Map.of("requestKey",UUID.randomUUID()));String queryId=result.path("recommendation").path("queryId").asString();
-        for(String denied:List.of(admin,shop,owner))mvc.perform(get("/api/v1/maps/simulation-recommendations/"+queryId).header("Authorization","Bearer "+denied)).andExpect(status().isForbidden());
+        for(String denied:List.of(shop,owner))mvc.perform(get("/api/v1/maps/simulation-recommendations/"+queryId).header("Authorization","Bearer "+denied)).andExpect(status().isForbidden());
         db.update("update repair_shop set enabled=false where id=?",shops.get(1));postJson(automaticPath(result.path("id").asString())+"/dispatch",cs,Map.of("shopId",shops.get(1)),UUID.randomUUID().toString(),409);
         simulationEnabled=false;mvc.perform(get("/api/v1/maps/simulation-shops").header("Authorization","Bearer "+cs)).andExpect(status().isForbidden());
     }
@@ -318,7 +322,8 @@ class MapRecommendationPostgresIT {
         verify(provider,never()).geocode(anyString());verify(provider,never()).distance(any(),any());verify(provider,never()).resolve(any());verify(provider,never()).driving(any(),any(),anyInt());
     }
 
-    @Test void roadsNotStraightLineStablePaginationAndExplicitOriginalDispatch() throws Exception {
+    @ParameterizedTest @ValueSource(booleans={false,true}) void roadsNotStraightLineStablePaginationAndExplicitOriginalDispatch(boolean administrator) throws Exception {
+        if(administrator)cs=admin;
         mvc.perform(get("/api/v1/maps/cases/"+caseId+"/recommendation-context").header("Authorization","Bearer "+cs)).andExpect(status().isOk()).andExpect(jsonPath("$.data.accidentRegion").value("广州市 / 天河区"));
         var token=position();String key=UUID.randomUUID().toString();var result=query(token,key,null,200).path("data");var rows=result.path("shops").path("records");
         assertThat(rows.get(0).path("shopId").asLong()).isEqualTo(shops.get(1));assertThat(rows.get(1).path("shopId").asLong()).isEqualTo(shops.get(2));assertThat(rows.get(2).path("metres").asLong()).isEqualTo(9000);assertThat(result.path("complete").asBoolean()).isTrue();assertThat(result.path("direction").asString()).isEqualTo("VEHICLE_TO_SHOP");
@@ -351,7 +356,9 @@ class MapRecommendationPostgresIT {
     }
     @Test void allFourRoleBoundariesAndCrossOperatorQueries() throws Exception {
         UUID token=position();String queryId=query(token,UUID.randomUUID().toString(),null,200).path("data").path("queryId").asString();
-        for(String denied:List.of(admin,shop,owner)){postJson("/api/v1/maps/cases/"+caseId+"/recommendations",denied,Map.of("locationToken",token),UUID.randomUUID().toString(),403);mvc.perform(get("/api/v1/maps/recommendations/"+queryId).header("Authorization","Bearer "+denied)).andExpect(status().isForbidden());}
+        for(String denied:List.of(shop,owner)){postJson("/api/v1/maps/cases/"+caseId+"/recommendations",denied,Map.of("locationToken",token),UUID.randomUUID().toString(),403);mvc.perform(get("/api/v1/maps/recommendations/"+queryId).header("Authorization","Bearer "+denied)).andExpect(status().isForbidden());}
+        mvc.perform(get("/api/v1/maps/recommendations/"+queryId).header("Authorization","Bearer "+admin)).andExpect(status().isNotFound());
+        postJson("/api/v1/maps/locations/"+token+"/confirm",admin,Map.of(),null,404);
         for(String denied:List.of(cs,shop,owner)){mvc.perform(put("/api/v1/maps/admin/shops/"+shops.get(0)+"/capabilities").header("Authorization","Bearer "+denied).contentType(MediaType.APPLICATION_JSON).content("{\"modelIds\":[]}")).andExpect(status().isForbidden());}
         String username="map_cs_"+UUID.randomUUID();postJson("/api/v1/admin/users",admin,Map.of("username",username,"displayName","合成客服乙","password",PASSWORD,"roles",List.of("CUSTOMER_SERVICE")),null,200);String other=login(username,"ADMIN");
         mvc.perform(get("/api/v1/maps/recommendations/"+queryId).header("Authorization","Bearer "+other)).andExpect(status().isNotFound());postJson("/api/v1/maps/locations/"+token+"/confirm",other,Map.of(),null,404);
@@ -404,7 +411,7 @@ class MapRecommendationPostgresIT {
         int before=routes.get();
         mvc.perform(get("/api/v1/maps/cases/"+caseId+"/recommendation-estimate").header("Authorization","Bearer "+cs))
             .andExpect(status().isOk()).andExpect(jsonPath("$.data.candidates").value(3)).andExpect(jsonPath("$.data.maximumRouteCalls").value(3));
-        for(String token:List.of(admin,shop,owner))mvc.perform(get("/api/v1/maps/cases/"+caseId+"/recommendation-estimate").header("Authorization","Bearer "+token)).andExpect(status().isForbidden());
+        for(String token:List.of(shop,owner))mvc.perform(get("/api/v1/maps/cases/"+caseId+"/recommendation-estimate").header("Authorization","Bearer "+token)).andExpect(status().isForbidden());
         assertThat(routes.get()).isEqualTo(before);
     }
     @Test void configuredOtherModelAndChangedServiceRegionCannotBypassSelectionOrReadonlyCase() throws Exception {
@@ -419,9 +426,10 @@ class MapRecommendationPostgresIT {
         int before=routes.get();query(position(),UUID.randomUUID().toString(),null,409);assertThat(routes.get()).isEqualTo(before);
     }
 
-    @Test void selectedPointApiKeepsRolesAndDoesNotWriteCaseOrAccidentData()throws Exception{
+    @ParameterizedTest @ValueSource(booleans={false,true}) void selectedPointApiKeepsRolesAndDoesNotWriteCaseOrAccidentData(boolean administrator)throws Exception{
+        if(administrator)cs=admin;
         var before=db.queryForMap("select version,accident_region_id,parking_region_id,parking_address from work_order where id=?",caseId);
-        for(String token:List.of(admin,shop,owner))postJson("/api/v1/maps/locations/point",token,Map.of("districtId",district,"longitude",113.1,"latitude",23.1),null,403);
+        for(String token:List.of(shop,owner))postJson("/api/v1/maps/locations/point",token,Map.of("districtId",district,"longitude",113.1,"latitude",23.1),null,403);
         var result=postJson("/api/v1/maps/locations/point",cs,Map.of("districtId",district,"longitude",113.1,"latitude",23.1),null,200);
         assertThat(result.path("data").get(0).path("candidate").path("status").asString()).isEqualTo("REQUIRES_CONFIRMATION");
         assertThat(db.queryForMap("select version,accident_region_id,parking_region_id,parking_address from work_order where id=?",caseId)).isEqualTo(before);

@@ -104,3 +104,7 @@ POST /funds/cases/{id}/confirmations，Idempotency-Key；请求 {expectedVersion
 
 ### D-057 资金页面使用约定
 无新增API。核损原件/最终采用金额复用GET quotations/cases/{id}与受控materials下载、PDF预览；仅员工页面请求。最终确认金额须sourceCurrent和客服确认均有效。方向由flowStage推导，不暴露选择框；备注可空，时间默认Asia/Shanghai当前日期时刻。targets.reason仍必填，由正常办理页面提供当前步骤操作说明；冲销reason仍人工必填。资金金额精度、幂等、版本和顺序检查不变。
+
+## 2026-11-24 管理员工单办理权限同步
+
+ADMIN 与 CUSTOMER_SERVICE 均可办理客服工单操作，包括真实派单定位/推荐、底图 bootstrap 与会话、材料/OCR、报价核损、维修收车及资金确认。管理员以 ADMIN 身份留审计；底图资源仍受原会话、固定路径、有效期和限额保护，客服数据范围、网点/车主边界和业务门禁不变。本补充覆盖本文此前客服专属或管理员只读的相关说明。

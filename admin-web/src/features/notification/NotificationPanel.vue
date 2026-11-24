@@ -10,7 +10,7 @@ interface Notice {kind?:string;businessNo?:string;reason?:string;requestedAt?:st
 interface Task {kind?:string;businessNo?:string;requestedAt?:string;taskKey:string;caseId:string;title:string;version:number;deadline:string|null;overdue:boolean}
 const route=useRoute(),router=useRouter(),tab=computed(()=>route.query.tab==='notices'?'notices':'todos')
 const notices=ref<Notice[]>([]),tasks=ref<Task[]>([]),noticeTotal=ref(0),taskTotal=ref(0),noticePage=ref(1),taskPage=ref(1),busy=ref(false),message=ref(''),selected=ref<Task>(),deadline=ref(''),reason=ref(''),history=ref(''),historyPage=ref(1),historyTotal=ref(0)
-const cs=computed(()=>currentUser.value?.roles.includes('CUSTOMER_SERVICE'))
+const cs=computed(()=>currentUser.value?.roles.some(role=>role==='ADMIN'||role==='CUSTOMER_SERVICE'))
 const unread=inject(unreadNotificationsKey)
 async function run(action:()=>Promise<void>){busy.value=true;message.value='';try{await action()}catch(error){message.value=error instanceof Error?error.message:'操作失败'}finally{busy.value=false}}
 async function loadNotices(){const inbox=(await httpClient.get<{data:{records:Notice[];total:number}}>('/notifications',{params:{page:noticePage.value,size:20}})).data.data;notices.value=inbox.records;noticeTotal.value=inbox.total}

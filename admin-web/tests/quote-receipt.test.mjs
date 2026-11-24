@@ -40,17 +40,17 @@ test('waiting task shows shop provenance receipts, no upload controls; preview c
  assert.equal(nodes.some(n=>n.type==='button'&&n.props?.class==='primary'),false)
  await assert.rejects(f.context.proceed(),/只读预览/);assert.equal(f.calls.length,0);assert.equal(f.events.some(e=>e[0]==='changed'),false)
 })
-test('production and non-customer-service accounts cannot open development preview',()=>{
- for(const f of [fixture(false),fixture(true,['ADMIN'])]){f.context.openReviewPreview();assert.equal(f.context.reviewPreview.value,false)}
+test('production and non-staff accounts cannot open development preview',()=>{
+ for(const f of [fixture(false),fixture(true,['OWNER'])]){f.context.openReviewPreview();assert.equal(f.context.reviewPreview.value,false)}
 })
-function assessmentFixture(node='INSURER_ASSESSMENT'){
- const f=fixture();Object.assign(f.props,{claimNo:'SYNTH-CLAIM',insuranceCompany:'测试保险',vehicleVin:'SYNTH-VIN'})
+function assessmentFixture(node='INSURER_ASSESSMENT',roles=['CUSTOMER_SERVICE']){
+ const f=fixture(true,roles);Object.assign(f.props,{claimNo:'SYNTH-CLAIM',insuranceCompany:'测试保险',vehicleVin:'SYNTH-VIN'})
  Object.assign(f.props.workflow,{currentNode:node,status:node==='REPAIR'?'WAITING_REPAIR_AUTHORIZATION':'WAITING_INSURER_ASSESSMENT',canAct:true})
  f.setQuote({version:2,status:f.props.workflow.status,rawQuote:{id:'raw',total:'400.00',lines:[]},formalQuote:{id:'formal',total:'560.60',originalTotal:'420.00',lines:[]},gate:{}})
  return f
 }
-test('assessment shows one final amount input and confirms it once',async()=>{
- const f=assessmentFixture();await f.context.load();await Vue.nextTick()
+for(const role of ['ADMIN','CUSTOMER_SERVICE']) test(role+' assessment shows one final amount input and confirms it once',async()=>{
+ const f=assessmentFixture('INSURER_ASSESSMENT',[role]);await f.context.load();await Vue.nextTick()
  const nodes=elements(f),inputs=nodes.filter(n=>n.type==='input'&&n.props.readonly!==undefined)
  assert.deepEqual(inputs.map(n=>n.props.value),['SYNTH-CLAIM','测试保险','SYNTH-VIN'])
  assert.equal(nodes.filter(n=>n.type==='details'&&n.props.open).length,2)

@@ -43,7 +43,7 @@ public class RepairService {
     }
     private WorkOrderRows.Assignment shop(WorkOrderEntity order,Integer expected){
         var a=CurrentUser.require();var assignment=orders.activeAssignment(order.getId());
-        if((!a.roles().contains(Role.CUSTOMER_SERVICE)&&(!a.roles().contains(Role.REPAIR_SHOP)||a.shopId()==null||!a.shopId().equals(order.getShopId())))
+        if((!a.canHandleWorkOrders()&&(!a.roles().contains(Role.REPAIR_SHOP)||a.shopId()==null||!a.shopId().equals(order.getShopId())))
             ||assignment==null||!Objects.equals(order.getShopId(),assignment.getShopId())||!"ACCEPTED".equals(assignment.getStatus())
             ||!Objects.equals(expected,assignment.getAssignmentVersion()))throw ApiException.denied();
         return assignment;
@@ -140,7 +140,7 @@ public class RepairService {
     }
     @Transactional public JsonNode receive(UUID id,RepairRequests.Receive request,String key){
         var order=visible(id,true);var actor=CurrentUser.require();
-        boolean customerService=actor.roles().contains(Role.CUSTOMER_SERVICE);
+        boolean customerService=actor.canHandleWorkOrders();
         if(!customerService&&!(actor.roles().contains(Role.OWNER)&&Objects.equals(order.getOwnerUserId(),actor.id())))throw ApiException.denied();
         return command(id,"RECEIVE",key,request,()->{
             if(!"WAITING_OWNER_CONFIRMATION".equals(order.getStatus()))throw ApiException.conflict("RECEIPT_STATE_CONFLICT","Confirm receipt only after completion submission");
@@ -161,7 +161,7 @@ public class RepairService {
     private String requiredText(String text,String field){if(text==null||text.isBlank()||text.length()>2000)throw ApiException.invalid(field+" must be 1..2000 characters");return text.trim();}
     private void expected(UUID id,Integer expected){if(expected==null||expected!=version(id))throw ApiException.conflict("REPAIR_VERSION_CONFLICT","Refresh the current repair version");}
     @Transactional public JsonNode withdraw(UUID id,RepairRequests.Withdraw request,String key){
-        if(!CurrentUser.require().roles().contains(Role.CUSTOMER_SERVICE))throw ApiException.denied();
+        if(!CurrentUser.require().canHandleWorkOrders())throw ApiException.denied();
         var order=visible(id,true);
         return command(id,"WITHDRAW",key,request,()->{
             expected(id,request.expectedVersion());var receipt=mapper.receiptLatest(id);
@@ -170,7 +170,7 @@ public class RepairService {
             mapper.withdraw(((Number)receipt.get("id")).longValue(),reason,actor.id());var now=Instant.now();
             if(orders.transition(id,order.getVersion(),order.getStatus(),"WAITING_OWNER_CONFIRMATION",order.getShopId(),false,actor.id(),now)!=1)throw ApiException.conflict("WORK_ORDER_STATE_CONFLICT","Work order changed concurrently");
             var assignment=orders.activeAssignment(id);
-            orders.insertHistory(id,order.getStatus(),"WAITING_OWNER_CONFIRMATION","REPAIR_RECEIPT_WITHDRAW",reason,actor.id(),"CUSTOMER_SERVICE",assignment==null?null:assignment.getAssignmentVersion(),TraceContext.currentTraceId()==null?UUID.randomUUID().toString():TraceContext.currentTraceId(),now);
+            orders.insertHistory(id,order.getStatus(),"WAITING_OWNER_CONFIRMATION","REPAIR_RECEIPT_WITHDRAW",reason,actor.id(),actor.roles().stream().map(Enum::name).sorted().collect(java.util.stream.Collectors.joining(",")),assignment==null?null:assignment.getAssignmentVersion(),TraceContext.currentTraceId()==null?UUID.randomUUID().toString():TraceContext.currentTraceId(),now);
             order.setStatus("WAITING_OWNER_CONFIRMATION");order.setVersion(order.getVersion()+1);advance(id,request.expectedVersion());
             audit.record(actor,AuditService.Action.REPAIR_RECEIPT_WITHDRAW,"WORK_ORDER",id,"Receipt withdrawn; original completion and review retained");return view(order);
         });
@@ -187,7 +187,7 @@ public class RepairService {
     }
     @Transactional public JsonNode review(UUID id,RepairRequests.Review request,String key,boolean correction){
         var order=visible(id,true);var actor=CurrentUser.require();
-        if(correction){if(!actor.roles().contains(Role.CUSTOMER_SERVICE))throw ApiException.denied();}
+        if(correction){if(!actor.canHandleWorkOrders())throw ApiException.denied();}
         else if(!actor.roles().contains(Role.OWNER)||!Objects.equals(order.getOwnerUserId(),actor.id()))throw ApiException.denied();
         return command(id,correction?"REVIEW_CORRECT":"REVIEW",key,request,()->{
             expected(id,request.expectedVersion());var receipt=mapper.receiptLatest(id);

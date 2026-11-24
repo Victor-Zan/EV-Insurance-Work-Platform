@@ -48,7 +48,7 @@ public class FileService {
         var a=CurrentUser.require(); var order=access.order(orderId,true); access.mutable(order); checkKey(key);
         Integer current=access.assignment(orderId);
         if(category==FileCategory.SCENE_PHOTO&&!access.staff(a))throw ApiException.denied();
-        if(!a.roles().contains(Role.CUSTOMER_SERVICE)&&!(category==FileCategory.SCENE_PHOTO&&access.staff(a))) {
+        if(!a.canHandleWorkOrders()) {
             if(!a.roles().contains(Role.REPAIR_SHOP)||!category.shopVisible()||replace!=null||current==null||!current.equals(assignmentVersion)) throw ApiException.denied();
         }
         if(upload.isEmpty()||upload.getSize()>10485760) throw ApiException.invalid("File must be 1 byte to 10 MiB");

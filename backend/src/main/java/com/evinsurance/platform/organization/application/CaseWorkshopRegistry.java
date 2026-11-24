@@ -46,7 +46,7 @@ public class CaseWorkshopRegistry {
     public record Operation(UUID id,String fingerprint,String status,Long resultShopId){}
     public record Begun(Operation operation,boolean created){}
     public Begun begin(UUID caseId,String kind,String key,String fingerprint){
-        requireEnabled();var actor=CurrentUser.require();if(!actor.roles().contains(Role.CUSTOMER_SERVICE))throw ApiException.denied();
+        requireEnabled();var actor=CurrentUser.require();if(!actor.canHandleWorkOrders())throw ApiException.denied();
         if(key==null||key.isBlank()||key.length()>120)throw ApiException.invalid("Idempotency-Key is required (max 120)");
         return tx.execute(status->{UUID id=UUID.randomUUID();int created=db.update("INSERT INTO public_workshop_operation(id,work_order_id,actor_id,kind,idempotency_key,fingerprint,status,expires_at) VALUES(?,?,?,?,?,?,'RUNNING',CURRENT_TIMESTAMP+interval '10 minutes') ON CONFLICT(actor_id,kind,idempotency_key) DO NOTHING",id,caseId,actor.id(),kind,key,fingerprint);
             var op=db.queryForObject("SELECT id,fingerprint,status,result_shop_id,work_order_id FROM public_workshop_operation WHERE actor_id=? AND kind=? AND idempotency_key=?",(rs,n)->{if(!caseId.equals(rs.getObject("work_order_id",UUID.class)))throw ApiException.conflict("IDEMPOTENCY_CONFLICT","查询键对应其他案件");return new Operation(rs.getObject("id",UUID.class),rs.getString("fingerprint"),rs.getString("status"),rs.getObject("result_shop_id",Long.class));},actor.id(),kind,key);

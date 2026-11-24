@@ -39,7 +39,7 @@ const links = computed(() => {
   switch (visible.value) {
     case 'home': return [{ label: '工作台', to: '/' }, { label: '我的待办', to: '/notifications?tab=todos' }]
     case 'cases': return [{ label: '全部案件', to: '/work-orders' }, { label: '历史档案', to: '/historical-cases' }, { label: '投诉跟踪', to: '/complaints' }, { label: '案件草稿', to: '/work-orders?status=DRAFT' }]
-    case 'funds': return [{ label: '经营看板', to: '/funds/analytics' }, { label: '案件收支', to: '/funds/workbench' }, ...(isService.value ? [{ label: '资金导入', to: '/funds/imports' }] : [])]
+    case 'funds': return [{ label: '经营看板', to: '/funds/analytics' }, { label: '案件收支', to: '/funds/workbench' }, ...(isService.value || isAdmin.value ? [{ label: '资金导入', to: '/funds/imports' }] : [])]
     case 'notices': return [{ label: '我的待办', to: '/notifications?tab=todos' }, { label: '站内通知', to: '/notifications?tab=notices' }]
     case 'admin': return [{ label: '用户与角色', to: '/admin/users' }, { label: '区域', to: '/admin/regions' }, { label: '网点', to: '/admin/shops' }, { label: '审计日志', to: '/admin/audit-logs' }, { label: '重复判断配置', to: '/admin/settings/work-orders' }]
     default: return []

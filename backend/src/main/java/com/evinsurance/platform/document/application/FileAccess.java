@@ -12,7 +12,7 @@ public class FileAccess {
     private final com.evinsurance.platform.document.infrastructure.FileMapper files;
     public FileAccess(WorkOrderMapper orders,com.evinsurance.platform.document.infrastructure.FileMapper files) { this.orders=orders;this.files=files; }
     public boolean staff(CurrentUser a) { return a.roles().contains(Role.ADMIN)||a.roles().contains(Role.CUSTOMER_SERVICE); }
-    public void customerService(CurrentUser a) { if(!a.roles().contains(Role.CUSTOMER_SERVICE)) throw ApiException.denied(); }
+    public void customerService(CurrentUser a) { if(!a.canHandleWorkOrders()) throw ApiException.denied(); }
     public WorkOrderEntity order(UUID id,boolean lock) {
         var a=CurrentUser.require(); var row=lock?orders.lock(id):orders.find(id);
         if(row==null) throw ApiException.missing("Work order");

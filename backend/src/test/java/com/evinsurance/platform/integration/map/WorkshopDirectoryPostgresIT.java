@@ -10,6 +10,8 @@ import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.*;
@@ -102,12 +104,13 @@ class WorkshopDirectoryPostgresIT {
         var page=json.readTree(response.getContentAsString()).path("data");assertThat(page.path("total").asLong()).isGreaterThanOrEqualTo(1);assertThat(page.path("records").size()).isEqualTo(1);
         mvc.perform(get(path()).param("query","%").header("Authorization","Bearer "+cs)).andExpect(status().isOk());
         mvc.perform(get(path()).param("size","101").header("Authorization","Bearer "+cs)).andExpect(status().isBadRequest());
-        for(String denied:List.of(admin,shop,owner))mvc.perform(get(path()).header("Authorization","Bearer "+denied)).andExpect(status().isForbidden());
+        for(String denied:List.of(shop,owner))mvc.perform(get(path()).header("Authorization","Bearer "+denied)).andExpect(status().isForbidden());
         verifyNoInteractions(provider);assertThat(assignments()).isZero();
         assertThat(db.queryForObject("select enabled from repair_shop where id=?",Boolean.class,sourceShop)).isFalse();
         assertThat(db.queryForObject("select count(*) from shop_service_region where shop_id=?",Long.class,sourceShop)).isZero();
     }
-    @Test void explicitConfirmationDispatchesOnceWithoutEnablingOriginalDirectoryShop()throws Exception{
+    @ParameterizedTest @ValueSource(booleans={false,true}) void explicitConfirmationDispatchesOnceWithoutEnablingOriginalDirectoryShop(boolean administrator)throws Exception{
+        if(administrator)cs=admin;
         var body=choice();String key=UUID.randomUUID().toString();
         var done=postJson(path()+"/dispatch",cs,body,key,200).path("data");long target=done.path("shopId").asLong();
         assertThat(done.path("status").asString()).isEqualTo("PENDING_ACCEPTANCE");assertThat(target).isNotEqualTo(sourceShop);

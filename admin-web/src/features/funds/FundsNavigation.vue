@@ -7,7 +7,7 @@ import { currentUser } from '@/shared/http/client'
   <nav class="funds-navigation" aria-label="资金页面">
     <RouterLink to="/funds/analytics">经营看板</RouterLink>
     <RouterLink to="/funds/workbench">案件收支</RouterLink>
-    <RouterLink v-if="currentUser?.roles.includes('CUSTOMER_SERVICE')" to="/funds/imports">资金导入</RouterLink>
+    <RouterLink v-if="currentUser?.roles.some(role=>role==='ADMIN'||role==='CUSTOMER_SERVICE')" to="/funds/imports">资金导入</RouterLink>
   </nav>
 </template>
 

@@ -40,7 +40,7 @@ public class JsMapService {
     }
     private boolean configured(){return key.matches("[A-Za-z0-9_-]{16,128}")&&code.matches("[A-Za-z0-9_-]{16,128}");}
     public Configuration configuration(){access();return new Configuration(enabled,configured(),enabled?"点击加载后将访问高德在线地图资源；不是地址/路线调用额度":"真实底图尚未启用，不会自动加载");}
-    private static CurrentUser access(){var user=CurrentUser.require();if(!user.roles().contains(Role.CUSTOMER_SERVICE))throw ApiException.denied();return user;}
+    private static CurrentUser access(){var user=CurrentUser.require();if(!user.canHandleWorkOrders())throw ApiException.denied();return user;}
     public synchronized Grant issue(Instant jwtExpires){
         var actor=access();if(!enabled)throw unavailable();Instant now=clock.instant();tickets.values().removeIf(t->!t.expires.isAfter(now));
         if(tickets.size()>=500||tickets.values().stream().filter(t->t.actor==actor.id()).count()>=3)throw ApiException.conflict("MAP_JS_SESSION_LIMIT","地图加载会话过多，请稍后再试");
@@ -52,7 +52,7 @@ public class JsMapService {
         if(!enabled||value==null||!value.matches("[A-Za-z0-9_-]{43}"))throw invalidSession();
         var ticket=tickets.get(digest(value));if(ticket==null||!ticket.expires.isAfter(clock.instant()))throw invalidSession();
         var row=users.accessById(ticket.actor);
-        if(row==null||!row.enabled()||!row.activated()||!row.bindingValid()||row.authVersion()!=ticket.version||!row.roles().contains(Role.CUSTOMER_SERVICE)||!Portal.ADMIN.allows(row.roles()))throw invalidSession();
+        if(row==null||!row.enabled()||!row.activated()||!row.bindingValid()||row.authVersion()!=ticket.version||!row.current().canHandleWorkOrders()||!Portal.ADMIN.allows(row.roles()))throw invalidSession();
         return row.current();
     }
     public synchronized void revoke(String cookie){if(cookie!=null&&cookie.matches("[A-Za-z0-9_-]{43}"))tickets.remove(digest(cookie));}

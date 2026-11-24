@@ -26,7 +26,7 @@ public class SimulationDispatchService {
     private record Snapshot(UUID id,UUID caseId,long actor,long version,List<MapData.Shop> source,List<MapRecommendationService.Row> rows,Instant expires){}
     public SimulationDispatchService(Environment env,MapDataMapper data,MapProvider provider,MapCallBudget budget,MapTestPositions positions,WorkOrderService orders,ShopMapper shops,OrganizationRelationsMapper organization,AuditService audit){this.env=env;this.data=data;this.provider=provider;this.budget=budget;this.positions=positions;this.orders=orders;this.shops=shops;this.organization=organization;this.audit=audit;}
     public boolean enabled(){return env.acceptsProfiles(Profiles.of("dev"))&&env.getProperty("MAP_SIMULATION_DESTINATIONS_ENABLED",Boolean.class,false);}
-    private CurrentUser access(){var actor=CurrentUser.require();if(!enabled()||!actor.roles().contains(Role.CUSTOMER_SERVICE))throw ApiException.denied();return actor;}
+    private CurrentUser access(){var actor=CurrentUser.require();if(!enabled()||!actor.canHandleWorkOrders())throw ApiException.denied();return actor;}
     @org.springframework.scheduling.annotation.Scheduled(fixedDelay=60000) public void purgeExpired(){results.values().removeIf(s->s.expires().isBefore(Instant.now()));}
     private List<MapData.Shop> source(){if(data.simulationShopCount()>50)throw ApiException.conflict("MAP_CANDIDATE_LIMIT","模拟网点超过50家，未截断或调用路线");return data.simulationShops(0,50);}
     private MapRecommendationService.Row row(MapData.Shop shop){
