@@ -23,6 +23,7 @@ import org.springframework.web.multipart.MultipartFile;
 public class WorkbookPriceImportService {
     private static final String SUPPLIER = "SUPPLIER_QUOTED";
     private static final String CP = "CP_QUOTED";
+    private static final String PREVIEW_VERSION = "workbook-region-v2";
     public record Options(String excludeRows, Integer correctionRow, String correctionNature, String correctionAmount) {}
     public record Price(String original, String amount, String status, String note) {}
     public record Row(int rowNumber, String brand, String model, String part, String unit, String region,
@@ -62,10 +63,10 @@ public class WorkbookPriceImportService {
         var workbook = PriceWorkbookParser.read(file);
         var excluded = excludedRows(options.excludeRows());
         var corrected = correction(options, excluded, workbook.rows());
-        String fingerprint = FileService.hash((actor.id() + ":" + workbook.hash() + ":" + excluded + ":" +
+        String fingerprint = FileService.hash((PREVIEW_VERSION + ":" + actor.id() + ":" + workbook.hash() + ":" + excluded + ":" +
             options.correctionRow() + ":" + options.correctionNature() + ":" + corrected).getBytes(StandardCharsets.UTF_8));
         if (confirming) {
-            if (!fingerprint.equals(expectedFingerprint)) throw ApiException.conflict("PRICE_PREVIEW_CHANGED", "文件或导入选项已变更，请重新预览");
+            if (!fingerprint.equals(expectedFingerprint)) throw ApiException.conflict("PRICE_PREVIEW_CHANGED", "文件、导入选项或识别规则已变更，请重新预览");
             mapper.lockSource(HistoricalPriceImportService.CATALOGUE_LOCK);
         }
         var existing = new HashSet<>(mapper.existingWorkbookQuotes(workbook.hash(), true));

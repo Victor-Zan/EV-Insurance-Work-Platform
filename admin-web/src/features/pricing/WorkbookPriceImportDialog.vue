@@ -80,7 +80,7 @@ async function confirm() {
       <p>重复 {{ result.duplicates }} 条 · 待核对 {{ result.invalid }} 条 · 跳过 {{ result.skippedRows }} 行</p>
     </div>
     <template v-else>
-      <p class="import-intro">读取「导入文档」中的配件明细。地区为空时记为全国。</p>
+      <p class="import-intro">读取「导入文档」中的配件明细，依次取地区、市或机构。三列都空时记为全国。</p>
       <FileDropZone hint="选择 1 个 XLSX 文件，最大 10 MiB，支持 2000 条明细。" :max-bytes="10485760" :busy="busy">
         <input type="file" accept=".xlsx" aria-label="选择价格导入 Excel" :disabled="busy" @change="choose">
       </FileDropZone>

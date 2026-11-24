@@ -2977,3 +2977,10 @@ API用providerManaged=true和remaining=null表达本地不设累计上限、供�
 - 新旧JAR的49份数据库SQL逐份摘要完全一致；先备份public schema（custom dump 687935字节）、旧JAR、私密.env及进程回执，再只更新本项目常驻后端并恢复原守护；管理端Vite、H5与Docker保留运行。备份和新旧哈希清单位于Git忽略的tmp/admin-permissions-runtime-install.json。新运行JAR SHA256=713433180c2de7b08583727da36e6210864b001fc54a38b3b1220d8684aa1ed7，PID29588，public仍V40，启动日志确认无需迁移。
 - 真实本地HTTP复验：纯ADMIN与客服分别在8080和5173读取两类地图配置均200，5173底图bootstrap均200、仅Cookie撤销会话均204。验证脚本首次错误复用了Authorization头，触发既有代理安全拒绝；改为仅Cookie后通过，安全规则未放宽。证据tmp/admin-permissions-local-before.json、tmp/admin-permissions-local-after.json。未调用高德供应商、未派单或改写工单；页面最终显示待用户刷新确认。
 - 按用户“先别急着进下一步”要求，暂不修改价格导入；此前仅只读确认样本有机构列东莞而市列为空，待地图页面确认后在同分支继续。未提交、推送或更新线上部署。
+## 2026-11-24 价格批量导入识别机构列地区（完成）
+
+- 用户确认本地管理员地图权限已恢复，授权在 codex/admin-workflow-permissions 继续修复并合并推送。原表“导入文档”97 行配件明细的“机构”为东莞、“市”为空。旧版只读取一个地区列，本地预览将 97 行全部显示为全国。
+- 价格工作簿逐行依次读取“地区”“市”“机构”，三列都空才记为全国。预览与确认共用解析结果，旧识别规则生成的预览需重新执行。来源行、报价金额、历史档案以及重复判断沿用原规则。
+- 首先用合成样本复现旧逻辑失败，再运行 Java 21 的 Maven verify -Ppostgres-it -Dit.test=SamplePostgresIT，156 项单元测试、8 项价格数据库测试、Flyway 校验和构建通过。覆盖列优先级、地区留空、确认入库、两类报价及重放去重。管理端 npm.cmd run lint、npm.cmd run typecheck、npm.cmd test（309 项）、npm.cmd run build 通过。日志位于 tmp/price-region-verify.log 和 tmp/price-region-admin-*.log。
+- 本地 8080 备份后换包，49 份迁移 SQL 摘要一致。用原表经 5173 只读预览确认 97 行全部为东莞，156 条重复报价、19 行跳过。重复报价来自历史归档，核对当前 156 条地区均为东莞。未确认导入原表。运行备份清单及前后预览汇总在 Git 忽略的 tmp/price-region-runtime-install.json 和 tmp/price-region-preview-*.json。
+- H5、Docker Compose 及数据库结构无本阶段改动，沿用此前验证。分支内分开提交权限和价格修复，依用户授权合并并推送 main。正式发布由用户在 GitHub Actions 手动触发。
