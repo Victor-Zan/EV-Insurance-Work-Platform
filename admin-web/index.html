@@ -1,15 +1,65 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" class="starting">
   <head>
     <meta name="referrer" content="no-referrer">
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="电动车保险维修案件协同平台管理端" />
     <title>保险维修协同平台 · 管理端</title>
+    <style>
+      .starting{overflow:hidden}
+      #startup{--progress:0;position:fixed;inset:0;z-index:2147483647;background:#f5f3ee;color:#292b2d;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;display:grid;place-items:center}
+      #startup *{box-sizing:border-box}
+      .startup-brand{position:absolute;left:6.3%;top:7.6%;font-size:clamp(16px,1.65vw,26px);font-weight:600}
+      .startup-content{display:flex;align-items:center;gap:56px}
+      .startup-ring{position:relative;width:288px;height:288px;flex-shrink:0}
+      .startup-ring svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
+      .startup-track,.startup-fill{fill:none;stroke-width:3.2}
+      .startup-track{stroke:#dfdcd6}.startup-fill{stroke:#729d89;stroke-linecap:round;stroke-dasharray:100;stroke-dashoffset:calc(100 - var(--progress));transition:stroke-dashoffset 220ms ease-out}
+      .startup-ring img{position:absolute;inset:13%;width:74%;height:74%;object-fit:contain;animation:bearing-turn 20s linear infinite}
+      .startup-percent{font-size:clamp(64px,7.1vw,112px);font-weight:700;line-height:1.05;letter-spacing:-.045em;font-variant-numeric:tabular-nums}
+      .startup-title{font-size:clamp(23px,2.5vw,40px);font-weight:600;margin:24px 0 14px;line-height:1.35}
+      .startup-note{font-size:clamp(16px,1.8vw,28px);color:#706d65;margin:0}
+      .startup-retry{margin-top:24px;padding:10px 22px;background:#35383b;color:white;border:0;border-radius:7px;font:inherit;cursor:pointer}
+      .startup-retry:focus-visible{outline:3px solid #729d89;outline-offset:4px}
+      #startup[data-state="failed"] img{animation-play-state:paused}
+      @keyframes bearing-turn{to{transform:rotate(360deg)}}
+      @media(max-width:760px){.startup-content{flex-direction:column;gap:28px;text-align:center;padding:80px 24px 32px}.startup-ring{width:200px;height:200px}.startup-percent{font-size:64px}.startup-title{font-size:23px;margin-top:16px}.startup-note{font-size:16px}.startup-brand{top:28px;left:24px}}
+      @media(max-height:540px) and (min-width:761px){.startup-ring{width:180px;height:180px}.startup-content{gap:32px}.startup-percent{font-size:64px}.startup-title{font-size:24px}}
+      @media(prefers-reduced-motion:reduce){.startup-ring img{animation:none}.startup-fill{transition:none}}
+    </style>
   </head>
   <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
+    <div id="startup" role="status" aria-live="polite">
+      <div class="startup-brand">e保 / 保险协作台</div>
+      <div class="startup-content">
+        <div class="startup-ring" role="progressbar" aria-label="页面准备进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <svg viewBox="0 0 100 100" aria-hidden="true"><circle class="startup-track" cx="50" cy="50" r="47"/><circle class="startup-fill" cx="50" cy="50" r="47" pathLength="100"/></svg>
+          <img src="%BASE_URL%startup-bearing.png" alt="" width="320" height="320" fetchpriority="high">
+        </div>
+        <div><div class="startup-percent" data-percent aria-hidden="true">0%</div><h1 class="startup-title">正在准备登录页面</h1><p class="startup-note">即将就绪，请稍候</p><button class="startup-retry" hidden>重新加载</button></div>
+      </div>
+    </div>
+    <div id="app" inert aria-hidden="true"></div>
+    <script>
+      // This watchdog also works when the module entry or one of its chunks fails to download.
+      (() => {
+        const screen = document.getElementById('startup');
+        function fail() {
+          screen.dataset.state = 'failed';
+          screen.querySelector('.startup-title').textContent = '页面准备未完成';
+          screen.querySelector('.startup-note').textContent = '请检查网络后重新加载';
+          screen.querySelector('button').hidden = false;
+          clearTimeout(timer);
+        }
+        const timer = setTimeout(fail, 45000);
+        window.addEventListener('startup-ready', () => clearTimeout(timer), { once: true });
+        window.addEventListener('startup-failed', fail, { once: true });
+        screen.querySelector('button').addEventListener('click', () => location.reload());
+      })();
+    </script>
+    <noscript><style>#startup{display:none}</style>请启用 JavaScript 后重新加载平台。</noscript>
+    <script type="module" src="/src/startup.ts"></script>
   </body>
 </html>
 

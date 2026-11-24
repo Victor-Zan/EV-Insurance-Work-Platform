@@ -10,6 +10,7 @@ import gearArtwork from '@/assets/login-gear.png'
 import wrenchArtwork from '@/assets/login-wrench.png'
 const router = useRouter()
 const username = ref(''), password = ref(''), error = ref(''), loading = ref(false)
+const pageReady = ref(false)
 async function login() {
   if (loading.value) return
   if (!username.value.trim() || !password.value) { error.value = '请输入账号和密码'; return }
@@ -18,11 +19,11 @@ async function login() {
   catch (cause) { error.value = cause instanceof Error ? cause.message : '登录失败，请重试'; password.value = '' }
   finally { loading.value = false }
 }
-onMounted(async()=>{try{if(await consumeHandoff(httpClient,authSession))await router.replace('/')}catch(e){error.value=e instanceof Error?e.message:'登录交接失效，请重新登录'}})
+onMounted(async()=>{try{if(await consumeHandoff(httpClient,authSession))await router.replace('/')}catch(e){error.value=e instanceof Error?e.message:'登录交接失效，请重新登录'}finally{pageReady.value=true}})
 </script>
 
 <template>
-  <main class="login-page">
+  <main class="login-page" :data-page-ready="pageReady">
     <div class="login-stage">
       <div class="login-illustration">
         <p class="login-kicker">电动车保险协作</p>
