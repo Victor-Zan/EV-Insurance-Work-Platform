@@ -13,9 +13,15 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtService jwt; private final UserMapper users; private final ObjectMapper json;
-    public JwtAuthenticationFilter(JwtService jwt,UserMapper users,ObjectMapper json) { this.jwt=jwt; this.users=users; this.json=json; }
+    private final WechatBindingStore bindings; private final WechatLoginConfiguration wechat;
+    public JwtAuthenticationFilter(JwtService jwt,UserMapper users,ObjectMapper json,WechatBindingStore bindings,WechatLoginConfiguration wechat) {
+        this.jwt=jwt;this.users=users;this.json=json;this.bindings=bindings;this.wechat=wechat;
+    }
     @Override
-    protected boolean shouldNotFilter(HttpServletRequest request) { return java.util.Set.of("/api/v1/auth/login","/api/v1/auth/sign-in","/api/v1/auth/handoff","/api/v1/auth/activation/inspect","/api/v1/auth/activation/complete").contains(request.getServletPath()); }
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return "POST".equals(request.getMethod()) && java.util.Set.of("/api/v1/auth/login","/api/v1/auth/sign-in","/api/v1/auth/handoff","/api/v1/auth/activation/inspect","/api/v1/auth/activation/complete",
+            "/api/v1/auth/wechat/login","/api/v1/auth/wechat/bindings","/api/v1/auth/wechat/activation/inspect","/api/v1/auth/wechat/activation/complete").contains(request.getServletPath());
+    }
     @Override
     protected void doFilterInternal(HttpServletRequest request,HttpServletResponse response,FilterChain chain) throws ServletException,IOException {
         String header=request.getHeader("Authorization");
@@ -30,6 +36,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     || !(com.evinsurance.platform.identity.domain.Portal.ADMIN.allows(row.roles())
                     || com.evinsurance.platform.identity.domain.Portal.H5.allows(row.roles()))) {
                     write(response,401,"SESSION_INVALID","Account disabled or session invalid; sign in again"); return;
+                }
+                if(token.hasClaim("channel")||token.hasClaim("wechatBindingId")) {
+                    Object bindingClaim=token.getClaim("wechatBindingId");
+                    if(!"WECHAT".equals(token.getClaim("channel"))||!(bindingClaim instanceof String bindingText))
+                        throw new JwtException("Invalid identity channel");
+                    var bindingId=java.util.UUID.fromString(bindingText);
+                    if(!bindingId.toString().equals(bindingText))throw new JwtException("Invalid binding identifier");
+                    if(!bindings.validForSession(bindingId,wechat.getAppId(),row)) {
+                        write(response,401,"SESSION_INVALID","Wechat binding invalid; sign in again");return;
+                    }
                 }
                 var authorities=row.roles().stream().map(role -> new SimpleGrantedAuthority("ROLE_"+role.name())).toList();
                 SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(row.current(),null,authorities));

@@ -1,0 +1,27 @@
+page {
+  background: #f5f2ed;
+  color: #292b2d;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+}
+
+view, text, input, textarea, button, image { box-sizing: border-box; }
+button::after { border: 0; }
+.app-shell { min-height: 100vh; }
+
+/* #ifdef H5 */
+html { scrollbar-width: none; }
+html::-webkit-scrollbar { display: none; }
+/* #endif */
+
+/* Shared mobile interpretation of the admin's warm sculpted showcase. */
+.service-hero { position: relative; min-height: 184px; margin-bottom: 16px; overflow: hidden; border: 1px solid #ebe3d9; border-radius: 20px; background: #eee7df; box-shadow: inset 0 1px 0 #fff; }
+.service-art { position: absolute; right: -12px; bottom: 0; width: 76%; height: 100%; }
+.service-hero::after { position: absolute; inset: 0; content: ''; background: linear-gradient(90deg,#eee7df 0%,rgba(238,231,223,.95) 24%,rgba(238,231,223,.15) 65%,transparent); pointer-events: none; }
+.service-copy { position: relative; z-index: 1; padding: 28px 20px; width: 80%; }
+.service-copy text { display: block; color: #615e56; font-size: 13px; line-height: 1.7; }
+.service-copy .service-title { margin-bottom: 10px; color: #292b2d; font-size: 24px; font-weight: 600; line-height: 1.4; }
+.owner-bottom,.shop-bottom { position: fixed; z-index: 30; right: 0; bottom: 0; left: 0; display: flex; padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); border-top: 1px solid #e7e1d8; background: #fffdfa; box-shadow: 0 -4px 20px rgba(65,55,38,.035); }
+.owner-tab,.shop-nav { display: flex; flex: 1; min-width: 0; height: 52px; margin: 0 4px; border-radius: 13px; align-items: center; justify-content: center; flex-direction: column; gap: 3px; color: #706d65; font-size: 11px; }
+.owner-tab image,.shop-nav image { width: 22px; height: 22px; }
+.owner-tab.active,.shop-nav.active { background: #35383b; color: #fffefa; box-shadow: 0 3px 8px rgba(53,56,59,.1); }

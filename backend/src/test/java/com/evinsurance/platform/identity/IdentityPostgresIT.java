@@ -33,6 +33,7 @@ class IdentityPostgresIT {
     private static byte[] randomKey() { byte[] bytes=new byte[32]; new java.security.SecureRandom().nextBytes(bytes); return bytes; }
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
+        registry.add("spring.flyway.locations",()->String.join(",",IdentityTestMigrations.locations()));
         String url=System.getenv("TEST_DB_URL");
         if (url==null || url.isBlank()) throw new IllegalStateException("postgres-it requires a dedicated TEST_DB_URL, TEST_DB_USERNAME and TEST_DB_PASSWORD");
         registry.add("spring.datasource.url",() -> url + (url.contains("?") ? "&" : "?") + "currentSchema=" + SCHEMA);
@@ -163,7 +164,7 @@ class IdentityPostgresIT {
     @Test void unifiedErrorsPaginationOpenApiAndFreshFlywayAreVerified() throws Exception {
         flyway.validate();
         assertThat(Arrays.stream(flyway.info().applied()).filter(info -> info.getVersion()!=null)
-            .map(info -> info.getVersion().toString()).toList()).containsSubsequence("1","2","2.1","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28");
+            .map(info -> info.getVersion().toString()).toList()).containsExactly("1","2","2.1","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31","32","33","34","35","36","37","38","39","40","41","42");
         mvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content("{}"))
             .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
         mvc.perform(get("/api/v1/admin/users?size=101").header("Authorization","Bearer "+admin)).andExpect(status().isBadRequest());

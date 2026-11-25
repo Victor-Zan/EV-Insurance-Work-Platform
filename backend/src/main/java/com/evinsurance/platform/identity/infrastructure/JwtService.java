@@ -31,11 +31,18 @@ public class JwtService {
         this.ttlSeconds = ttlSeconds;
     }
     public IssuedToken issue(CurrentUser user) {
+        return issue(user,null);
+    }
+    public IssuedToken issueWechat(CurrentUser user,java.util.UUID bindingId) {
+        return issue(user,java.util.Objects.requireNonNull(bindingId));
+    }
+    private IssuedToken issue(CurrentUser user,java.util.UUID bindingId) {
         Instant now = Instant.now();
         Instant expiresAt = now.plusSeconds(ttlSeconds);
         var claims = JwtClaimsSet.builder().issuer("ev-insurance").subject(Long.toString(user.id()))
-            .issuedAt(now).expiresAt(expiresAt).claim("av", user.authVersion()).build();
-        String token = encoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();
+            .issuedAt(now).expiresAt(expiresAt).claim("av", user.authVersion());
+        if(bindingId!=null)claims.claim("channel","WECHAT").claim("wechatBindingId",bindingId.toString());
+        String token = encoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims.build())).getTokenValue();
         return new IssuedToken(token, expiresAt);
     }
     public Jwt decode(String token) {

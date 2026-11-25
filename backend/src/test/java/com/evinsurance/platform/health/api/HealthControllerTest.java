@@ -23,6 +23,10 @@ class HealthControllerTest {
     private com.evinsurance.platform.identity.infrastructure.JwtService jwtService;
     @org.springframework.test.context.bean.override.mockito.MockitoBean
     private com.evinsurance.platform.identity.infrastructure.UserMapper userMapper;
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    private com.evinsurance.platform.identity.infrastructure.WechatBindingStore wechatBindings;
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    private com.evinsurance.platform.identity.infrastructure.WechatLoginConfiguration wechatLogin;
     @Autowired
     private MockMvc mockMvc;
 

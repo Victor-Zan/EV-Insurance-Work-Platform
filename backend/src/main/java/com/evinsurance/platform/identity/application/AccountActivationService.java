@@ -24,6 +24,9 @@ public class AccountActivationService {
     public record Invitation(long userId,String username,String url,Instant expiresAt,boolean alreadyActive){
         public Invitation(long userId,String username,String url,Instant expiresAt){this(userId,username,url,expiresAt,false);}
     }
+    public record InvitationCredential(long userId,String username,Instant expiresAt,boolean alreadyActive,String token){
+        @Override public String toString(){return "InvitationCredential[credential omitted]";}
+    }
     private final JdbcTemplate db;private final UserMapper users;private final UserService userService;private final PasswordEncoder encoder;private final AuditService audit;private final AccountFailureAudit failure;private final AccountRateLimit limits;private final AccountPublicUrls urls;private final WorkOrderMapper orders;private final FileAccess access;
     public AccountActivationService(JdbcTemplate db,UserMapper users,UserService userService,PasswordEncoder encoder,AuditService audit,AccountFailureAudit failure,AccountRateLimit limits,AccountPublicUrls urls,WorkOrderMapper orders,FileAccess access){this.db=db;this.users=users;this.userService=userService;this.encoder=encoder;this.audit=audit;this.failure=failure;this.limits=limits;this.urls=urls;this.orders=orders;this.access=access;}
     public static String token(){byte[] bytes=new byte[32];new java.security.SecureRandom().nextBytes(bytes);return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);}
@@ -38,7 +41,19 @@ public class AccountActivationService {
         users.markPending(user.id());return issue(user.id());
     }
     @Transactional public Invitation adminIssue(long userId){CurrentUser.require().requireAdmin();return issue(userId);}
-    private Invitation issue(long userId){
+    private Invitation issue(long userId){return webInvitation(issueCredential(userId));}
+    private Invitation webInvitation(InvitationCredential credential){
+        var row=users.accessById(credential.userId());
+        String path=credential.alreadyActive()?"/login":"/activate#token="+credential.token();
+        return new Invitation(credential.userId(),credential.username(),urls.base(portal(row))+path,credential.expiresAt(),credential.alreadyActive());
+    }
+    @Transactional public InvitationCredential issueWechat(long userId){
+        CurrentUser.require().requireAdmin();
+        if(users.lockById(userId)==null)throw ApiException.missing("User");var row=users.accessById(userId);
+        if(!row.roles().equals(Set.of(Role.OWNER))&&!row.roles().equals(Set.of(Role.REPAIR_SHOP)))throw ApiException.conflict("WECHAT_IDENTITY_CONFLICT","小程序需要唯一车主或网点身份");
+        return issueCredential(userId);
+    }
+    private InvitationCredential issueCredential(long userId){
         limits.take("issuer:"+CurrentUser.require().id(),20);limits.take("invite-target:"+userId,3);
         var user=users.lockById(userId);if(user==null)throw ApiException.missing("User");var row=users.accessById(userId);
         if(!row.enabled()||row.activated()||!row.bindingValid())throw ApiException.conflict("INVITATION_STATE","仅可邀请启用且身份绑定有效的待激活账号");
@@ -47,13 +62,13 @@ public class AccountActivationService {
         String raw=token();Instant expires=Instant.now().plusSeconds(86400);
         db.update("INSERT INTO account_invitation(id,user_id,token_hash,purpose,auth_version,created_by,expires_at) VALUES(?,?,?,'ACTIVATE_ACCOUNT',?,?,?)",UUID.randomUUID(),userId,digest(raw),row.authVersion(),CurrentUser.require().id(),java.sql.Timestamp.from(expires));
         audit.record(CurrentUser.require(),previous?Action.INVITATION_REISSUE:Action.INVITATION_ISSUE,"USER",userId,"Activation invitation issued; validity=24h; credential omitted");
-        return new Invitation(userId,row.username(),urls.base(portal(row))+"/activate#token="+raw,expires);
+        return new InvitationCredential(userId,row.username(),expires,false,raw);
     }
     public Map<String,Object> status(long userId){CurrentUser.require().requireAdmin();var row=users.accessById(userId);if(row==null)throw ApiException.missing("User");var out=new LinkedHashMap<String,Object>();out.put("activated",row.activated());out.put("enabled",row.enabled());out.put("state",!row.enabled()?"DISABLED":row.activated()?"ACTIVE":"PENDING");var latest=db.queryForList("SELECT expires_at,used_at,revoked_at,auth_version FROM account_invitation WHERE user_id=? ORDER BY created_at DESC,id DESC LIMIT 1",userId);if(!latest.isEmpty()){var invite=latest.getFirst();out.put("expiresAt",invite.get("expires_at"));out.put("invitationState",invite.get("used_at")!=null?"USED":invite.get("revoked_at")!=null||((Number)invite.get("auth_version")).longValue()!=row.authVersion()?"REVOKED":((java.sql.Timestamp)invite.get("expires_at")).toInstant().isAfter(Instant.now())?"ISSUED":"EXPIRED");}return out;}
-    private Map<String,Object> valid(String raw,boolean lock){
+    Map<String,Object> valid(String raw,boolean lock){
         if(raw==null||!raw.matches("[A-Za-z0-9_-]{43}"))return rejected();
         var found=db.queryForList("SELECT * FROM account_invitation WHERE token_hash=?",digest(raw));if(found.isEmpty())return rejected();long id=((Number)found.getFirst().get("user_id")).longValue();if(lock)users.lockById(id);
-        var current=db.queryForList("SELECT * FROM account_invitation WHERE token_hash=? AND purpose='ACTIVATE_ACCOUNT' AND used_at IS NULL AND revoked_at IS NULL AND expires_at>now()",digest(raw));var user=users.accessById(id);
+        var current=db.queryForList("SELECT * FROM account_invitation WHERE token_hash=? AND purpose='ACTIVATE_ACCOUNT' AND used_at IS NULL AND revoked_at IS NULL AND expires_at>now()"+(lock?" FOR UPDATE":""),digest(raw));var user=users.accessById(id);
         if(current.isEmpty()||user==null||user.activated()||!user.enabled()||!user.bindingValid()||user.authVersion()!=((Number)current.getFirst().get("auth_version")).longValue())return rejected();return current.getFirst();
     }
     private Map<String,Object> rejected(){failure.rejected();throw ApiException.conflict("INVITATION_INVALID","邀请不可用、已失效或已办理，请联系邀请人员核实");}
@@ -67,7 +82,9 @@ public class AccountActivationService {
         audit.record(row.current(),Action.ACCOUNT_ACTIVATE,"USER",id,"Invitation-bound account activated; enabled state unchanged");
         return Map.of("username",row.username(),"loginUrl",urls.base(portal(row))+"/login");
     }
-    @Transactional public Invitation owner(UUID caseId,OwnerRequest request){
+    @Transactional public Invitation owner(UUID caseId,OwnerRequest request){return webInvitation(ownerCredential(caseId,request));}
+    @Transactional public InvitationCredential ownerWechat(UUID caseId,OwnerRequest request){return ownerCredential(caseId,request);}
+    private InvitationCredential ownerCredential(UUID caseId,OwnerRequest request){
         var actor=CurrentUser.require();if(!actor.roles().contains(Role.ADMIN)&&!actor.roles().contains(Role.CUSTOMER_SERVICE))throw ApiException.denied();
         if(!request.verified()||request.reason()==null||request.reason().isBlank()||request.reason().length()>2000)throw ApiException.invalid("请通过已核实联系方式确认本人及案件归属，并填写核实说明");
         if(request.existingOwnerId()!=null&&!actor.roles().contains(Role.ADMIN))throw ApiException.denied();
@@ -92,8 +109,8 @@ public class AccountActivationService {
         if(account.activated()){
             limits.take("issuer:"+actor.id(),20);limits.take("invite-target:"+target,3);
             audit.record(actor,Action.WORK_ORDER_OWNER_BIND,"WORK_ORDER",caseId,"Existing activated OWNER reused; no invitation or password change; user="+target);
-            return new Invitation(target,account.username(),urls.base(Portal.H5)+"/login",null,true);
+            return new InvitationCredential(target,account.username(),null,true,null);
         }
-        return issue(target);
+        return issueCredential(target);
     }
 }

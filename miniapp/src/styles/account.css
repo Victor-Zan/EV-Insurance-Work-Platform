@@ -1,0 +1,13 @@
+.account-help,.account-error,.account-label,.account-link { display: block; }
+.account-primary,.account-secondary { margin: 22px 0 0; padding: 0 12px; border-radius: 10px; background: #35383b; color: #fffefa; font-size: 16px; line-height: 48px; }
+.account-primary[disabled],.account-secondary[disabled] { opacity: .55; color: #fffefa; background: #686a6b; }
+.account-secondary { border: 1px solid #ded9cf; background: #fffefa; color: #35383b; font-size: 14px; }
+.account-label { margin-top: 18px; color: #35383b; font-size: 14px; font-weight: 600; }
+.account-input { width: 100%; height: 46px; margin-top: 8px; padding: 0 12px; border: 1px solid #ded9cf; border-radius: 9px; background: #fffefa; color: #292b2d; font-size: 15px; }
+.account-help,.account-link { margin-top: 16px; color: #706d65; font-size: 12px; line-height: 1.7; }
+.account-link { color: #35383b; text-align: center; font-size: 14px; padding: 5px 0; }
+.account-error { margin-top: 12px; color: #a83b3b; font-size: 13px; line-height: 1.6; }
+.account-agreement { display: flex; align-items: flex-start; gap: 5px; margin-top: 18px; color: #706d65; font-size: 12px; line-height: 1.8; }
+.account-agreement checkbox { transform: scale(.8); margin-left: -5px; }
+.account-preview { margin-top: 18px; padding: 14px; border: 1px solid #e0dcd3; border-radius: 10px; background: #f5f3ee; }
+.account-preview text { display: block; color: #35383b; font-size: 13px; line-height: 1.9; overflow-wrap: anywhere; }

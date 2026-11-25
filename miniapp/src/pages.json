@@ -1,0 +1,66 @@
+{
+  "pages": [
+    {
+      "path": "pages/login/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "e保 · 微信登录",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#f5f3ee"
+      }
+    },
+    {
+      "path": "pages/bind/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "e保 · 绑定服务账号",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#f5f3ee"
+      }
+    },
+    {
+      "path": "pages/activate/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "e保 · 激活并绑定",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#f5f3ee"
+      }
+    },
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "e保 · 保险维修服务",
+        "navigationBarBackgroundColor": "#f5f3ee",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#f5f3ee",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/owner-case/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "e保 · 案件详情",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#f5f3ee",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/shop-case/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "e保 · 网点案件",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#f5f3ee",
+        "enablePullDownRefresh": true
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationStyle": "custom",
+    "backgroundColor": "#f5f3ee"
+  }
+}

@@ -20,8 +20,9 @@ public class UserService {
     private final ShopMapper shops;
     private final PasswordEncoder encoder;
     private final AuditService audit;
-    public UserService(UserMapper users, ShopMapper shops, PasswordEncoder encoder, AuditService audit) {
-        this.users=users; this.shops=shops; this.encoder=encoder; this.audit=audit;
+    private final WechatBindingStore wechatBindings;
+    public UserService(UserMapper users, ShopMapper shops, PasswordEncoder encoder, AuditService audit,WechatBindingStore wechatBindings) {
+        this.users=users; this.shops=shops; this.encoder=encoder; this.audit=audit;this.wechatBindings=wechatBindings;
     }
     public PageResponse<UserView> list(int page,int size) {
         CurrentUser.require().requireAdmin(); int offset=PageResponse.offset(page,size);
@@ -62,7 +63,8 @@ public class UserService {
         var actor=CurrentUser.require(); actor.requireAdmin(); users.lockOwnerMatching(); var user=lock(id);
         var before=users.accessById(id); validateAssignment(request.roles(),request.shopId());
         assign(user,request.roles(),request.shopId(),actor.id()); touch(user,actor.id()); users.updateById(user);
-        audit.record(actor,Action.ROLE_CHANGE,"USER",id,"Roles: " + roleNames(before.roles()) + " -> " + roleNames(request.roles()));
+        int changedBindings=wechatBindings.synchronizeAssignment(users.accessById(id),actor.id());
+        audit.record(actor,Action.ROLE_CHANGE,"USER",id,"Roles: " + roleNames(before.roles()) + " -> " + roleNames(request.roles())+"; Wechat binding snapshots renewed/revoked: "+changedBindings);
         if (!java.util.Objects.equals(before.shopId(),request.shopId())) {
             audit.record(actor,Action.SHOP_ACCOUNT_CHANGE,"USER",id,"Shop: " + before.shopId() + " -> " + request.shopId());
         }
