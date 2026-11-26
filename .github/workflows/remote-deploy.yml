@@ -48,8 +48,6 @@ jobs:
       TEST_MINIO_SECRET_KEY: synthetic-validation-password
       TEST_MINIO_BUCKET: release-validation
       TEST_MINIO_RESTORE_ENDPOINT: http://127.0.0.1:19083
-      TEST_ARTIFACT_DIR: ${{ runner.temp }}/storage-recovery
-      TEST_PG_CONTAINER: ${{ job.services.postgres.id }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -98,6 +96,9 @@ jobs:
       - name: Backend tests, database integration and package
         if: env.DO_BUILD == 'true'
         working-directory: backend
+        env:
+          TEST_ARTIFACT_DIR: ${{ runner.temp }}/storage-recovery
+          TEST_PG_CONTAINER: ${{ job.services.postgres.id }}
         run: bash ./mvnw -B -ntp verify -Ppostgres-it
       - name: Management website checks and build
         if: env.DO_BUILD == 'true'
