@@ -249,7 +249,7 @@ class WechatIdentityPostgresIT {
     }
     @Test void migrationUpgradesExistingSchemaAndProtectsUniqueBindingsAndHistory() throws Exception {
         String schema=SCHEMA+"_upgrade",url=System.getenv("TEST_DB_URL"),username=System.getenv("TEST_DB_USERNAME"),password=System.getenv("TEST_DB_PASSWORD");
-        Flyway before=Flyway.configure().dataSource(url,username,password).schemas(schema).defaultSchema(schema).target("32").load();before.migrate();
+        Flyway before=Flyway.configure().dataSource(url,username,password).schemas(schema).defaultSchema(schema).target("40").load();before.migrate();
         var source=new org.springframework.jdbc.datasource.DriverManagerDataSource(url+(url.contains("?")?"&":"?")+"currentSchema="+schema,username,password);
         var isolated=new JdbcTemplate(source);
         isolated.update("INSERT INTO app_user(username,display_name,password_hash) VALUES('preserved','Synthetic preserved account','not-a-real-password')");

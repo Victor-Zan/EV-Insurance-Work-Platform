@@ -2,6 +2,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import tarfile
 import tempfile
@@ -119,7 +120,60 @@ class DeploymentTests(unittest.TestCase):
     def test_failed_rollback_keeps_public_writes_in_maintenance(self):
         self.activation_test(rollback_healthy=False)
 
-    def activation_test(self, rollback_healthy):
+    def test_mobile_assets_install_beside_management_without_overwriting_it(self):
+        public = self.root / 'public'
+        public.mkdir()
+        (public / 'index.html').write_bytes(b'management')
+        release = self.root / 'release'
+        for portal in ['admin-dist', 'h5-dist']:
+            (release / portal / 'assets').mkdir(parents=True)
+            (release / portal / 'assets/app.js').write_bytes(portal.encode())
+        (release / 'h5-dist/build-info.json').write_text('{}')
+        with patch.object(publisher, 'PUBLIC', public):
+            publisher.install_assets(release)
+        self.assertEqual((public / 'index.html').read_bytes(), b'management')
+        self.assertEqual((public / 'assets/app.js').read_bytes(), b'admin-dist')
+        self.assertEqual((public / 'mobile/assets/app.js').read_bytes(), b'h5-dist')
+
+    def test_changed_schema_cannot_be_approved_by_an_unmatched_rehearsal(self):
+        before = self.jar('before.jar', 'select 1;')
+        after = self.jar('after.jar', 'select 2;')
+        with patch.object(publisher, 'ROOT', self.root):
+            with self.assertRaisesRegex(publisher.Rejected, 'rehearsal approval'):
+                publisher.require_rehearsed_schema(before, after, SHA)
+        # The ordinary rollback route continues to reject schema differences.
+        with self.assertRaises(publisher.Rejected):
+            publisher.require_same_schema(after, before)
+
+    def test_backend_failure_also_restores_the_mobile_entry_and_version(self):
+        self.activation_test(rollback_healthy=True, mobile=True)
+
+    def test_root_rehearsal_approves_only_the_exact_current_and_target_jar(self):
+        before = self.jar('before.jar', 'select 1;')
+        after = self.jar('after.jar', 'select 2;')
+        approval = self.root / 'approved-migrations' / (SHA + '.json')
+        approval.parent.mkdir()
+        approval.write_text(json.dumps({'from': before.parent.name, 'to': SHA,
+            'before': publisher.migrations(before), 'after': publisher.migrations(after),
+            'jarSha256': publisher.digest(after), 'rehearsalPassed': True}))
+        original_stat = Path.stat
+        def trusted_stat(path, *args, **kwargs):
+            result = original_stat(path, *args, **kwargs)
+            if path == approval:
+                fields = list(result)
+                fields[0] &= ~0o022
+                fields[4] = 0
+                return os.stat_result(fields)
+            return result
+        with patch.object(publisher, 'ROOT', self.root), patch.object(Path, 'stat', trusted_stat):
+            publisher.require_rehearsed_schema(before, after, SHA)
+            # Same SQL is insufficient when the approved application JAR changes.
+            with zipfile.ZipFile(after, 'a') as jar:
+                jar.writestr('BOOT-INF/classes/application.yml', 'changed application')
+            with self.assertRaisesRegex(publisher.Rejected, 'exact release'):
+                publisher.require_rehearsed_schema(before, after, SHA)
+
+    def activation_test(self, rollback_healthy, mobile=False):
         public = self.root / 'public'
         public.mkdir()
         for name in ['index.html', 'build-info.json']:
@@ -132,6 +186,12 @@ class DeploymentTests(unittest.TestCase):
         (release / 'admin-dist').mkdir(parents=True)
         for name in ['index.html', 'build-info.json']:
             (release / 'admin-dist' / name).write_bytes(b'new')
+        if mobile:
+            (public / 'mobile').mkdir()
+            (release / 'h5-dist').mkdir()
+            for name in ['index.html', 'build-info.json']:
+                (public / 'mobile' / name).write_bytes(b'old mobile')
+                (release / 'h5-dist' / name).write_bytes(b'new mobile')
         maintenance = self.root / 'maintenance'
         effects = [publisher.Rejected('synthetic startup failure'), None if rollback_healthy else publisher.Rejected('synthetic rollback failure')]
         with patch.multiple(publisher, ROOT=self.root, PUBLIC=public, UNIT=unit, MAINTENANCE=maintenance,
@@ -145,6 +205,9 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual((public / 'index.html').read_bytes(), b'old')
         self.assertEqual(json.loads((self.root / 'state.json').read_text()), state)
         self.assertEqual(maintenance.exists(), not rollback_healthy)
+        if mobile:
+            self.assertEqual((public / 'mobile/index.html').read_bytes(), b'old mobile')
+            self.assertEqual((public / 'mobile/build-info.json').read_bytes(), b'old mobile')
 
 
 if __name__ == '__main__':

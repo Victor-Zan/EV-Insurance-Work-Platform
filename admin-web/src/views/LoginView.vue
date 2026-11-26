@@ -59,6 +59,7 @@ onMounted(async()=>{try{if(await consumeHandoff(httpClient,authSession))await ro
           <ElFormItem label="密码"><ElInput v-model="password" aria-label="密码" type="password" autocomplete="current-password" show-password /></ElFormItem>
           <ElButton class="login-submit" type="primary" native-type="submit" :loading="loading">登录工作台</ElButton>
         </ElForm>
+          <p class="mobile-entry"><a href="/mobile/login">车主 / 维修网点登录入口</a></p>
       </ElCard>
     </div>
   </main>

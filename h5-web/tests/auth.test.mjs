@@ -16,12 +16,12 @@ test('wrong portal is rejected and does not persist authentication', () => {
   const store=storage(), session=new AuthSession(store)
   const wrong=['ADMIN','CUSTOMER_SERVICE','REPAIR_SHOP','OWNER'].find(role => !allowedRoles.includes(role))
   assert.throws(() => session.set({ ...result(), user: { ...user, roles: [wrong] } }),/当前端/)
-  assert.equal(session.valid(),false); assert.equal(store.getItem('ev-auth'),null)
+  assert.equal(session.valid(),false); assert.equal(store.getItem('ev-h5-auth'),null)
 })
 test('expiry, malformed persisted state and logout clear all authentication', () => {
   const store=storage(); let now=Date.now(); const session=new AuthSession(store,() => now)
-  session.set(result()); now+=120000; assert.equal(session.valid(),false); assert.equal(session.user,null); assert.equal(store.getItem('ev-auth'),null)
-  store.setItem('ev-auth','broken'); assert.equal(new AuthSession(store).valid(),false)
+  session.set(result()); now+=120000; assert.equal(session.valid(),false); assert.equal(session.user,null); assert.equal(store.getItem('ev-h5-auth'),null)
+  store.setItem('ev-h5-auth','broken'); assert.equal(new AuthSession(store).valid(),false)
   session.set({ ...result(), expiresAt:new Date(now+60000).toISOString() }); session.clear(); assert.equal(session.token,null)
 })
 test('guard blocks unauthenticated, wrong role and server rejected sessions', async () => {
@@ -74,4 +74,13 @@ test('multipart uploads preserve file bytes instead of JSON serialization',async
   return {status:200,statusText:'OK',headers:{},config,data:{code:'SUCCESS'}}
  }
  await api.client.post('/funds/imports',form)
+})
+
+
+test('mobile authentication never consumes or clears the management session on the same origin',()=>{
+ const store=storage();store.setItem('ev-auth','management-session-kept')
+ const session=new AuthSession(store);assert.equal(session.valid(),false)
+ session.set(result());assert.ok(store.getItem('ev-h5-auth'))
+ session.clear();assert.equal(store.getItem('ev-h5-auth'),null)
+ assert.equal(store.getItem('ev-auth'),'management-session-kept')
 })

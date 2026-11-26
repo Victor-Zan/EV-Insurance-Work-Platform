@@ -31,7 +31,7 @@ function repair(status='REPAIRING',authorized=true,role='REPAIR_SHOP',review=nul
   Rate:'Rate',CompletionEvidence:'CompletionEvidence',PhotoPicker:'PhotoPicker',RecordList:'RecordList',label:value=>value,localTime:value=>value,
   currentUser:Vue.ref({roles:[role]}),httpClient:{},
   repairApi:()=>({get:async()=>current,history:async()=>({records:[],total:0}),post:async(op,body,key)=>{
-   calls.push({op,body,key});if(fail)throw Error('网络中断');current={...current,status:'WAITING_OWNER_CONFIRMATION'};return current
+   calls.push({op,body,key});if(fail)throw Error('网络中断');current={...current,status:op==='progress'?'REPAIRING':'WAITING_OWNER_CONFIRMATION'};return current
   }}),
   quotationApi:()=>({get:async()=>({authorized,gate:{allowed:authorized},version:6,assignmentVersion:3}),post:async(op,body,key)=>{
    calls.push({op,body,key});current={...current,status:'REPAIRING'};return current
@@ -58,9 +58,9 @@ test('saved arrival photos from a legacy backend unlock the quote step after upl
  const reopened=component('quotation/QuotationPanel.vue',deps,props);await reopened.state.load()
  assert.equal(reopened.nodes().find(node=>node.type==='ArrivalPhotoPanel').props.uploaded,true)
 })
-test('repair task has only the completion action, then requires completion photos and keeps failed-submit idempotency',async()=>{
+test('repair task offers progress and completion, requires completion photos and keeps failed-submit idempotency',async()=>{
  const ui=repair();await ui.state.load()
- assert.equal(ui.nodes().filter(n=>n.type==='button').map(n=>n.children).join('|'),'维修完成')
+ assert.equal(ui.nodes().filter(n=>n.type==='button'&&!['上一页','下一页'].includes(n.children)).map(n=>n.children).join('|'),'追加维修进度|维修完成')
  await ui.state.openCompletion()
  assert.equal(ui.nodes().some(n=>n.type==='PhotoPicker'),true)
  assert.equal(ui.nodes().some(n=>n.type==='textarea'),false)
@@ -141,4 +141,22 @@ test('owner status labels conceal internal financial stages',()=>{
  for(const status of ['WAITING_INSURER_PAYMENT','WAITING_SHOP_SETTLEMENT','COMPLETED'])
   assert.equal(caseStatusLabel(status,'OWNER'),'已收车')
  assert.equal(caseStatusLabel('WAITING_INSURER_PAYMENT','REPAIR_SHOP'),'待结算')
+})
+
+
+test('shop can append progress with correctly scoped photos, retry safely, and continue repairing',async()=>{
+ const ui=repair();await ui.state.load()
+ ui.nodes().find(n=>n.type==='button'&&n.children==='追加维修进度').props.onClick()
+ assert.equal(ui.state.progressOpen.value,true)
+ assert.equal(ui.nodes().some(n=>n.type==='textarea'),true)
+ assert.equal(ui.nodes().find(n=>n.type==='PhotoPicker').props['upload-category'],'PROGRESS_PHOTO')
+ await assert.rejects(ui.state.submit('progress'),/进度说明/)
+ ui.state.note.value='电池检查完成，正在更换线束';ui.state.selectedPhotos.value=['progress-photo']
+ ui.fail(true);await assert.rejects(ui.state.submit('progress'),/网络中断/)
+ const key=ui.calls[0].key;ui.fail(false);await ui.state.submit('progress')
+ assert.equal(ui.calls[1].key,key)
+ assert.deepEqual(ui.calls[1].body,{expectedVersion:2,assignmentVersion:3,photoIds:['progress-photo'],note:'电池检查完成，正在更换线束'})
+ assert.equal(ui.state.data.value.status,'REPAIRING');assert.equal(ui.state.progressOpen.value,false)
+ await ui.state.openCompletion();assert.equal(ui.state.photoCategory.value,'COMPLETION_PHOTO')
+ assert.deepEqual(ui.state.selectedPhotos.value,[])
 })
