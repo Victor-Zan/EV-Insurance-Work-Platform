@@ -26,14 +26,12 @@ import tools.jackson.databind.*;
 class OwnerMiniappPostgresIT {
     private static final String SCHEMA="s05_owner_"+UUID.randomUUID().toString().replace("-","");
     @DynamicPropertySource static void properties(DynamicPropertyRegistry r) throws Exception {
-        var url=System.getenv("TEST_DB_URL");
-        if(url==null || !url.startsWith("jdbc:postgresql://127.0.0.1:55434/"))
-            throw new IllegalStateException("S05 requires its dedicated loopback PostgreSQL on port 55434");
+        var url=com.evinsurance.platform.support.PostgresTestEnvironment.url();
         var directory=Files.createTempDirectory("s05-foundation-");directory.toFile().deleteOnExit();
         var seed=directory.resolve("V2.1__development_foundation.sql");seed.toFile().deleteOnExit();
         try(var input=OwnerMiniappPostgresIT.class.getResourceAsStream("/db/dev/V2.1__development_foundation.sql")){Files.copy(Objects.requireNonNull(input),seed);}
         r.add("spring.flyway.locations",()->"classpath:db/migration,filesystem:"+directory);
-        r.add("spring.datasource.url",()->url+"?currentSchema="+SCHEMA);
+        r.add("spring.datasource.url",()->com.evinsurance.platform.support.PostgresTestEnvironment.schemaUrl(SCHEMA));
         r.add("spring.datasource.username",()->System.getenv("TEST_DB_USERNAME"));
         r.add("spring.datasource.password",()->System.getenv("TEST_DB_PASSWORD"));
         r.add("spring.flyway.schemas",()->SCHEMA);r.add("spring.flyway.default-schema",()->SCHEMA);

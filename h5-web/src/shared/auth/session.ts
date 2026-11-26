@@ -17,7 +17,7 @@ export class AuthSession {
   constructor(storage: StorageLike, now = Date.now) {
     this.storage = storage; this.now = now
     try {
-      const raw = storage.getItem('ev-auth')
+      const raw = storage.getItem('ev-h5-auth')
       if (raw) {
         const saved: unknown = JSON.parse(raw)
         if (saved && typeof saved === 'object' && 'token' in saved && typeof saved.token === 'string'
@@ -34,7 +34,7 @@ export class AuthSession {
     const expiresAt = Date.parse(result.expiresAt)
     if (!Number.isFinite(expiresAt) || expiresAt <= this.now()) { this.clear(); throw new Error('登录已过期，请重新登录') }
     this.token = result.accessToken; this.expiresAt = expiresAt; this.user = result.user
-    this.storage.setItem('ev-auth', JSON.stringify({ token: this.token, expiresAt: this.expiresAt }))
+    this.storage.setItem('ev-h5-auth', JSON.stringify({ token: this.token, expiresAt: this.expiresAt }))
     this.schedule(); this.changed()
   }
   updateUser(user: User) { this.user = user; this.changed() }
@@ -42,7 +42,7 @@ export class AuthSession {
   clear() {
     if (this.timer) clearTimeout(this.timer)
     this.token = null; this.expiresAt = 0; this.user = null
-    this.storage.removeItem('ev-auth'); this.changed()
+    this.storage.removeItem('ev-h5-auth'); this.changed()
   }
   private schedule() {
     if (this.timer) clearTimeout(this.timer)

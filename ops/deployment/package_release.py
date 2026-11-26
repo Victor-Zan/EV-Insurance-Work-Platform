@@ -24,6 +24,7 @@ def package(source, output, commit):
             shutil.copytree(source / original, stage / name)
         info = {'commit': commit, 'branch': 'main', 'repository': 'Victor-Zan/EV-Insurance-Work-Platform'}
         (stage / 'admin-dist/build-info.json').write_text(json.dumps(info), encoding='utf-8')
+        (stage / 'h5-dist/build-info.json').write_text(json.dumps({**info, 'portal': 'H5', 'base': '/mobile/'}), encoding='utf-8')
         files = {p.relative_to(stage).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
                  for p in stage.rglob('*') if p.is_file()}
         manifest = {'format': 1, **info, 'files': files}

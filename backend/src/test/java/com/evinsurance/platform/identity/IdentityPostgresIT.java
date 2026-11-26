@@ -194,8 +194,8 @@ class IdentityPostgresIT {
         switchedToDev.validate();
         assertThat(template.queryForObject("select count(*) from app_user where username='dev_admin'",Long.class)).isEqualTo(1);
         assertThat(template.queryForObject("select count(*) from region district join region city on city.id=district.parent_id where district.code='440303' and city.code='440300'", Long.class)).isEqualTo(1);
-        Flyway restarted=Flyway.configure().dataSource(url,username,password).schemas(SCHEMA).defaultSchema(SCHEMA)
-            .locations("classpath:db/migration","classpath:db/dev","classpath:db/test-dev").placeholders(Map.of("devAdminHash",newHash,
+        Flyway restarted=Flyway.configure().dataSource(url,username,password).schemas(normalSchema).defaultSchema(normalSchema)
+            .locations("classpath:db/migration","classpath:db/dev","classpath:db/test-dev").outOfOrder(true).placeholders(Map.of("devAdminHash",newHash,
                 "devCustomerServiceHash",newHash,"devRepairShopHash",newHash,"devOwnerHash",newHash)).load();
         restarted.validate(); assertThat(restarted.migrate().migrationsExecuted).isZero();
     }

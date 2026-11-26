@@ -35,20 +35,23 @@ import tools.jackson.databind.*;
 @ActiveProfiles("dev")
 class PrivateStorageMiniappPostgresIT {
     private static final String SCHEMA="s08_files_"+UUID.randomUUID().toString().replace("-",""), BUCKET="s08-private-"+UUID.randomUUID();
-    private static final String ACCESS="s08_"+UUID.randomUUID().toString().replace("-",""), SECRET=UUID.randomUUID()+UUID.randomUUID().toString();
-    private static final String SOURCE="http://127.0.0.1:19082", RESTORED="http://127.0.0.1:19083";
+    private static final boolean EXTERNAL=System.getenv("TEST_MINIO_EXECUTABLE")==null;
+    private static final String ACCESS=EXTERNAL?Objects.requireNonNull(System.getenv("TEST_MINIO_ACCESS_KEY")):"s08_"+UUID.randomUUID().toString().replace("-",""), SECRET=EXTERNAL?Objects.requireNonNull(System.getenv("TEST_MINIO_SECRET_KEY")):UUID.randomUUID()+UUID.randomUUID().toString();
+    private static final String SOURCE=EXTERNAL?Objects.requireNonNull(System.getenv("TEST_MINIO_ENDPOINT")):"http://127.0.0.1:19082", RESTORED=EXTERNAL?Objects.requireNonNull(System.getenv("TEST_MINIO_RESTORE_ENDPOINT")):"http://127.0.0.1:19083";
     private static final List<Process> CHILDREN=new ArrayList<>();
     private static Path artifacts;
     @DynamicPropertySource static void properties(DynamicPropertyRegistry r) throws Exception {
-        String url=System.getenv("TEST_DB_URL");
-        if(url==null||!url.startsWith("jdbc:postgresql://127.0.0.1:55439/"))throw new IllegalStateException("Use dedicated S08 PostgreSQL on 55439");
+        String url=com.evinsurance.platform.support.PostgresTestEnvironment.url();
         artifacts=Path.of(Objects.requireNonNull(System.getenv("TEST_ARTIFACT_DIR"))).toAbsolutePath();Files.createDirectories(artifacts);
         Runtime.getRuntime().addShutdownHook(new Thread(PrivateStorageMiniappPostgresIT::stopStorage));
-        startStorage("source",19082,19084);startStorage("restored",19083,19085);
+        if(EXTERNAL){
+            for(String endpoint:List.of(SOURCE,RESTORED)){var uri=URI.create(endpoint);if(!"http".equals(uri.getScheme())||!List.of("127.0.0.1","localhost").contains(uri.getHost()))throw new IllegalStateException("Storage tests require loopback-only services");}
+            if(SOURCE.equals(RESTORED))throw new IllegalStateException("Restore must use a separate storage service");
+        }else{startStorage("source",19082,19084);startStorage("restored",19083,19085);}
         Path seedDirectory=artifacts.resolve("dev-migration");Files.createDirectories(seedDirectory);
         try(var input=PrivateStorageMiniappPostgresIT.class.getResourceAsStream("/db/dev/V2.1__development_foundation.sql")){Files.copy(Objects.requireNonNull(input),seedDirectory.resolve("V2.1__development_foundation.sql"),StandardCopyOption.REPLACE_EXISTING);}
         r.add("spring.flyway.locations",()->"classpath:db/migration,filesystem:"+seedDirectory);
-        r.add("spring.datasource.url",()->url+"?currentSchema="+SCHEMA);r.add("spring.datasource.username",()->System.getenv("TEST_DB_USERNAME"));r.add("spring.datasource.password",()->System.getenv("TEST_DB_PASSWORD"));r.add("spring.flyway.schemas",()->SCHEMA);r.add("spring.flyway.default-schema",()->SCHEMA);
+        r.add("spring.datasource.url",()->com.evinsurance.platform.support.PostgresTestEnvironment.schemaUrl(SCHEMA));r.add("spring.datasource.username",()->System.getenv("TEST_DB_USERNAME"));r.add("spring.datasource.password",()->System.getenv("TEST_DB_PASSWORD"));r.add("spring.flyway.schemas",()->SCHEMA);r.add("spring.flyway.default-schema",()->SCHEMA);
         byte[] key=new byte[32];new SecureRandom().nextBytes(key);r.add("JWT_SECRET_BASE64",()->Base64.getEncoder().encodeToString(key));r.add("JWT_TTL_SECONDS",()->"1800");
         r.add("MINIO_ENDPOINT",()->SOURCE);r.add("MINIO_ACCESS_KEY",()->ACCESS);r.add("MINIO_SECRET_KEY",()->SECRET);r.add("MINIO_BUCKET",()->BUCKET);
         r.add("NOTIFICATION_POLL_MS",()->"86400000");r.add("OCR_WORKER_ENABLED",()->"false");r.add("WECHAT_LOGIN_ENABLED",()->"false");
@@ -94,9 +97,18 @@ class PrivateStorageMiniappPostgresIT {
         var names=jdbc.queryForList("SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=? AND c.relkind='S' ORDER BY c.relname",String.class,SCHEMA);var result=new ArrayList<Map<String,Object>>();
         for(String name:names){if(!name.matches("[a-z0-9_]+"))throw new IllegalStateException("Unexpected sequence");var item=new LinkedHashMap<>(jdbc.queryForMap("SELECT last_value,is_called FROM "+SCHEMA+"."+name));item.put("name",name);result.add(item);}return result;
     }
-    private void pg(String executable,String... args)throws Exception{
-        var command=new ArrayList<String>();command.add(Path.of(Objects.requireNonNull(System.getenv("TEST_PG_BIN")),executable).toString());command.addAll(List.of(args));
-        var process=new ProcessBuilder(command).redirectErrorStream(true).redirectOutput(artifacts.resolve(executable+".log").toFile()).start();assertThat(process.waitFor(40,TimeUnit.SECONDS)).isTrue();assertThat(process.exitValue()).as(executable+" log retained").isZero();
+    private void pg(String executable,Path file,boolean restore,String database) throws Exception {
+        var address=com.evinsurance.platform.support.PostgresTestEnvironment.address();
+        var command=new ArrayList<String>();
+        String container=System.getenv("TEST_PG_CONTAINER");
+        if(container!=null){if(!container.matches("[A-Za-z0-9_.-]+"))throw new IllegalStateException("Invalid isolated database container");command.addAll(List.of("docker","exec","-i","-e","PGPASSWORD",container,executable));}
+        else command.add(Path.of(Objects.requireNonNull(System.getenv("TEST_PG_BIN")),executable+(System.getProperty("os.name").startsWith("Windows")?".exe":"")).toString());
+        command.addAll(List.of("-h",address.getHost(),"-p",String.valueOf(address.getPort()<0?5432:address.getPort()),"-U",System.getenv("TEST_DB_USERNAME"),"-d",database,"--no-owner","--no-privileges"));
+        if(restore)command.add("--exit-on-error");else command.addAll(List.of("-Fc","--schema",SCHEMA));
+        var builder=new ProcessBuilder(command).redirectError(artifacts.resolve(executable+".log").toFile());
+        builder.environment().put("PGPASSWORD",System.getenv("TEST_DB_PASSWORD"));
+        if(restore)builder.redirectInput(file.toFile());else builder.redirectOutput(file.toFile());
+        var process=builder.start();assertThat(process.waitFor(40,TimeUnit.SECONDS)).isTrue();assertThat(process.exitValue()).as(executable+" log retained").isZero();
     }
     @Test void actualPrivateUploadDownloadFrozenEvidenceAndConsistentDatabaseObjectRestore() throws Exception {
         UUID id=UUID.randomUUID();String shop=token("dev_repair_shop"),staff=token("dev_customer_service"),owner=token("dev_owner");long staffId=user("dev_customer_service"),shopId=users.accessByUsername("dev_repair_shop").shopId();
@@ -118,10 +130,10 @@ class PrivateStorageMiniappPostgresIT {
         var photo=mvc.perform(get("/api/v1/materials/"+completionId+"/download").header("Authorization","Bearer "+owner)).andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();assertThat(photo).isEqualTo(original);
         // Writers are quiescent here; the isolated worker runs only once at startup then waits a day.
         long started=System.nanoTime();var before=metrics(db);var beforeSequences=sequences(db);Path dump=artifacts.resolve("database.dump");String username=System.getenv("TEST_DB_USERNAME");
-        pg("pg_dump.exe","-h","127.0.0.1","-p","55439","-U",username,"-d","postgres","-Fc","--no-owner","--no-privileges","--schema",SCHEMA,"-f",dump.toString());
+        pg("pg_dump",dump,false,com.evinsurance.platform.support.PostgresTestEnvironment.address().getPath().substring(1));
         String restoredDb="s08_restore_"+UUID.randomUUID().toString().replace("-","");db.execute("CREATE DATABASE "+restoredDb);
-        pg("pg_restore.exe","-h","127.0.0.1","-p","55439","-U",username,"-d",restoredDb,"--exit-on-error","--no-owner","--no-privileges",dump.toString());
-        var recovered=new JdbcTemplate(new DriverManagerDataSource("jdbc:postgresql://127.0.0.1:55439/"+restoredDb,username,System.getenv("TEST_DB_PASSWORD")));assertThat(metrics(recovered)).isEqualTo(before);assertThat(sequences(recovered)).isEqualTo(beforeSequences);
+        pg("pg_restore",dump,true,restoredDb);
+        var recovered=new JdbcTemplate(new DriverManagerDataSource("jdbc:postgresql://"+com.evinsurance.platform.support.PostgresTestEnvironment.address().getRawAuthority()+"/"+restoredDb,username,System.getenv("TEST_DB_PASSWORD")));assertThat(metrics(recovered)).isEqualTo(before);assertThat(sequences(recovered)).isEqualTo(beforeSequences);
         var source=client(SOURCE);var destination=client(RESTORED);destination.makeBucket(MakeBucketArgs.builder().bucket(BUCKET).build());var objects=new ArrayList<Map<String,Object>>();
         var records=db.queryForList("SELECT object_key,content_type,sha256,state,version_no FROM "+SCHEMA+".case_file ORDER BY object_key");Path backup=artifacts.resolve("objects");Files.createDirectories(backup);
         var restoredStorage=new MinioObjectStorage(RESTORED,ACCESS,SECRET,BUCKET);int index=0;

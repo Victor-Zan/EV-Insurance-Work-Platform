@@ -24,12 +24,11 @@ import tools.jackson.databind.*;
 class ShopMiniappPostgresIT {
     private static final String SCHEMA="s06_shop_"+UUID.randomUUID().toString().replace("-","");
     @DynamicPropertySource static void properties(DynamicPropertyRegistry r) throws Exception {
-        var url=System.getenv("TEST_DB_URL");
-        if(url==null || !url.startsWith("jdbc:postgresql://127.0.0.1:55436/"))throw new IllegalStateException("S06 requires its isolated loopback PostgreSQL on 55436");
+        var url=com.evinsurance.platform.support.PostgresTestEnvironment.url();
         var directory=Files.createTempDirectory("s06-foundation-");directory.toFile().deleteOnExit();var seed=directory.resolve("V2.1__development_foundation.sql");seed.toFile().deleteOnExit();
         try(var input=ShopMiniappPostgresIT.class.getResourceAsStream("/db/dev/V2.1__development_foundation.sql")){Files.copy(Objects.requireNonNull(input),seed);}
         r.add("spring.flyway.locations",()->"classpath:db/migration,filesystem:"+directory);
-        r.add("spring.datasource.url",()->url+"?currentSchema="+SCHEMA);r.add("spring.datasource.username",()->System.getenv("TEST_DB_USERNAME"));r.add("spring.datasource.password",()->System.getenv("TEST_DB_PASSWORD"));
+        r.add("spring.datasource.url",()->com.evinsurance.platform.support.PostgresTestEnvironment.schemaUrl(SCHEMA));r.add("spring.datasource.username",()->System.getenv("TEST_DB_USERNAME"));r.add("spring.datasource.password",()->System.getenv("TEST_DB_PASSWORD"));
         r.add("spring.flyway.schemas",()->SCHEMA);r.add("spring.flyway.default-schema",()->SCHEMA);
         byte[] key=new byte[32];new java.security.SecureRandom().nextBytes(key);r.add("JWT_SECRET_BASE64",()->Base64.getEncoder().encodeToString(key));r.add("JWT_TTL_SECONDS",()->"1800");
         r.add("OCR_WORKER_ENABLED",()->"false");r.add("WECHAT_LOGIN_ENABLED",()->"false");

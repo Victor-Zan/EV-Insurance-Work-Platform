@@ -3,6 +3,7 @@ import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vite'
 
 export default defineConfig({
+  base: process.env.VITE_H5_BASE_PATH ?? '/',
   plugins: [vue()],
   envDir: '..',
   resolve: {

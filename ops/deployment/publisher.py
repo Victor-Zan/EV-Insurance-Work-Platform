@@ -102,6 +102,10 @@ def unpack(archive_path, stage, commit):
     info = json.loads((stage / 'admin-dist/build-info.json').read_text())
     if info.get('commit') != commit:
         raise Rejected('Frontend version does not match')
+    if 'h5-dist/build-info.json' in actual:
+        mobile = json.loads((stage / 'h5-dist/build-info.json').read_text())
+        if mobile.get('commit') != commit or mobile.get('portal') != 'H5' or mobile.get('base') != '/mobile/' or 'h5-dist/index.html' not in actual:
+            raise Rejected('Mobile frontend version or deployment path does not match')
     return data
 
 
@@ -121,6 +125,18 @@ def migrations(jar):
 def require_same_schema(before, after):
     if migrations(before) != migrations(after):
         raise Rejected('Database migration changes require a separately rehearsed deployment; production was not changed')
+
+
+def require_rehearsed_schema(before, after, commit):
+    old, new = migrations(before), migrations(after)
+    if old == new:
+        return
+    approval = ROOT / 'approved-migrations' / (commit + '.json')
+    if approval.is_symlink() or not approval.is_file() or approval.stat().st_uid != 0 or approval.stat().st_mode & 0o022:
+        raise Rejected('Database migration changes require a root-owned exact-release rehearsal approval')
+    data = json.loads(approval.read_text())
+    if data.get('from') != before.parent.name or data.get('to') != commit or data.get('before') != old or data.get('after') != new or data.get('rehearsalPassed') is not True or data.get('jarSha256') != digest(after):
+        raise Rejected('Migration rehearsal approval does not match the exact release')
 
 
 def current_main():
@@ -149,11 +165,20 @@ def health():
 
 
 def install_assets(release):
-    for p in (release / 'admin-dist').rglob('*'):
+    install_portal_assets(release / 'admin-dist', PUBLIC)
+    if (release / 'h5-dist/build-info.json').exists():
+        install_portal_assets(release / 'h5-dist', PUBLIC / 'mobile')
+
+
+def install_portal_assets(source, destination):
+    if destination.is_symlink() or not destination.resolve().is_relative_to(PUBLIC.resolve()):
+        raise Rejected('Unsafe portal asset directory')
+    destination.mkdir(mode=0o755, parents=True, exist_ok=True)
+    for p in source.rglob('*'):
         if not p.is_file() or p.name in {'index.html', 'build-info.json'}:
             continue
-        target = PUBLIC / p.relative_to(release / 'admin-dist')
-        if target.is_symlink() or not target.resolve().is_relative_to(PUBLIC.resolve()):
+        target = destination / p.relative_to(source)
+        if target.is_symlink() or not target.resolve().is_relative_to(destination.resolve()):
             raise Rejected('Unsafe public asset destination')
         target.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
         if target.exists():
@@ -170,9 +195,16 @@ def activate(release, state, reason):
     backup.mkdir(mode=0o700, parents=True, exist_ok=False)
     old_unit = UNIT.read_bytes()
     old_front = {name: (PUBLIC / name).read_bytes() for name in ['index.html', 'build-info.json']}
+    mobile = PUBLIC / 'mobile'
+    publishes_mobile = (release / 'h5-dist/build-info.json').exists()
+    mobile_files = ['index.html', 'build-info.json'] if publishes_mobile or (mobile / 'index.html').exists() else []
+    old_mobile = {name: (mobile / name).read_bytes() if (mobile / name).exists() else None for name in mobile_files}
     (backup / '90-release.conf').write_bytes(old_unit)
     for filename, data in old_front.items():
         (backup / filename).write_bytes(data)
+    for filename, data in old_mobile.items():
+        if data is not None:
+            (backup / ('mobile-' + filename)).write_bytes(data)
     shutil.copy2('/etc/ev-insurance/backend.env', backup / 'backend.env')
     (backup / 'backend.env').chmod(0o600)
     install_assets(release)
@@ -193,10 +225,19 @@ def activate(release, state, reason):
             health()
             for filename in old_front:
                 atomic(PUBLIC / filename, (release / 'admin-dist' / filename).read_bytes())
+            for filename in mobile_files:
+                if publishes_mobile:
+                    atomic(mobile / filename, (release / 'h5-dist' / filename).read_bytes())
+                else:
+                    (mobile / filename).unlink(missing_ok=True)
             run(['curl', '-fsS', '--max-time', '15', '--resolve', '106.55.251.21:443:127.0.0.1', ORIGIN + '/api/v1/health'], log)
             raw = subprocess.check_output(['curl', '-fsS', '--max-time', '15', '--resolve', '106.55.251.21:443:127.0.0.1', ORIGIN + '/build-info.json'], stderr=log)
             if json.loads(raw).get('commit') != name:
                 raise Rejected('Published frontend version check failed')
+            if publishes_mobile:
+                raw = subprocess.check_output(['curl', '-fsS', '--max-time', '15', '--resolve', '106.55.251.21:443:127.0.0.1', ORIGIN + '/mobile/build-info.json'], stderr=log)
+                if json.loads(raw).get('commit') != name:
+                    raise Rejected('Published mobile version check failed')
             new_state = {'current': name, 'previous': state['current'], 'updatedAt': time.strftime('%Y-%m-%dT%H:%M:%S%z'), 'operation': reason}
             atomic(ROOT / 'state.json', json.dumps(new_state, indent=2).encode(), 0o600)
             (backup / 'result.json').write_text(json.dumps(new_state))
@@ -206,6 +247,11 @@ def activate(release, state, reason):
             atomic(UNIT, old_unit)
             for filename, data in old_front.items():
                 atomic(PUBLIC / filename, data)
+            for filename, data in old_mobile.items():
+                if data is None:
+                    (mobile / filename).unlink(missing_ok=True)
+                else:
+                    atomic(mobile / filename, data)
             atomic(ROOT / 'state.json', json.dumps(state, indent=2).encode(), 0o600)
             run(['systemctl', 'daemon-reload'], log)
             run(['systemctl', 'restart', 'ev-insurance-backend'], log)
@@ -257,7 +303,7 @@ def operate(args):
         artifact = stage / 'release'
         artifact.mkdir(mode=0o755)
         unpack(private_archive, artifact, args.target)
-        require_same_schema(current / 'backend.jar', artifact / 'backend.jar')
+        require_rehearsed_schema(current / 'backend.jar', artifact / 'backend.jar', args.target)
         if args.command == 'check':
             print('Release validated without changing production: ' + args.target)
             return
