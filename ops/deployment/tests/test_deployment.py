@@ -3,6 +3,7 @@ import importlib.util
 import io
 import json
 import os
+import stat
 from pathlib import Path
 import tarfile
 import tempfile
@@ -134,6 +135,27 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual((public / 'index.html').read_bytes(), b'management')
         self.assertEqual((public / 'assets/app.js').read_bytes(), b'admin-dist')
         self.assertEqual((public / 'mobile/assets/app.js').read_bytes(), b'h5-dist')
+
+    def test_public_mobile_directories_remain_readable_under_private_installer_umask(self):
+        public = self.root / 'public'
+        public.mkdir()
+        release = self.root / 'release'
+        (release / 'admin-dist/assets').mkdir(parents=True)
+        (release / 'h5-dist/assets/nested').mkdir(parents=True)
+        (release / 'admin-dist/assets/admin.js').write_bytes(b'admin')
+        (release / 'h5-dist/assets/nested/app.js').write_bytes(b'mobile')
+        (release / 'h5-dist/build-info.json').write_text('{}')
+        old_mask = os.umask(0o077)
+        try:
+            with patch.object(publisher, 'PUBLIC', public):
+                publisher.install_assets(release)
+        finally:
+            os.umask(old_mask)
+        self.assertEqual((public / 'mobile/assets/nested/app.js').read_bytes(), b'mobile')
+        if os.name == 'posix':
+            for relative in ['mobile', 'mobile/assets', 'mobile/assets/nested']:
+                self.assertEqual(stat.S_IMODE((public / relative).stat().st_mode), 0o755)
+            self.assertEqual(stat.S_IMODE((public / 'mobile/assets/nested/app.js').stat().st_mode), 0o644)
 
     def test_changed_schema_cannot_be_approved_by_an_unmatched_rehearsal(self):
         before = self.jar('before.jar', 'select 1;')
