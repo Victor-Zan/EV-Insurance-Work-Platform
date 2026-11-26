@@ -174,6 +174,8 @@ def install_portal_assets(source, destination):
     if destination.is_symlink() or not destination.resolve().is_relative_to(PUBLIC.resolve()):
         raise Rejected('Unsafe portal asset directory')
     destination.mkdir(mode=0o755, parents=True, exist_ok=True)
+    # The installer deliberately uses umask 077; public static directories need explicit traversal.
+    destination.chmod(0o755)
     for p in source.rglob('*'):
         if not p.is_file() or p.name in {'index.html', 'build-info.json'}:
             continue
@@ -181,6 +183,10 @@ def install_portal_assets(source, destination):
         if target.is_symlink() or not target.resolve().is_relative_to(destination.resolve()):
             raise Rejected('Unsafe public asset destination')
         target.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+        parent = target.parent
+        while parent != destination:
+            parent.chmod(0o755)
+            parent = parent.parent
         if target.exists():
             if digest(target) != digest(p):
                 raise Rejected('Existing asset filename has different content')
